@@ -1,0 +1,30 @@
+time_zone: Asia/Kolkata
+time_format: 02 Jan, 2006 - Mon @ 15:04
+
+telegram:
+  bot_token: 186779
+  api_url: http://localhost:8082
+  owner_id: 704338780
+  target_chat_id: 704338780
+
+
+# database:
+#   type: postgres
+#   host: localhost
+#   user: admin
+#   password: password
+#   dbname: gobot
+#   port: 5432
+#   time_zone: Asia/Kolkata
+
+# database:
+#   type: sqlite
+#   path: ./gobot.sqlite.db
+
+# database:
+#   type: mysql
+#   host: localhost
+#   port: 3306
+#   user: admin
+#   password: password
+#   dbname: gobot
