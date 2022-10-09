@@ -13,6 +13,7 @@ import (
 	"github.com/PaulSonOfLars/gotgbot/v2"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
 	"go.mau.fi/whatsmeow/types/events"
+	"golang.org/x/exp/slices"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -66,13 +67,15 @@ You received a new call
 		)
 
 	case *events.Message:
+		text := ""
+		if v.Message.ExtendedTextMessage != nil && v.Message.ExtendedTextMessage.Text != nil {
+			text = *v.Message.ExtendedTextMessage.Text
+		} else {
+			text = v.Message.GetConversation()
+		}
+
+		// Messages sent by me
 		if v.Info.IsFromMe {
-			text := ""
-			if v.Message.ExtendedTextMessage != nil && v.Message.ExtendedTextMessage.Text != nil {
-				text = *v.Message.ExtendedTextMessage.Text
-			} else {
-				text = v.Message.GetConversation()
-			}
 
 			// Get ID of the current chat
 			if text == ".id" {
@@ -96,11 +99,57 @@ You received a new call
 			}
 
 			// Tag everyone in the group
-			if strings.Contains(strings.ToLower(text), "@all") && v.Info.IsGroup {
+			if v.Info.IsGroup &&
+				(strings.Contains(strings.ToLower(text), "@all") ||
+					strings.Contains(strings.ToLower(text), "@everyone")) {
+
 				groupInfo, err := waClient.GetGroupInfo(v.Info.Chat)
 				if err != nil {
 					log.Printf("[whatsapp] failed to get group info of '%s' : %s", v.Info.Chat.String(), err)
+				} else {
+
+					replyText := ""
+					mentionedParticipants := []string{}
+
+					for _, participant := range groupInfo.Participants {
+						if participant.JID.User == waClient.Store.ID.User {
+							continue
+						}
+						replyText += fmt.Sprintf("@%s ", participant.JID.User)
+						mentionedParticipants = append(mentionedParticipants, participant.JID.String())
+					}
+
+					_, err = waClient.SendMessage(context.Background(), v.Info.Chat, "",
+						&waProto.Message{
+							ExtendedTextMessage: &waProto.ExtendedTextMessage{
+								Text: proto.String(replyText),
+								ContextInfo: &waProto.ContextInfo{
+									StanzaId:      proto.String(v.Info.ID),
+									Participant:   proto.String(v.Info.MessageSource.Sender.String()),
+									QuotedMessage: v.Message,
+									MentionedJid:  mentionedParticipants,
+								},
+							},
+						},
+					)
+					if err != nil {
+						log.Printf("[whatsapp] failed to reply to '@all' : %s", err)
+					}
 				}
+			}
+
+			return
+		}
+
+		if v.Info.IsGroup &&
+			slices.Contains(cfg.WhatsApp.TagAllAllowedGroups, v.Info.Chat.User) &&
+			(strings.Contains(strings.ToLower(text), "@all") ||
+				strings.Contains(strings.ToLower(text), "@everyone")) {
+
+			groupInfo, err := waClient.GetGroupInfo(v.Info.Chat)
+			if err != nil {
+				log.Printf("[whatsapp] failed to get group info of '%s' : %s", v.Info.Chat.String(), err)
+			} else {
 
 				replyText := ""
 				mentionedParticipants := []string{}
@@ -129,9 +178,20 @@ You received a new call
 				if err != nil {
 					log.Printf("[whatsapp] failed to reply to '@all' : %s", err)
 				}
-			}
 
-			return
+				tgBot.SendMessage(
+					cfg.Telegram.TargetChatID,
+					fmt.Sprintf(
+						`#tagall
+
+Everyone was mentioned in a group
+
+👥: <i>%s</i>`,
+						html.EscapeString(groupInfo.Name),
+					),
+					&gotgbot.SendMessageOpts{},
+				)
+			}
 		}
 	}
 }

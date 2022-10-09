@@ -7,6 +7,8 @@ telegram:
   owner_id: 704338780
   target_chat_id: 704338780
 
+whatsapp:
+  tag_all_allowed_groups:
 
 # database:
 #   type: postgres

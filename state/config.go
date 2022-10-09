@@ -20,6 +20,10 @@ type Config struct {
 		TargetChatID int64  `yaml:"target_chat_id"`
 	} `yaml:"telegram"`
 
+	WhatsApp struct {
+		TagAllAllowedGroups []string `yaml:"tag_all_allowed_groups"`
+	}
+
 	Database map[string]string `yaml:"database"`
 }
 
