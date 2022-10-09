@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"os"
+	"time"
 
 	"wa-tg-bridge/database"
 	"wa-tg-bridge/state"
@@ -50,8 +51,11 @@ func main() {
 		state.State.WhatsAppClient.Store.ID.User,
 	)
 
+	state.State.StartTime = time.Now()
+
 	waClient := state.State.WhatsAppClient
 	waClient.AddEventHandler(whatsapp.WhatsAppEventHandler)
 
+	telegram.AddHandlers()
 	state.State.TelegramUpdater.Idle()
 }
