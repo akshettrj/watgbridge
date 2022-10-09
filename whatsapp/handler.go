@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"wa-tg-bridge/state"
+	"wa-tg-bridge/utils"
 
 	"github.com/PaulSonOfLars/gotgbot/v2"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
@@ -79,7 +80,8 @@ You received a new call
 					&waProto.Message{
 						ExtendedTextMessage: &waProto.ExtendedTextMessage{
 							Text: proto.String(fmt.Sprintf(
-								"The ID of current chat is : ```%s```", v.Info.Chat.String(),
+								"The ID of current chat is : ```%s```",
+								utils.MarkdownEscapeString(v.Info.Chat.String()),
 							)),
 							ContextInfo: &waProto.ContextInfo{
 								StanzaId:      proto.String(v.Info.ID),
