@@ -8,6 +8,7 @@ import (
 	"wa-tg-bridge/database"
 	"wa-tg-bridge/state"
 	"wa-tg-bridge/telegram"
+	"wa-tg-bridge/utils"
 	"wa-tg-bridge/whatsapp"
 )
 
@@ -57,5 +58,7 @@ func main() {
 	waClient.AddEventHandler(whatsapp.WhatsAppEventHandler)
 
 	telegram.AddHandlers()
+	utils.RegisterBotCommand(state.State.TelegramBot, state.State.TelegramCommands...)
+
 	state.State.TelegramUpdater.Idle()
 }
