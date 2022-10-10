@@ -3,7 +3,9 @@ package telegram
 import (
 	"fmt"
 	"html"
+
 	"wa-tg-bridge/state"
+	middlewares "wa-tg-bridge/telegram/middleware"
 
 	"github.com/PaulSonOfLars/gotgbot/v2"
 	"github.com/PaulSonOfLars/gotgbot/v2/ext"
@@ -13,6 +15,7 @@ import (
 func AddHandlers() {
 	dispatcher := state.State.TelegramDispatcher
 
+	dispatcher.AddHandler(handlers.NewCommand("start", StartCommandHandler))
 	dispatcher.AddHandler(handlers.NewCommand("getwagroups", GetAllWhatsAppGroupsHandler))
 
 	state.State.TelegramCommands = append(state.State.TelegramCommands,
@@ -23,7 +26,31 @@ func AddHandlers() {
 	)
 }
 
+func StartCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
+	if !middlewares.CheckAuthorized(b, c) {
+		return nil
+	}
+
+	cfg := state.State.Config
+
+	_, err := b.SendMessage(
+		c.EffectiveChat.Id,
+		fmt.Sprintf(
+			"Hoi, the bot has been up since %s",
+			html.EscapeString(state.State.StartTime.Local().Format(cfg.TimeFormat)),
+		),
+		&gotgbot.SendMessageOpts{
+			ReplyToMessageId: c.EffectiveMessage.MessageId,
+		},
+	)
+	return err
+}
+
 func GetAllWhatsAppGroupsHandler(b *gotgbot.Bot, c *ext.Context) error {
+	if !middlewares.CheckAuthorized(b, c) {
+		return nil
+	}
+
 	waClient := state.State.WhatsAppClient
 
 	waGroups, err := waClient.GetJoinedGroups()
