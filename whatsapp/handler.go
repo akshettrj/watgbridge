@@ -60,7 +60,7 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 	waClient := state.State.WhatsAppClient
 	tgBot := state.State.TelegramBot
 
-	if v.Info.Chat.IsBroadcastList() {
+	if v.Info.Chat.String() == "status@broadcast" {
 		return
 	}
 
@@ -143,6 +143,8 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 		bridgedText += fmt.Sprintf("<b>From:</b> %s\n", html.EscapeString(utils.WhatsAppGetContactName(v.Info.Sender)))
 		if v.Info.IsGroup {
 			bridgedText += fmt.Sprintf("<b>Chat:</b> %s\n", html.EscapeString(utils.WhatsAppGetGroupName(v.Info.Chat)))
+		} else if v.Info.IsIncomingBroadcast() {
+			bridgedText += "<b>Chat:</b> (Broadcast)\n"
 		} else {
 			bridgedText += "<b>Chat:</b> (PVT)\n"
 		}

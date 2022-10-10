@@ -2,6 +2,7 @@ package utils
 
 import (
 	"strings"
+
 	"wa-tg-bridge/state"
 
 	"go.mau.fi/whatsmeow/types"
@@ -56,7 +57,7 @@ func WhatsAppGetGroupName(jid types.JID) string {
 
 	groupInfo, err := waClient.GetGroupInfo(jid)
 	if err != nil {
-		return ""
+		return jid.String()
 	}
 
 	return groupInfo.Name
