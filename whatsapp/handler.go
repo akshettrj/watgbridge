@@ -72,6 +72,20 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 		TagAllHandler(v.Info.Chat, v.Message, v.Info.ID, v.Info.MessageSource.Sender.String(), false)
 	}
 
+	bridgedText := "<code>------------</code>\n"
+	bridgedText += fmt.Sprintf("<code>%s</code>\n", html.EscapeString(v.Info.ID))
+	bridgedText += fmt.Sprintf("<code>%s</code>\n", html.EscapeString(v.Info.MessageSource.Sender.String()))
+	bridgedText += "<code>------------</code>\n"
+	bridgedText += fmt.Sprintf("<b>From:</b> %s\n", html.EscapeString(utils.WhatsAppGetContactName(v.Info.Sender)))
+	if v.Info.IsGroup {
+		bridgedText += fmt.Sprintf("<b>Chat:</b> %s\n", html.EscapeString(utils.WhatsAppGetGroupName(v.Info.Chat)))
+	} else if v.Info.IsIncomingBroadcast() {
+		bridgedText += "<b>Chat:</b> (Broadcast)\n"
+	} else {
+		bridgedText += "<b>Chat:</b> (PVT)\n"
+	}
+	bridgedText += fmt.Sprintf("<b>Time:</b> %s\n", html.EscapeString(v.Info.Timestamp.Local().Format(cfg.TimeFormat)))
+
 	switch v.Info.MediaType {
 	case "image":
 
@@ -91,17 +105,6 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 			return
 		}
 
-		bridgedText := "<code>------------</code>\n"
-		bridgedText += fmt.Sprintf("<code>%s</code>\n", html.EscapeString(v.Info.ID))
-		bridgedText += fmt.Sprintf("<code>%s</code>\n", html.EscapeString(v.Info.MessageSource.Sender.String()))
-		bridgedText += "<code>------------</code>\n"
-		bridgedText += fmt.Sprintf("<b>From:</b> %s\n", html.EscapeString(utils.WhatsAppGetContactName(v.Info.Sender)))
-		if v.Info.IsGroup {
-			bridgedText += fmt.Sprintf("<b>Chat:</b> %s\n", html.EscapeString(utils.WhatsAppGetGroupName(v.Info.Chat)))
-		} else {
-			bridgedText += "<b>Chat:</b> (PVT)\n"
-		}
-		bridgedText += fmt.Sprintf("<b>Time:</b> %s\n", html.EscapeString(v.Info.Timestamp.Local().Format(cfg.TimeFormat)))
 		bridgedText += "<b>Caption:</b>\n"
 		if len(caption) > 0 {
 			if len(caption) > 500 {
@@ -137,19 +140,6 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 			return
 		}
 
-		bridgedText := "<code>------------</code>\n"
-		bridgedText += fmt.Sprintf("<code>%s</code>\n", html.EscapeString(v.Info.ID))
-		bridgedText += fmt.Sprintf("<code>%s</code>\n", html.EscapeString(v.Info.MessageSource.Sender.String()))
-		bridgedText += "<code>------------</code>\n"
-		bridgedText += fmt.Sprintf("<b>From:</b> %s\n", html.EscapeString(utils.WhatsAppGetContactName(v.Info.Sender)))
-		if v.Info.IsGroup {
-			bridgedText += fmt.Sprintf("<b>Chat:</b> %s\n", html.EscapeString(utils.WhatsAppGetGroupName(v.Info.Chat)))
-		} else if v.Info.IsIncomingBroadcast() {
-			bridgedText += "<b>Chat:</b> (Broadcast)\n"
-		} else {
-			bridgedText += "<b>Chat:</b> (PVT)\n"
-		}
-		bridgedText += fmt.Sprintf("<b>Time:</b> %s\n", html.EscapeString(v.Info.Timestamp.Local().Format(cfg.TimeFormat)))
 		bridgedText += "<b>Caption:</b>\n"
 		if len(caption) > 0 {
 			if len(caption) > 500 {
@@ -190,17 +180,6 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 			return
 		}
 
-		bridgedText := "<code>------------</code>\n"
-		bridgedText += fmt.Sprintf("<code>%s</code>\n", html.EscapeString(v.Info.ID))
-		bridgedText += fmt.Sprintf("<code>%s</code>\n", html.EscapeString(v.Info.MessageSource.Sender.String()))
-		bridgedText += "<code>------------</code>\n"
-		bridgedText += fmt.Sprintf("<b>From:</b> %s\n", html.EscapeString(utils.WhatsAppGetContactName(v.Info.Sender)))
-		if v.Info.IsGroup {
-			bridgedText += fmt.Sprintf("<b>Chat:</b> %s\n", html.EscapeString(utils.WhatsAppGetGroupName(v.Info.Chat)))
-		} else {
-			bridgedText += "<b>Chat:</b> (PVT)\n"
-		}
-		bridgedText += fmt.Sprintf("<b>Time:</b> %s\n", html.EscapeString(v.Info.Timestamp.Local().Format(cfg.TimeFormat)))
 		if len(caption) > 0 {
 			bridgedText += "<b>Caption:</b>\n"
 			if len(caption) > 500 {
@@ -241,18 +220,6 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 			return
 		}
 
-		bridgedText := "<code>------------</code>\n"
-		bridgedText += fmt.Sprintf("<code>%s</code>\n", html.EscapeString(v.Info.ID))
-		bridgedText += fmt.Sprintf("<code>%s</code>\n", html.EscapeString(v.Info.MessageSource.Sender.String()))
-		bridgedText += "<code>------------</code>\n"
-		bridgedText += fmt.Sprintf("<b>From:</b> %s\n", html.EscapeString(utils.WhatsAppGetContactName(v.Info.Sender)))
-		if v.Info.IsGroup {
-			bridgedText += fmt.Sprintf("<b>Chat:</b> %s\n", html.EscapeString(utils.WhatsAppGetGroupName(v.Info.Chat)))
-		} else {
-			bridgedText += "<b>Chat:</b> (PVT)\n"
-		}
-		bridgedText += fmt.Sprintf("<b>Time:</b> %s\n", html.EscapeString(v.Info.Timestamp.Local().Format(cfg.TimeFormat)))
-
 		fileToSend := gotgbot.NamedFile{
 			FileName: "audio.ogg",
 			File:     bytes.NewReader(audioBytes),
@@ -283,18 +250,6 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 			)
 			return
 		}
-
-		bridgedText := "<code>------------</code>\n"
-		bridgedText += fmt.Sprintf("<code>%s</code>\n", html.EscapeString(v.Info.ID))
-		bridgedText += fmt.Sprintf("<code>%s</code>\n", html.EscapeString(v.Info.MessageSource.Sender.String()))
-		bridgedText += "<code>------------</code>\n"
-		bridgedText += fmt.Sprintf("<b>From:</b> %s\n", html.EscapeString(utils.WhatsAppGetContactName(v.Info.Sender)))
-		if v.Info.IsGroup {
-			bridgedText += fmt.Sprintf("<b>Chat:</b> %s\n", html.EscapeString(utils.WhatsAppGetGroupName(v.Info.Chat)))
-		} else {
-			bridgedText += "<b>Chat:</b> (PVT)\n"
-		}
-		bridgedText += fmt.Sprintf("<b>Time:</b> %s\n", html.EscapeString(v.Info.Timestamp.Local().Format(cfg.TimeFormat)))
 
 		fileToSend := gotgbot.NamedFile{
 			FileName: "audio.m4a",
@@ -329,17 +284,6 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 			return
 		}
 
-		bridgedText := "<code>------------</code>\n"
-		bridgedText += fmt.Sprintf("<code>%s</code>\n", html.EscapeString(v.Info.ID))
-		bridgedText += fmt.Sprintf("<code>%s</code>\n", html.EscapeString(v.Info.MessageSource.Sender.String()))
-		bridgedText += "<code>------------</code>\n"
-		bridgedText += fmt.Sprintf("<b>From:</b> %s\n", html.EscapeString(utils.WhatsAppGetContactName(v.Info.Sender)))
-		if v.Info.IsGroup {
-			bridgedText += fmt.Sprintf("<b>Chat:</b> %s\n", html.EscapeString(utils.WhatsAppGetGroupName(v.Info.Chat)))
-		} else {
-			bridgedText += "<b>Chat:</b> (PVT)\n"
-		}
-		bridgedText += fmt.Sprintf("<b>Time:</b> %s\n", html.EscapeString(v.Info.Timestamp.Local().Format(cfg.TimeFormat)))
 		if len(caption) > 0 {
 			bridgedText += "<b>Caption:</b>\n"
 			if len(caption) > 500 {
@@ -364,17 +308,6 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 
 	case "sticker":
 
-		bridgedText := "<code>------------</code>\n"
-		bridgedText += fmt.Sprintf("<code>%s</code>\n", html.EscapeString(v.Info.ID))
-		bridgedText += fmt.Sprintf("<code>%s</code>\n", html.EscapeString(v.Info.MessageSource.Sender.String()))
-		bridgedText += "<code>------------</code>\n"
-		bridgedText += fmt.Sprintf("<b>From:</b> %s\n", html.EscapeString(utils.WhatsAppGetContactName(v.Info.Sender)))
-		if v.Info.IsGroup {
-			bridgedText += fmt.Sprintf("<b>Chat:</b> %s\n", html.EscapeString(utils.WhatsAppGetGroupName(v.Info.Chat)))
-		} else {
-			bridgedText += "<b>Chat:</b> (PVT)\n"
-		}
-		bridgedText += fmt.Sprintf("<b>Time:</b> %s\n", html.EscapeString(v.Info.Timestamp.Local().Format(cfg.TimeFormat)))
 		bridgedText += "\n<i>It was a sticker which is not supported</i>"
 
 		tgBot.SendMessage(
@@ -401,18 +334,6 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 			return
 		}
 
-		bridgedText := "<code>------------</code>\n"
-		bridgedText += fmt.Sprintf("<code>%s</code>\n", html.EscapeString(v.Info.ID))
-		bridgedText += fmt.Sprintf("<code>%s</code>\n", html.EscapeString(v.Info.MessageSource.Sender.String()))
-		bridgedText += "<code>------------</code>\n"
-		bridgedText += fmt.Sprintf("<b>From:</b> %s\n", html.EscapeString(utils.WhatsAppGetContactName(v.Info.Sender)))
-		if v.Info.IsGroup {
-			bridgedText += fmt.Sprintf("<b>Chat:</b> %s\n", html.EscapeString(utils.WhatsAppGetGroupName(v.Info.Chat)))
-		} else {
-			bridgedText += "<b>Chat:</b> (PVT)\n"
-		}
-		bridgedText += fmt.Sprintf("<b>Time:</b> %s\n", html.EscapeString(v.Info.Timestamp.Local().Format(cfg.TimeFormat)))
-
 		bridgedText += "\n<i>It was the following vCard</i>\n"
 
 		sentMsg, _ := tgBot.SendMessage(
@@ -432,26 +353,83 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 		)
 
 	case "contact_array":
+		// Multiple contacts
+		contactsMsg := v.Message.GetContactsArrayMessage()
+
+		bridgedText += "\n<i>It was the following vCards</i>\n"
+
+		sentMsg, _ := tgBot.SendMessage(
+			cfg.Telegram.TargetChatID,
+			bridgedText,
+			&gotgbot.SendMessageOpts{},
+		)
+
+		for _, contactMsg := range contactsMsg.Contacts {
+			dec := goVCard.NewDecoder(bytes.NewReader([]byte(contactMsg.GetVcard())))
+			card, err := dec.Decode()
+			if err != nil {
+				tgBot.SendMessage(
+					cfg.Telegram.TargetChatID,
+					fmt.Sprintf(
+						"Error parsing a vcard : <code>%s</code>",
+						html.EscapeString(err.Error()),
+					),
+					&gotgbot.SendMessageOpts{
+						ReplyToMessageId: sentMsg.MessageId,
+					},
+				)
+				continue
+			}
+
+			tgBot.SendContact(
+				cfg.Telegram.TargetChatID,
+				card.PreferredValue(goVCard.FieldTelephone),
+				contactMsg.GetDisplayName(),
+				&gotgbot.SendContactOpts{
+					Vcard:            contactMsg.GetVcard(),
+					ReplyToMessageId: sentMsg.MessageId,
+				},
+			)
+		}
 
 	case "location":
 
-	case "":
+		locMsg := v.Message.GetLocationMessage()
+
+		bridgedText += "\n<i>It was the following location</i>\n"
+
+		sentMsg, _ := tgBot.SendMessage(
+			cfg.Telegram.TargetChatID,
+			bridgedText,
+			&gotgbot.SendMessageOpts{},
+		)
+
+		tgBot.SendLocation(
+			cfg.Telegram.TargetChatID,
+			locMsg.GetDegreesLatitude(),
+			locMsg.GetDegreesLongitude(),
+			&gotgbot.SendLocationOpts{
+				HorizontalAccuracy: float64(locMsg.GetAccuracyInMeters()),
+				ReplyToMessageId:   sentMsg.MessageId,
+			},
+		)
+
+	case "livelocation":
+
+		bridgedText += "\n<i>User shared their live location with you</i>\n"
+
+		tgBot.SendMessage(
+			cfg.Telegram.TargetChatID,
+			bridgedText,
+			&gotgbot.SendMessageOpts{},
+		)
+
+	case "", "url":
 
 		if text == "" {
 			return
 		}
 
-		bridgedText := "<code>------------</code>\n"
-		bridgedText += fmt.Sprintf("<code>%s</code>\n", html.EscapeString(v.Info.ID))
-		bridgedText += fmt.Sprintf("<code>%s</code>\n", html.EscapeString(v.Info.MessageSource.Sender.String()))
-		bridgedText += "<code>------------</code>\n"
-		bridgedText += fmt.Sprintf("<b>From:</b> %s\n", html.EscapeString(utils.WhatsAppGetContactName(v.Info.Sender)))
-		if v.Info.IsGroup {
-			bridgedText += fmt.Sprintf("<b>Chat:</b> %s\n", html.EscapeString(utils.WhatsAppGetGroupName(v.Info.Chat)))
-		} else {
-			bridgedText += "<b>Chat:</b> (PVT)\n"
-		}
-		bridgedText += fmt.Sprintf("<b>Time:</b> %s\n", html.EscapeString(v.Info.Timestamp.Local().Format(cfg.TimeFormat)))
 		bridgedText += "<b>Body:</b>\n"
 		if len(text) > 2000 {
 			bridgedText += (html.EscapeString(text[:2000]) + "...")
@@ -469,7 +447,7 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 
 		tgBot.SendMessage(
 			cfg.Telegram.TargetChatID,
-			"Received a new media type: "+v.Info.MediaType,
+			"Received an unhandled media type: "+v.Info.MediaType,
 			&gotgbot.SendMessageOpts{},
 		)
 	}
