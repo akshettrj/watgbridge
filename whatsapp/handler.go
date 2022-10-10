@@ -1,6 +1,7 @@
 package whatsapp
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"html"
@@ -11,6 +12,7 @@ import (
 	"wa-tg-bridge/utils"
 
 	"github.com/PaulSonOfLars/gotgbot/v2"
+	goVCard "github.com/emersion/go-vcard"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
@@ -55,6 +57,12 @@ func NewMessageFromMeHandler(text string, v *events.Message) {
 
 func NewMessageFromOthersHandler(text string, v *events.Message) {
 	cfg := state.State.Config
+	waClient := state.State.WhatsAppClient
+	tgBot := state.State.TelegramBot
+
+	if v.Info.Chat.IsBroadcastList() {
+		return
+	}
 
 	// Tag everyone in allowed groups
 	if v.Info.IsGroup && slices.Contains(cfg.WhatsApp.TagAllAllowedGroups, v.Info.Chat.User) &&
@@ -66,25 +74,401 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 	switch v.Info.MediaType {
 	case "image":
 
+		imgMsg := v.Message.GetImageMessage()
+		caption := imgMsg.GetCaption()
+
+		imageBytes, err := waClient.Download(imgMsg)
+		if err != nil {
+			tgBot.SendMessage(
+				cfg.Telegram.TargetChatID,
+				fmt.Sprintf(
+					"Error downloading an image : <code>%s</code>",
+					html.EscapeString(err.Error()),
+				),
+				&gotgbot.SendMessageOpts{},
+			)
+			return
+		}
+
+		bridgedText := "<code>------------</code>\n"
+		bridgedText += fmt.Sprintf("<code>%s</code>\n", html.EscapeString(v.Info.ID))
+		bridgedText += fmt.Sprintf("<code>%s</code>\n", html.EscapeString(v.Info.MessageSource.Sender.String()))
+		bridgedText += "<code>------------</code>\n"
+		bridgedText += fmt.Sprintf("<b>From:</b> %s\n", html.EscapeString(utils.WhatsAppGetContactName(v.Info.Sender)))
+		if v.Info.IsGroup {
+			bridgedText += fmt.Sprintf("<b>Chat:</b> %s\n", html.EscapeString(utils.WhatsAppGetGroupName(v.Info.Chat)))
+		} else {
+			bridgedText += "<b>Chat:</b> (PVT)\n"
+		}
+		bridgedText += fmt.Sprintf("<b>Time:</b> %s\n", html.EscapeString(v.Info.Timestamp.Local().Format(cfg.TimeFormat)))
+		bridgedText += "<b>Caption:</b>\n"
+		if len(caption) > 0 {
+			if len(caption) > 500 {
+				bridgedText += (html.EscapeString(caption[:2000]) + "...")
+			} else {
+				bridgedText += html.EscapeString(caption)
+			}
+		}
+
+		tgBot.SendPhoto(
+			cfg.Telegram.TargetChatID,
+			imageBytes,
+			&gotgbot.SendPhotoOpts{
+				Caption: bridgedText,
+			},
+		)
+
 	case "gif":
 
+		gifMsg := v.Message.GetVideoMessage()
+		caption := gifMsg.GetCaption()
+
+		gifBytes, err := waClient.Download(gifMsg)
+		if err != nil {
+			tgBot.SendMessage(
+				cfg.Telegram.TargetChatID,
+				fmt.Sprintf(
+					"Error downloading an gif : <code>%s</code>",
+					html.EscapeString(err.Error()),
+				),
+				&gotgbot.SendMessageOpts{},
+			)
+			return
+		}
+
+		bridgedText := "<code>------------</code>\n"
+		bridgedText += fmt.Sprintf("<code>%s</code>\n", html.EscapeString(v.Info.ID))
+		bridgedText += fmt.Sprintf("<code>%s</code>\n", html.EscapeString(v.Info.MessageSource.Sender.String()))
+		bridgedText += "<code>------------</code>\n"
+		bridgedText += fmt.Sprintf("<b>From:</b> %s\n", html.EscapeString(utils.WhatsAppGetContactName(v.Info.Sender)))
+		if v.Info.IsGroup {
+			bridgedText += fmt.Sprintf("<b>Chat:</b> %s\n", html.EscapeString(utils.WhatsAppGetGroupName(v.Info.Chat)))
+		} else {
+			bridgedText += "<b>Chat:</b> (PVT)\n"
+		}
+		bridgedText += fmt.Sprintf("<b>Time:</b> %s\n", html.EscapeString(v.Info.Timestamp.Local().Format(cfg.TimeFormat)))
+		bridgedText += "<b>Caption:</b>\n"
+		if len(caption) > 0 {
+			if len(caption) > 500 {
+				bridgedText += (html.EscapeString(caption[:2000]) + "...")
+			} else {
+				bridgedText += html.EscapeString(caption)
+			}
+		}
+
+		fileToSend := gotgbot.NamedFile{
+			FileName: "animation.gif",
+			File:     bytes.NewReader(gifBytes),
+		}
+
+		tgBot.SendAnimation(
+			cfg.Telegram.TargetChatID,
+			fileToSend,
+			&gotgbot.SendAnimationOpts{
+				Caption: bridgedText,
+			},
+		)
+
 	case "video":
+
+		vidMsg := v.Message.GetVideoMessage()
+		caption := vidMsg.GetCaption()
+
+		vidBytes, err := waClient.Download(vidMsg)
+		if err != nil {
+			tgBot.SendMessage(
+				cfg.Telegram.TargetChatID,
+				fmt.Sprintf(
+					"Error downloading a video : <code>%s</code>",
+					html.EscapeString(err.Error()),
+				),
+				&gotgbot.SendMessageOpts{},
+			)
+			return
+		}
+
+		bridgedText := "<code>------------</code>\n"
+		bridgedText += fmt.Sprintf("<code>%s</code>\n", html.EscapeString(v.Info.ID))
+		bridgedText += fmt.Sprintf("<code>%s</code>\n", html.EscapeString(v.Info.MessageSource.Sender.String()))
+		bridgedText += "<code>------------</code>\n"
+		bridgedText += fmt.Sprintf("<b>From:</b> %s\n", html.EscapeString(utils.WhatsAppGetContactName(v.Info.Sender)))
+		if v.Info.IsGroup {
+			bridgedText += fmt.Sprintf("<b>Chat:</b> %s\n", html.EscapeString(utils.WhatsAppGetGroupName(v.Info.Chat)))
+		} else {
+			bridgedText += "<b>Chat:</b> (PVT)\n"
+		}
+		bridgedText += fmt.Sprintf("<b>Time:</b> %s\n", html.EscapeString(v.Info.Timestamp.Local().Format(cfg.TimeFormat)))
+		if len(caption) > 0 {
+			bridgedText += "<b>Caption:</b>\n"
+			if len(caption) > 500 {
+				bridgedText += (html.EscapeString(caption[:2000]) + "...")
+			} else {
+				bridgedText += html.EscapeString(caption)
+			}
+		}
+
+		fileToSend := gotgbot.NamedFile{
+			FileName: "video." + strings.Split(vidMsg.GetMimetype(), "/")[1],
+			File:     bytes.NewReader(vidBytes),
+		}
+
+		tgBot.SendVideo(
+			cfg.Telegram.TargetChatID,
+			fileToSend,
+			&gotgbot.SendVideoOpts{
+				Caption: bridgedText,
+			},
+		)
 
 	case "ptt":
 		// Voice Notes
 
+		audioMsg := v.Message.GetAudioMessage()
+
+		audioBytes, err := waClient.Download(audioMsg)
+		if err != nil {
+			tgBot.SendMessage(
+				cfg.Telegram.TargetChatID,
+				fmt.Sprintf(
+					"Error downloading an audio : <code>%s</code>",
+					html.EscapeString(err.Error()),
+				),
+				&gotgbot.SendMessageOpts{},
+			)
+			return
+		}
+
+		bridgedText := "<code>------------</code>\n"
+		bridgedText += fmt.Sprintf("<code>%s</code>\n", html.EscapeString(v.Info.ID))
+		bridgedText += fmt.Sprintf("<code>%s</code>\n", html.EscapeString(v.Info.MessageSource.Sender.String()))
+		bridgedText += "<code>------------</code>\n"
+		bridgedText += fmt.Sprintf("<b>From:</b> %s\n", html.EscapeString(utils.WhatsAppGetContactName(v.Info.Sender)))
+		if v.Info.IsGroup {
+			bridgedText += fmt.Sprintf("<b>Chat:</b> %s\n", html.EscapeString(utils.WhatsAppGetGroupName(v.Info.Chat)))
+		} else {
+			bridgedText += "<b>Chat:</b> (PVT)\n"
+		}
+		bridgedText += fmt.Sprintf("<b>Time:</b> %s\n", html.EscapeString(v.Info.Timestamp.Local().Format(cfg.TimeFormat)))
+
+		fileToSend := gotgbot.NamedFile{
+			FileName: "audio.ogg",
+			File:     bytes.NewReader(audioBytes),
+		}
+
+		tgBot.SendAudio(
+			cfg.Telegram.TargetChatID,
+			fileToSend,
+			&gotgbot.SendAudioOpts{
+				Caption:  bridgedText,
+				Duration: int64(audioMsg.GetSeconds()),
+			},
+		)
+
 	case "audio":
+
+		audioMsg := v.Message.GetAudioMessage()
+
+		audioBytes, err := waClient.Download(audioMsg)
+		if err != nil {
+			tgBot.SendMessage(
+				cfg.Telegram.TargetChatID,
+				fmt.Sprintf(
+					"Error downloading an audio : <code>%s</code>",
+					html.EscapeString(err.Error()),
+				),
+				&gotgbot.SendMessageOpts{},
+			)
+			return
+		}
+
+		bridgedText := "<code>------------</code>\n"
+		bridgedText += fmt.Sprintf("<code>%s</code>\n", html.EscapeString(v.Info.ID))
+		bridgedText += fmt.Sprintf("<code>%s</code>\n", html.EscapeString(v.Info.MessageSource.Sender.String()))
+		bridgedText += "<code>------------</code>\n"
+		bridgedText += fmt.Sprintf("<b>From:</b> %s\n", html.EscapeString(utils.WhatsAppGetContactName(v.Info.Sender)))
+		if v.Info.IsGroup {
+			bridgedText += fmt.Sprintf("<b>Chat:</b> %s\n", html.EscapeString(utils.WhatsAppGetGroupName(v.Info.Chat)))
+		} else {
+			bridgedText += "<b>Chat:</b> (PVT)\n"
+		}
+		bridgedText += fmt.Sprintf("<b>Time:</b> %s\n", html.EscapeString(v.Info.Timestamp.Local().Format(cfg.TimeFormat)))
+
+		fileToSend := gotgbot.NamedFile{
+			FileName: "audio.m4a",
+			File:     bytes.NewReader(audioBytes),
+		}
+
+		tgBot.SendAudio(
+			cfg.Telegram.TargetChatID,
+			fileToSend,
+			&gotgbot.SendAudioOpts{
+				Caption:  bridgedText,
+				Duration: int64(audioMsg.GetSeconds()),
+			},
+		)
 
 	case "document":
 		// Any document like PDF, image, video etc
 
+		docMsg := v.Message.GetDocumentMessage()
+		caption := docMsg.GetCaption()
+
+		docBytes, err := waClient.Download(docMsg)
+		if err != nil {
+			tgBot.SendMessage(
+				cfg.Telegram.TargetChatID,
+				fmt.Sprintf(
+					"Error downloading a document : <code>%s</code>",
+					html.EscapeString(err.Error()),
+				),
+				&gotgbot.SendMessageOpts{},
+			)
+			return
+		}
+
+		bridgedText := "<code>------------</code>\n"
+		bridgedText += fmt.Sprintf("<code>%s</code>\n", html.EscapeString(v.Info.ID))
+		bridgedText += fmt.Sprintf("<code>%s</code>\n", html.EscapeString(v.Info.MessageSource.Sender.String()))
+		bridgedText += "<code>------------</code>\n"
+		bridgedText += fmt.Sprintf("<b>From:</b> %s\n", html.EscapeString(utils.WhatsAppGetContactName(v.Info.Sender)))
+		if v.Info.IsGroup {
+			bridgedText += fmt.Sprintf("<b>Chat:</b> %s\n", html.EscapeString(utils.WhatsAppGetGroupName(v.Info.Chat)))
+		} else {
+			bridgedText += "<b>Chat:</b> (PVT)\n"
+		}
+		bridgedText += fmt.Sprintf("<b>Time:</b> %s\n", html.EscapeString(v.Info.Timestamp.Local().Format(cfg.TimeFormat)))
+		if len(caption) > 0 {
+			bridgedText += "<b>Caption:</b>\n"
+			if len(caption) > 500 {
+				bridgedText += (html.EscapeString(caption[:2000]) + "...")
+			} else {
+				bridgedText += html.EscapeString(caption)
+			}
+		}
+
+		fileToSend := gotgbot.NamedFile{
+			FileName: docMsg.GetTitle(),
+			File:     bytes.NewReader(docBytes),
+		}
+
+		tgBot.SendDocument(
+			cfg.Telegram.TargetChatID,
+			fileToSend,
+			&gotgbot.SendDocumentOpts{
+				Caption: bridgedText,
+			},
+		)
+
+	case "sticker":
+
+		bridgedText := "<code>------------</code>\n"
+		bridgedText += fmt.Sprintf("<code>%s</code>\n", html.EscapeString(v.Info.ID))
+		bridgedText += fmt.Sprintf("<code>%s</code>\n", html.EscapeString(v.Info.MessageSource.Sender.String()))
+		bridgedText += "<code>------------</code>\n"
+		bridgedText += fmt.Sprintf("<b>From:</b> %s\n", html.EscapeString(utils.WhatsAppGetContactName(v.Info.Sender)))
+		if v.Info.IsGroup {
+			bridgedText += fmt.Sprintf("<b>Chat:</b> %s\n", html.EscapeString(utils.WhatsAppGetGroupName(v.Info.Chat)))
+		} else {
+			bridgedText += "<b>Chat:</b> (PVT)\n"
+		}
+		bridgedText += fmt.Sprintf("<b>Time:</b> %s\n", html.EscapeString(v.Info.Timestamp.Local().Format(cfg.TimeFormat)))
+		bridgedText += "\n<i>It was a sticker which is not supported</i>"
+
+		tgBot.SendMessage(
+			cfg.Telegram.TargetChatID,
+			bridgedText,
+			&gotgbot.SendMessageOpts{},
+		)
+
 	case "vcard":
 		// Contact
+		contactMsg := v.Message.GetContactMessage()
+
+		dec := goVCard.NewDecoder(bytes.NewReader([]byte(contactMsg.GetVcard())))
+		card, err := dec.Decode()
+		if err != nil {
+			tgBot.SendMessage(
+				cfg.Telegram.TargetChatID,
+				fmt.Sprintf(
+					"Error parsing a vcard : <code>%s</code>",
+					html.EscapeString(err.Error()),
+				),
+				&gotgbot.SendMessageOpts{},
+			)
+			return
+		}
+
+		bridgedText := "<code>------------</code>\n"
+		bridgedText += fmt.Sprintf("<code>%s</code>\n", html.EscapeString(v.Info.ID))
+		bridgedText += fmt.Sprintf("<code>%s</code>\n", html.EscapeString(v.Info.MessageSource.Sender.String()))
+		bridgedText += "<code>------------</code>\n"
+		bridgedText += fmt.Sprintf("<b>From:</b> %s\n", html.EscapeString(utils.WhatsAppGetContactName(v.Info.Sender)))
+		if v.Info.IsGroup {
+			bridgedText += fmt.Sprintf("<b>Chat:</b> %s\n", html.EscapeString(utils.WhatsAppGetGroupName(v.Info.Chat)))
+		} else {
+			bridgedText += "<b>Chat:</b> (PVT)\n"
+		}
+		bridgedText += fmt.Sprintf("<b>Time:</b> %s\n", html.EscapeString(v.Info.Timestamp.Local().Format(cfg.TimeFormat)))
+
+		bridgedText += "\n<i>It was the following vCard</i>\n"
+
+		sentMsg, _ := tgBot.SendMessage(
+			cfg.Telegram.TargetChatID,
+			bridgedText,
+			&gotgbot.SendMessageOpts{},
+		)
+
+		tgBot.SendContact(
+			cfg.Telegram.TargetChatID,
+			card.PreferredValue(goVCard.FieldTelephone),
+			contactMsg.GetDisplayName(),
+			&gotgbot.SendContactOpts{
+				Vcard:            contactMsg.GetVcard(),
+				ReplyToMessageId: sentMsg.MessageId,
+			},
+		)
+
+	case "contact_array":
 
 	case "location":
 
+	case "":
+
+		if text == "" {
+			return
+		}
+
+		bridgedText := "<code>------------</code>\n"
+		bridgedText += fmt.Sprintf("<code>%s</code>\n", html.EscapeString(v.Info.ID))
+		bridgedText += fmt.Sprintf("<code>%s</code>\n", html.EscapeString(v.Info.MessageSource.Sender.String()))
+		bridgedText += "<code>------------</code>\n"
+		bridgedText += fmt.Sprintf("<b>From:</b> %s\n", html.EscapeString(utils.WhatsAppGetContactName(v.Info.Sender)))
+		if v.Info.IsGroup {
+			bridgedText += fmt.Sprintf("<b>Chat:</b> %s\n", html.EscapeString(utils.WhatsAppGetGroupName(v.Info.Chat)))
+		} else {
+			bridgedText += "<b>Chat:</b> (PVT)\n"
+		}
+		bridgedText += fmt.Sprintf("<b>Time:</b> %s\n", html.EscapeString(v.Info.Timestamp.Local().Format(cfg.TimeFormat)))
+		bridgedText += "<b>Body:</b>\n"
+		if len(text) > 2000 {
+			bridgedText += (html.EscapeString(text[:2000]) + "...")
+		} else {
+			bridgedText += html.UnescapeString(text)
+		}
+
+		tgBot.SendMessage(
+			cfg.Telegram.TargetChatID,
+			bridgedText,
+			&gotgbot.SendMessageOpts{},
+		)
+
 	default:
 
+		tgBot.SendMessage(
+			cfg.Telegram.TargetChatID,
+			"Received a new media type: "+v.Info.MediaType,
+			&gotgbot.SendMessageOpts{},
+		)
 	}
 }
 
@@ -166,25 +550,11 @@ Everyone was mentioned in a group
 }
 
 func NewCallOfferHandler(v *events.CallOffer) {
-	waClient := state.State.WhatsAppClient
 	tgBot := state.State.TelegramBot
 	cfg := state.State.Config
 
 	// TODO: Check and handle group calls
-	var callerName string
-	caller, err := waClient.Store.Contacts.GetContact(v.CallCreator)
-	if err != nil || !caller.Found {
-		callerName = v.CallCreator.String()
-	} else {
-		callerName = caller.FullName
-		if callerName == "" {
-			callerName = caller.BusinessName
-		}
-		if callerName == "" {
-			callerName = caller.PushName
-		}
-		callerName += fmt.Sprintf(" [ %s ]", v.CallCreator.User)
-	}
+	callerName := utils.WhatsAppGetContactName(v.CallCreator)
 
 	tgBot.SendMessage(
 		cfg.Telegram.TargetChatID,

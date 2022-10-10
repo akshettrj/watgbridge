@@ -4,6 +4,7 @@ go 1.19
 
 require (
 	github.com/PaulSonOfLars/gotgbot/v2 v2.0.0-rc.11
+	github.com/emersion/go-vcard v0.0.0-20220507122617-d4056df0ec4a
 	github.com/mattn/go-sqlite3 v1.14.15
 	github.com/mdp/qrterminal/v3 v3.0.0
 	go.mau.fi/whatsmeow v0.0.0-20221008133908-7f01b3072802
