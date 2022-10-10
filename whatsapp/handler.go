@@ -27,6 +27,11 @@ func WhatsAppEventHandler(evt interface{}) {
 		NewCallOfferHandler(v)
 
 	case *events.Message:
+
+		if v.Info.Chat.String() == "status@broadcast" {
+			return
+		}
+
 		text := ""
 		if v.Message.ExtendedTextMessage != nil && v.Message.ExtendedTextMessage.Text != nil {
 			text = *v.Message.ExtendedTextMessage.Text
@@ -59,10 +64,6 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 	cfg := state.State.Config
 	waClient := state.State.WhatsAppClient
 	tgBot := state.State.TelegramBot
-
-	if v.Info.Chat.String() == "status@broadcast" {
-		return
-	}
 
 	// Tag everyone in allowed groups
 	if v.Info.IsGroup && slices.Contains(cfg.WhatsApp.TagAllAllowedGroups, v.Info.Chat.User) &&
