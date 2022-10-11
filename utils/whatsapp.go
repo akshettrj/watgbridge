@@ -77,29 +77,37 @@ func WhatsAppFindContact(query string) (map[string]string, error) {
 
 	var contactsInfo []string
 	for jid, contact := range contacts {
-		contactsInfo = append(contactsInfo, fmt.Sprintf("%s||%s||%s||%s",
-			jid.String(), contact.FullName, contact.BusinessName, contact.FirstName))
+		contactsInfo = append(contactsInfo, fmt.Sprintf(
+			"%s||%s||%s||%s||%s",
+			jid.String(),
+			strings.ToLower(contact.FullName),
+			strings.ToLower(contact.BusinessName),
+			strings.ToLower(contact.FirstName),
+			strings.ToLower(contact.PushName),
+		))
 	}
 
 	fuzzyResults := fuzzy.Find(query, contactsInfo)
 	for _, res := range fuzzyResults {
 		info := strings.Split(res, "||")
+		jid, _ := WhatsAppParseJID(info[0])
+		contact := contacts[jid]
 		name := ""
-		if len(info[1]) != 0 {
-			name += info[1]
+		if len(contact.FullName) != 0 {
+			name += (contact.FullName + " (s)")
 		}
-		if len(info[2]) != 0 {
+		if len(contact.BusinessName) != 0 {
 			if len(name) == 0 {
-				name += info[2]
+				name += (contact.BusinessName + " (b)")
 			} else {
-				name += (", " + info[2])
+				name += (", " + contact.BusinessName + " (b)")
 			}
 		}
-		if len(info[3]) != 0 {
+		if len(contact.PushName) != 0 {
 			if len(name) == 0 {
-				name += info[3]
+				name += (contact.PushName + " (p)")
 			} else {
-				name += (", " + info[3])
+				name += (", " + contact.PushName + " (p)")
 			}
 		}
 		results[info[0]] = name
