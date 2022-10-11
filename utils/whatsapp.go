@@ -1,10 +1,12 @@
 package utils
 
 import (
+	"fmt"
 	"strings"
 
 	"wa-tg-bridge/state"
 
+	"github.com/lithammer/fuzzysearch/fuzzy"
 	"go.mau.fi/whatsmeow/types"
 )
 
@@ -61,4 +63,47 @@ func WhatsAppGetGroupName(jid types.JID) string {
 	}
 
 	return groupInfo.Name
+}
+
+func WhatsAppFindContact(query string) (map[string]string, error) {
+	waClient := state.State.WhatsAppClient
+
+	var results = make(map[string]string)
+
+	contacts, err := waClient.Store.Contacts.GetAllContacts()
+	if err != nil {
+		return nil, err
+	}
+
+	var contactsInfo []string
+	for jid, contact := range contacts {
+		contactsInfo = append(contactsInfo, fmt.Sprintf("%s||%s||%s||%s",
+			jid.String(), contact.FullName, contact.BusinessName, contact.FirstName))
+	}
+
+	fuzzyResults := fuzzy.Find(query, contactsInfo)
+	for _, res := range fuzzyResults {
+		info := strings.Split(res, "||")
+		name := ""
+		if len(info[1]) != 0 {
+			name += info[1]
+		}
+		if len(info[2]) != 0 {
+			if len(name) == 0 {
+				name += info[2]
+			} else {
+				name += (", " + info[2])
+			}
+		}
+		if len(info[3]) != 0 {
+			if len(name) == 0 {
+				name += info[3]
+			} else {
+				name += (", " + info[3])
+			}
+		}
+		results[info[0]] = name
+	}
+
+	return results, nil
 }
