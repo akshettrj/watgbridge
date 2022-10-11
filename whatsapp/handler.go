@@ -77,6 +77,14 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 		return
 	}
 
+	{
+		// Return if duplicate event is emitted
+		tgChatId, _ := database.GetTgFromWa(v.Info.ID)
+		if tgChatId == cfg.Telegram.TargetChatID {
+			return
+		}
+	}
+
 	bridgedText := fmt.Sprintf("🧑: <b>%s</b>\n", html.EscapeString(utils.WhatsAppGetContactName(v.Info.Sender)))
 	if v.Info.IsGroup {
 		bridgedText += fmt.Sprintf("👥: <b>%s</b>\n", html.EscapeString(utils.WhatsAppGetGroupName(v.Info.Chat)))
