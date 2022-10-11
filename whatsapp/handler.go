@@ -8,6 +8,7 @@ import (
 	"log"
 	"strings"
 
+	"wa-tg-bridge/database"
 	"wa-tg-bridge/state"
 	"wa-tg-bridge/utils"
 
@@ -72,19 +73,31 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 		TagAllHandler(v.Info.Chat, v.Message, v.Info.ID, v.Info.MessageSource.Sender.String(), false)
 	}
 
-	bridgedText := "<code>------------</code>\n"
-	bridgedText += fmt.Sprintf("<code>%s</code>\n", html.EscapeString(v.Info.ID))
-	bridgedText += fmt.Sprintf("<code>%s</code>\n", html.EscapeString(v.Info.MessageSource.Sender.String()))
-	bridgedText += "<code>------------</code>\n"
-	bridgedText += fmt.Sprintf("<b>From:</b> %s\n", html.EscapeString(utils.WhatsAppGetContactName(v.Info.Sender)))
-	if v.Info.IsGroup {
-		bridgedText += fmt.Sprintf("<b>Chat:</b> %s\n", html.EscapeString(utils.WhatsAppGetGroupName(v.Info.Chat)))
-	} else if v.Info.IsIncomingBroadcast() {
-		bridgedText += "<b>Chat:</b> (Broadcast)\n"
-	} else {
-		bridgedText += "<b>Chat:</b> (PVT)\n"
+	if slices.Contains(cfg.WhatsApp.IgnoreChats, v.Info.Chat.User) {
+		return
 	}
-	bridgedText += fmt.Sprintf("<b>Time:</b> %s\n", html.EscapeString(v.Info.Timestamp.Local().Format(cfg.TimeFormat)))
+
+	bridgedText := fmt.Sprintf("🧑: <b>%s</b>\n", html.EscapeString(utils.WhatsAppGetContactName(v.Info.Sender)))
+	if v.Info.IsGroup {
+		bridgedText += fmt.Sprintf("👥: <b>%s</b>\n", html.EscapeString(utils.WhatsAppGetGroupName(v.Info.Chat)))
+	} else if v.Info.IsIncomingBroadcast() {
+		bridgedText += "👥: <b>(Broadcast)</b>\n"
+	} else {
+		bridgedText += "👥: <b>(PVT)</b>\n"
+	}
+	bridgedText += fmt.Sprintf("🕛: <b>%s</b>\n", html.EscapeString(v.Info.Timestamp.Local().Format(cfg.TimeFormat)))
+
+	var replyToMsgId int64
+	if v.Message.ExtendedTextMessage != nil && v.Message.ExtendedTextMessage.ContextInfo != nil {
+		stanzaId := v.Message.ExtendedTextMessage.ContextInfo.StanzaId
+		tgChatId, tgMsgId := database.GetTgFromWa(*stanzaId)
+		if tgChatId == cfg.Telegram.TargetChatID {
+			replyToMsgId = tgMsgId
+		}
+	}
+
+	var idToSave int64
+	idToSave = 0
 
 	switch v.Info.MediaType {
 	case "image":
@@ -105,7 +118,7 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 			return
 		}
 
-		bridgedText += "<b>Caption:</b>\n"
+		bridgedText += "<b>Caption:</b>\n\n"
 		if len(caption) > 0 {
 			if len(caption) > 500 {
 				bridgedText += (html.EscapeString(caption[:2000]) + "...")
@@ -114,13 +127,15 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 			}
 		}
 
-		tgBot.SendPhoto(
+		sentMsg, _ := tgBot.SendPhoto(
 			cfg.Telegram.TargetChatID,
 			imageBytes,
 			&gotgbot.SendPhotoOpts{
-				Caption: bridgedText,
+				Caption:          bridgedText,
+				ReplyToMessageId: replyToMsgId,
 			},
 		)
+		idToSave = sentMsg.MessageId
 
 	case "gif":
 
@@ -140,7 +155,7 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 			return
 		}
 
-		bridgedText += "<b>Caption:</b>\n"
+		bridgedText += "<b>Caption:</b>\n\n"
 		if len(caption) > 0 {
 			if len(caption) > 500 {
 				bridgedText += (html.EscapeString(caption[:2000]) + "...")
@@ -154,13 +169,15 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 			File:     bytes.NewReader(gifBytes),
 		}
 
-		tgBot.SendAnimation(
+		sentMsg, _ := tgBot.SendAnimation(
 			cfg.Telegram.TargetChatID,
 			fileToSend,
 			&gotgbot.SendAnimationOpts{
-				Caption: bridgedText,
+				Caption:          bridgedText,
+				ReplyToMessageId: replyToMsgId,
 			},
 		)
+		idToSave = sentMsg.MessageId
 
 	case "video":
 
@@ -181,7 +198,7 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 		}
 
 		if len(caption) > 0 {
-			bridgedText += "<b>Caption:</b>\n"
+			bridgedText += "<b>Caption:</b>\n\n"
 			if len(caption) > 500 {
 				bridgedText += (html.EscapeString(caption[:2000]) + "...")
 			} else {
@@ -194,13 +211,15 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 			File:     bytes.NewReader(vidBytes),
 		}
 
-		tgBot.SendVideo(
+		sentMsg, _ := tgBot.SendVideo(
 			cfg.Telegram.TargetChatID,
 			fileToSend,
 			&gotgbot.SendVideoOpts{
-				Caption: bridgedText,
+				Caption:          bridgedText,
+				ReplyToMessageId: replyToMsgId,
 			},
 		)
+		idToSave = sentMsg.MessageId
 
 	case "ptt":
 		// Voice Notes
@@ -225,14 +244,16 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 			File:     bytes.NewReader(audioBytes),
 		}
 
-		tgBot.SendAudio(
+		sentMsg, _ := tgBot.SendAudio(
 			cfg.Telegram.TargetChatID,
 			fileToSend,
 			&gotgbot.SendAudioOpts{
-				Caption:  bridgedText,
-				Duration: int64(audioMsg.GetSeconds()),
+				Caption:          bridgedText,
+				Duration:         int64(audioMsg.GetSeconds()),
+				ReplyToMessageId: replyToMsgId,
 			},
 		)
+		idToSave = sentMsg.MessageId
 
 	case "audio":
 
@@ -256,14 +277,16 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 			File:     bytes.NewReader(audioBytes),
 		}
 
-		tgBot.SendAudio(
+		sentMsg, _ := tgBot.SendAudio(
 			cfg.Telegram.TargetChatID,
 			fileToSend,
 			&gotgbot.SendAudioOpts{
-				Caption:  bridgedText,
-				Duration: int64(audioMsg.GetSeconds()),
+				Caption:          bridgedText,
+				Duration:         int64(audioMsg.GetSeconds()),
+				ReplyToMessageId: replyToMsgId,
 			},
 		)
+		idToSave = sentMsg.MessageId
 
 	case "document":
 		// Any document like PDF, image, video etc
@@ -285,7 +308,7 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 		}
 
 		if len(caption) > 0 {
-			bridgedText += "<b>Caption:</b>\n"
+			bridgedText += "<b>Caption:</b>\n\n"
 			if len(caption) > 500 {
 				bridgedText += (html.EscapeString(caption[:2000]) + "...")
 			} else {
@@ -298,23 +321,28 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 			File:     bytes.NewReader(docBytes),
 		}
 
-		tgBot.SendDocument(
+		sentMsg, _ := tgBot.SendDocument(
 			cfg.Telegram.TargetChatID,
 			fileToSend,
 			&gotgbot.SendDocumentOpts{
-				Caption: bridgedText,
+				Caption:          bridgedText,
+				ReplyToMessageId: replyToMsgId,
 			},
 		)
+		idToSave = sentMsg.MessageId
 
 	case "sticker":
 
 		bridgedText += "\n<i>It was a sticker which is not supported</i>"
 
-		tgBot.SendMessage(
+		sentMsg, _ := tgBot.SendMessage(
 			cfg.Telegram.TargetChatID,
 			bridgedText,
-			&gotgbot.SendMessageOpts{},
+			&gotgbot.SendMessageOpts{
+				ReplyToMessageId: replyToMsgId,
+			},
 		)
+		idToSave = sentMsg.MessageId
 
 	case "vcard":
 		// Contact
@@ -339,8 +367,11 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 		sentMsg, _ := tgBot.SendMessage(
 			cfg.Telegram.TargetChatID,
 			bridgedText,
-			&gotgbot.SendMessageOpts{},
+			&gotgbot.SendMessageOpts{
+				ReplyToMessageId: replyToMsgId,
+			},
 		)
+		idToSave = sentMsg.MessageId
 
 		tgBot.SendContact(
 			cfg.Telegram.TargetChatID,
@@ -361,8 +392,11 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 		sentMsg, _ := tgBot.SendMessage(
 			cfg.Telegram.TargetChatID,
 			bridgedText,
-			&gotgbot.SendMessageOpts{},
+			&gotgbot.SendMessageOpts{
+				ReplyToMessageId: replyToMsgId,
+			},
 		)
+		idToSave = sentMsg.MessageId
 
 		for _, contactMsg := range contactsMsg.Contacts {
 			dec := goVCard.NewDecoder(bytes.NewReader([]byte(contactMsg.GetVcard())))
@@ -401,8 +435,11 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 		sentMsg, _ := tgBot.SendMessage(
 			cfg.Telegram.TargetChatID,
 			bridgedText,
-			&gotgbot.SendMessageOpts{},
+			&gotgbot.SendMessageOpts{
+				ReplyToMessageId: replyToMsgId,
+			},
 		)
+		idToSave = sentMsg.MessageId
 
 		tgBot.SendLocation(
 			cfg.Telegram.TargetChatID,
@@ -418,11 +455,14 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 
 		bridgedText += "\n<i>User shared their live location with you</i>\n"
 
-		tgBot.SendMessage(
+		sentMsg, _ := tgBot.SendMessage(
 			cfg.Telegram.TargetChatID,
 			bridgedText,
-			&gotgbot.SendMessageOpts{},
+			&gotgbot.SendMessageOpts{
+				ReplyToMessageId: replyToMsgId,
+			},
 		)
+		idToSave = sentMsg.MessageId
 
 	case "", "url":
 
@@ -430,26 +470,44 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 			return
 		}
 
-		bridgedText += "<b>Body:</b>\n"
+		bridgedText += "<b>Body:</b>\n\n"
 		if len(text) > 2000 {
 			bridgedText += (html.EscapeString(text[:2000]) + "...")
 		} else {
 			bridgedText += html.UnescapeString(text)
 		}
 
-		tgBot.SendMessage(
+		sentMsg, _ := tgBot.SendMessage(
 			cfg.Telegram.TargetChatID,
 			bridgedText,
-			&gotgbot.SendMessageOpts{},
+			&gotgbot.SendMessageOpts{
+				ReplyToMessageId: replyToMsgId,
+			},
 		)
+		idToSave = sentMsg.MessageId
 
 	default:
 
-		tgBot.SendMessage(
+		sentMsg, _ := tgBot.SendMessage(
 			cfg.Telegram.TargetChatID,
 			"Received an unhandled media type: "+v.Info.MediaType,
 			&gotgbot.SendMessageOpts{},
 		)
+		idToSave = sentMsg.MessageId
+	}
+
+	if idToSave != 0 {
+		err := database.AddNewWaToTgPair(v.Info.ID, v.Info.MessageSource.Sender.User, cfg.Telegram.TargetChatID, idToSave)
+		if err != nil {
+			tgBot.SendMessage(
+				cfg.Telegram.TargetChatID,
+				fmt.Sprintf(
+					"Failed to save bridged pair in database:\n\n<code>%s</code>",
+					html.EscapeString(err.Error()),
+				),
+				&gotgbot.SendMessageOpts{},
+			)
+		}
 	}
 }
 

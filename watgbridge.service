@@ -5,7 +5,7 @@ After=network.target tgbotapi.service
 [Service]
 Type=idle
 Restart=on-failure
-User=root
+User=akshettrj
 RuntimeMaxSec=1d
 ExecStart=/bin/bash -c 'sleep 20 && cd /home/akshettrj/work/go/src/wa-tg-bridge && ./wa-tg-bridge'
 

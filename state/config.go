@@ -22,6 +22,7 @@ type Config struct {
 
 	WhatsApp struct {
 		TagAllAllowedGroups []string `yaml:"tag_all_allowed_groups"`
+		IgnoreChats         []string `yaml:"ignore_chats"`
 	}
 
 	Database map[string]string `yaml:"database"`

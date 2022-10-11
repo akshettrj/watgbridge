@@ -9,6 +9,7 @@ telegram:
 
 whatsapp:
   tag_all_allowed_groups:
+  ignore_chats:
 
 # database:
 #   type: postgres

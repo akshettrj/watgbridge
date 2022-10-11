@@ -32,6 +32,11 @@ func main() {
 	}
 	state.State.Database = db
 
+	err = database.AutoMigrate()
+	if err != nil {
+		log.Fatalln("Couldn't migrate the database tables : " + err.Error())
+	}
+
 	err = telegram.NewClient()
 	if err != nil {
 		panic(err)
