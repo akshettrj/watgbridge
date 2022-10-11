@@ -79,7 +79,7 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 
 	{
 		// Return if duplicate event is emitted
-		tgChatId, _ := database.GetTgFromWa(v.Info.ID)
+		tgChatId, _ := database.GetTgFromWa(v.Info.ID, v.Info.Chat.User)
 		if tgChatId == cfg.Telegram.TargetChatID {
 			return
 		}
@@ -98,7 +98,7 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 	var replyToMsgId int64
 	if v.Message.ExtendedTextMessage != nil && v.Message.ExtendedTextMessage.ContextInfo != nil {
 		stanzaId := v.Message.ExtendedTextMessage.ContextInfo.StanzaId
-		tgChatId, tgMsgId := database.GetTgFromWa(*stanzaId)
+		tgChatId, tgMsgId := database.GetTgFromWa(*stanzaId, v.Info.Chat.User)
 		if tgChatId == cfg.Telegram.TargetChatID {
 			replyToMsgId = tgMsgId
 		}
@@ -505,7 +505,10 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 	}
 
 	if idToSave != 0 {
-		err := database.AddNewWaToTgPair(v.Info.ID, v.Info.MessageSource.Sender.User, cfg.Telegram.TargetChatID, idToSave)
+		err := database.AddNewWaToTgPair(
+			v.Info.ID, v.Info.MessageSource.Sender.User, v.Info.Chat.User,
+			cfg.Telegram.TargetChatID, idToSave,
+		)
 		if err != nil {
 			tgBot.SendMessage(
 				cfg.Telegram.TargetChatID,
