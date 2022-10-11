@@ -28,3 +28,9 @@ func GetTgFromWa(waMsgId string) (int64, int64) {
 	db.Where("id = ?", waMsgId).Find(&bridgePair)
 	return bridgePair.TgChatId, bridgePair.TgMsgId
 }
+
+func DropAllPairs() error {
+	db := state.State.Database
+	res := db.Where("1 = 1").Delete(&MsgIdPairs{})
+	return res.Error
+}

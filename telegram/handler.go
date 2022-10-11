@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"html"
 
+	"wa-tg-bridge/database"
 	"wa-tg-bridge/state"
 	middlewares "wa-tg-bridge/telegram/middleware"
 	"wa-tg-bridge/utils"
@@ -11,6 +12,7 @@ import (
 	"github.com/PaulSonOfLars/gotgbot/v2"
 	"github.com/PaulSonOfLars/gotgbot/v2/ext"
 	"github.com/PaulSonOfLars/gotgbot/v2/ext/handlers"
+	"go.mau.fi/whatsmeow/appstate"
 )
 
 func AddHandlers() {
@@ -19,6 +21,8 @@ func AddHandlers() {
 	dispatcher.AddHandler(handlers.NewCommand("start", StartCommandHandler))
 	dispatcher.AddHandler(handlers.NewCommand("getwagroups", GetAllWhatsAppGroupsHandler))
 	dispatcher.AddHandler(handlers.NewCommand("findcontact", FindContactHandler))
+	dispatcher.AddHandler(handlers.NewCommand("synccontacts", SyncContactsHandler))
+	dispatcher.AddHandler(handlers.NewCommand("clearpairhistory", ClearPairHistoryHandler))
 
 	state.State.TelegramCommands = append(state.State.TelegramCommands,
 		gotgbot.BotCommand{
@@ -28,6 +32,14 @@ func AddHandlers() {
 		gotgbot.BotCommand{
 			Command:     "findcontact",
 			Description: "Find JIDs from contact names in WhatsApp",
+		},
+		gotgbot.BotCommand{
+			Command:     "synccontacts",
+			Description: "Force sync the WhatsApp contact lists",
+		},
+		gotgbot.BotCommand{
+			Command:     "clearpairhistory",
+			Description: "Delete all the past stored msg id pairs",
 		},
 	)
 }
@@ -135,6 +147,68 @@ func GetAllWhatsAppGroupsHandler(b *gotgbot.Bot, c *ext.Context) error {
 	_, err = b.SendMessage(
 		c.EffectiveChat.Id,
 		groupString,
+		&gotgbot.SendMessageOpts{
+			ReplyToMessageId: c.EffectiveMessage.MessageId,
+		},
+	)
+	return err
+}
+
+func SyncContactsHandler(b *gotgbot.Bot, c *ext.Context) error {
+	if !middlewares.CheckAuthorized(b, c) {
+		return nil
+	}
+
+	waClient := state.State.WhatsAppClient
+
+	err := waClient.FetchAppState(appstate.WAPatchCriticalUnblockLow, true, false)
+	if err != nil {
+		_, err = b.SendMessage(
+			c.EffectiveChat.Id,
+			fmt.Sprintf(
+				"Failed to sync contacts:\n\n<code>%s</code>",
+				html.EscapeString(err.Error()),
+			),
+			&gotgbot.SendMessageOpts{
+				ReplyToMessageId: c.EffectiveMessage.MessageId,
+			},
+		)
+		return err
+	}
+
+	_, err = b.SendMessage(
+		c.EffectiveChat.Id,
+		"Successfully synced the contacts list",
+		&gotgbot.SendMessageOpts{
+			ReplyToMessageId: c.EffectiveMessage.MessageId,
+		},
+	)
+	return err
+}
+
+func ClearPairHistoryHandler(b *gotgbot.Bot, c *ext.Context) error {
+	if !middlewares.CheckAuthorized(b, c) {
+		return nil
+	}
+
+	err := database.DropAllPairs()
+	if err != nil {
+		_, err = b.SendMessage(
+			c.EffectiveChat.Id,
+			fmt.Sprintf(
+				"Failed to delete stored pairs:\n\n<code>%s</code>",
+				html.EscapeString(err.Error()),
+			),
+			&gotgbot.SendMessageOpts{
+				ReplyToMessageId: c.EffectiveMessage.MessageId,
+			},
+		)
+		return err
+	}
+
+	_, err = b.SendMessage(
+		c.EffectiveChat.Id,
+		"Successfully deleted all the stored pairs",
 		&gotgbot.SendMessageOpts{
 			ReplyToMessageId: c.EffectiveMessage.MessageId,
 		},
