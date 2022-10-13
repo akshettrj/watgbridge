@@ -11,5 +11,6 @@ A bridge between Telegram and WhatsApp but in Go
 - [X] Others can also use this tag feature in only those chats which you allow (see sample config)
 
 ## Bugs ?
-- Replying with Audio/Voice Notes doesn't send them on WhatsApp and shows no errors
-- Doesn't "reply" to the original message, sends a new independent message
+- Replying with Media messages doesn't send them on WhatsApp and shows no errors
+- [-] Doesn't "reply" to the original message, sends a new independent message (working for me now)
+- Handle chats with auto delete timer
