@@ -79,7 +79,7 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 
 	{
 		// Return if duplicate event is emitted
-		tgChatId, _ := database.GetTgFromWa(v.Info.ID, v.Info.Chat.User)
+		tgChatId, _ := database.GetTgFromWa(v.Info.ID, v.Info.Chat.String())
 		if tgChatId == cfg.Telegram.TargetChatID {
 			return
 		}
@@ -98,7 +98,7 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 	var replyToMsgId int64
 	if v.Message.ExtendedTextMessage != nil && v.Message.ExtendedTextMessage.ContextInfo != nil {
 		stanzaId := v.Message.ExtendedTextMessage.ContextInfo.StanzaId
-		tgChatId, tgMsgId := database.GetTgFromWa(*stanzaId, v.Info.Chat.User)
+		tgChatId, tgMsgId := database.GetTgFromWa(*stanzaId, v.Info.Chat.String())
 		if tgChatId == cfg.Telegram.TargetChatID {
 			replyToMsgId = tgMsgId
 		}
@@ -112,6 +112,10 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 
 		imgMsg := v.Message.GetImageMessage()
 		caption := imgMsg.GetCaption()
+
+		if imgMsg.GetUrl() == "" {
+			return
+		}
 
 		imageBytes, err := waClient.Download(imgMsg)
 		if err != nil {
@@ -149,6 +153,10 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 
 		gifMsg := v.Message.GetVideoMessage()
 		caption := gifMsg.GetCaption()
+
+		if gifMsg.GetUrl() == "" {
+			return
+		}
 
 		gifBytes, err := waClient.Download(gifMsg)
 		if err != nil {
@@ -192,6 +200,10 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 		vidMsg := v.Message.GetVideoMessage()
 		caption := vidMsg.GetCaption()
 
+		if vidMsg.GetUrl() == "" {
+			return
+		}
+
 		vidBytes, err := waClient.Download(vidMsg)
 		if err != nil {
 			tgBot.SendMessage(
@@ -234,6 +246,10 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 
 		audioMsg := v.Message.GetAudioMessage()
 
+		if audioMsg.GetUrl() == "" {
+			return
+		}
+
 		audioBytes, err := waClient.Download(audioMsg)
 		if err != nil {
 			tgBot.SendMessage(
@@ -266,6 +282,10 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 	case "audio":
 
 		audioMsg := v.Message.GetAudioMessage()
+
+		if audioMsg.GetUrl() == "" {
+			return
+		}
 
 		audioBytes, err := waClient.Download(audioMsg)
 		if err != nil {
@@ -301,6 +321,10 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 
 		docMsg := v.Message.GetDocumentMessage()
 		caption := docMsg.GetCaption()
+
+		if docMsg.GetUrl() == "" {
+			return
+		}
 
 		docBytes, err := waClient.Download(docMsg)
 		if err != nil {
@@ -506,7 +530,7 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 
 	if idToSave != 0 {
 		err := database.AddNewWaToTgPair(
-			v.Info.ID, v.Info.MessageSource.Sender.User, v.Info.Chat.User,
+			v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 			cfg.Telegram.TargetChatID, idToSave,
 		)
 		if err != nil {

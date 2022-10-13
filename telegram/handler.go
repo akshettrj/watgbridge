@@ -260,7 +260,7 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 		return err
 	}
 
-	if waChat == waClient.Store.ID.User {
+	if waChat == waClient.Store.ID.String() {
 		// private chat
 		waChat = participant
 	}
