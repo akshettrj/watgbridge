@@ -42,6 +42,7 @@ func AddHandlers() {
 	dispatcher.AddHandler(handlers.NewCommand("findcontact", FindContactHandler))
 	dispatcher.AddHandler(handlers.NewCommand("synccontacts", SyncContactsHandler))
 	dispatcher.AddHandler(handlers.NewCommand("clearpairhistory", ClearPairHistoryHandler))
+	dispatcher.AddHandler(handlers.NewCommand("restartwa", RestartWhatsAppHandler))
 
 	state.State.TelegramCommands = append(state.State.TelegramCommands,
 		gotgbot.BotCommand{
@@ -1162,4 +1163,37 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 	}
 
 	return nil
+}
+
+func RestartWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
+	if !middlewares.CheckAuthorized(b, c) {
+		return nil
+	}
+
+	waClient := state.State.WhatsAppClient
+
+	waClient.Disconnect()
+	err := waClient.Connect()
+	if err != nil {
+		_, err = b.SendMessage(
+			c.EffectiveChat.Id,
+			fmt.Sprintf(
+				"Failed to connect to WA servers:\n\n<code>%s</code>",
+				html.EscapeString(err.Error()),
+			),
+			&gotgbot.SendMessageOpts{
+				ReplyToMessageId: c.EffectiveMessage.MessageId,
+			},
+		)
+		return err
+	}
+
+	_, err = b.SendMessage(
+		c.EffectiveChat.Id,
+		"Successfully restarted WhatsApp connection",
+		&gotgbot.SendMessageOpts{
+			ReplyToMessageId: c.EffectiveMessage.MessageId,
+		},
+	)
+	return err
 }
