@@ -61,6 +61,10 @@ func AddHandlers() {
 			Command:     "clearpairhistory",
 			Description: "Delete all the past stored msg id pairs",
 		},
+		gotgbot.BotCommand{
+			Command:     "restartwa",
+			Description: "Restart the WhatsApp client",
+		},
 	)
 }
 
