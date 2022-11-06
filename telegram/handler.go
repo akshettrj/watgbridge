@@ -326,7 +326,7 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 
 		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, "", &waProto.Message{
 			ImageMessage: &waProto.ImageMessage{
-				Caption:       proto.String(utils.MarkdownEscapeString(currMsg.Caption)),
+				Caption:       proto.String(currMsg.Caption),
 				Url:           proto.String(uploadedImage.URL),
 				DirectPath:    proto.String(uploadedImage.DirectPath),
 				MediaKey:      uploadedImage.MediaKey,
@@ -430,7 +430,7 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 
 		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, "", &waProto.Message{
 			VideoMessage: &waProto.VideoMessage{
-				Caption:       proto.String(utils.MarkdownEscapeString(currMsg.Caption)),
+				Caption:       proto.String(currMsg.Caption),
 				Url:           proto.String(uploadedVideo.URL),
 				DirectPath:    proto.String(uploadedVideo.DirectPath),
 				MediaKey:      uploadedVideo.MediaKey,
@@ -534,7 +534,7 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 
 		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, "", &waProto.Message{
 			VideoMessage: &waProto.VideoMessage{
-				Caption:       proto.String(utils.MarkdownEscapeString(currMsg.Caption)),
+				Caption:       proto.String(currMsg.Caption),
 				Url:           proto.String(uploadedVideo.URL),
 				DirectPath:    proto.String(uploadedVideo.DirectPath),
 				MediaKey:      uploadedVideo.MediaKey,
@@ -638,7 +638,7 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 
 		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, "", &waProto.Message{
 			VideoMessage: &waProto.VideoMessage{
-				Caption:       proto.String(utils.MarkdownEscapeString(currMsg.Caption)),
+				Caption:       proto.String(currMsg.Caption),
 				Url:           proto.String(uploadedAnimation.URL),
 				DirectPath:    proto.String(uploadedAnimation.DirectPath),
 				MediaKey:      uploadedAnimation.MediaKey,
@@ -954,7 +954,7 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 
 		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, "", &waProto.Message{
 			DocumentMessage: &waProto.DocumentMessage{
-				Caption:       proto.String(utils.MarkdownEscapeString(currMsg.Caption)),
+				Caption:       proto.String(currMsg.Caption),
 				Title:         proto.String(documentFileName),
 				Url:           proto.String(uploadedAnimation.URL),
 				DirectPath:    proto.String(uploadedAnimation.DirectPath),
@@ -1116,7 +1116,7 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 
 		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, "", &waProto.Message{
 			ExtendedTextMessage: &waProto.ExtendedTextMessage{
-				Text: proto.String(utils.MarkdownEscapeString(currMsg.Text)),
+				Text: proto.String(currMsg.Text),
 				ContextInfo: &waProto.ContextInfo{
 					StanzaId:      proto.String(stanzaId),
 					Participant:   proto.String(participant),

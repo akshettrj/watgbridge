@@ -554,7 +554,7 @@ func GetChatIDHandler(chat types.JID, msg *waProto.Message, msgId string, msgSen
 			ExtendedTextMessage: &waProto.ExtendedTextMessage{
 				Text: proto.String(fmt.Sprintf(
 					"The ID of current chat is : ```%s```",
-					utils.MarkdownEscapeString(chat.String()),
+					chat.String(),
 				)),
 				ContextInfo: &waProto.ContextInfo{
 					StanzaId:      proto.String(msgId),
