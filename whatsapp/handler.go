@@ -22,6 +22,8 @@ import (
 )
 
 func WhatsAppEventHandler(evt interface{}) {
+	cfg := state.State.Config
+
 	switch v := evt.(type) {
 
 	case *events.CallOffer:
@@ -29,7 +31,7 @@ func WhatsAppEventHandler(evt interface{}) {
 
 	case *events.Message:
 
-		if v.Info.Chat.String() == "status@broadcast" {
+		if v.Info.Chat.String() == "status@broadcast" && !slices.Contains(cfg.WhatsApp.StatusAllowedChats, v.Info.Sender.User) {
 			return
 		}
 
