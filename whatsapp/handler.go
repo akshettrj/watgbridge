@@ -34,8 +34,8 @@ func WhatsAppEventHandler(evt interface{}) {
 		}
 
 		text := ""
-		if v.Message.ExtendedTextMessage != nil && v.Message.ExtendedTextMessage.Text != nil {
-			text = *v.Message.ExtendedTextMessage.Text
+		if v.Message.GetExtendedTextMessage() != nil && v.Message.GetExtendedTextMessage().GetText() != "" {
+			text = v.Message.GetExtendedTextMessage().GetText()
 		} else {
 			text = v.Message.GetConversation()
 		}
@@ -96,9 +96,9 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 	bridgedText += fmt.Sprintf("🕛: <b>%s</b>\n", html.EscapeString(v.Info.Timestamp.Local().Format(cfg.TimeFormat)))
 
 	var replyToMsgId int64
-	if v.Message.ExtendedTextMessage != nil && v.Message.ExtendedTextMessage.ContextInfo != nil {
-		stanzaId := v.Message.ExtendedTextMessage.ContextInfo.StanzaId
-		tgChatId, tgMsgId := database.GetTgFromWa(*stanzaId, v.Info.Chat.String())
+	if v.Message.GetExtendedTextMessage() != nil && v.Message.GetExtendedTextMessage().GetContextInfo() != nil {
+		stanzaId := v.Message.ExtendedTextMessage.GetContextInfo().GetStanzaId()
+		tgChatId, tgMsgId := database.GetTgFromWa(stanzaId, v.Info.Chat.String())
 		if tgChatId == cfg.Telegram.TargetChatID {
 			replyToMsgId = tgMsgId
 		}
