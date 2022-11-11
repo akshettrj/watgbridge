@@ -132,8 +132,8 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 			return
 		}
 
-		bridgedText += "<b>Caption:</b>\n\n"
 		if len(caption) > 0 {
+			bridgedText += "<b>Caption:</b>\n\n"
 			if len(caption) > 500 {
 				bridgedText += (html.EscapeString(caption[:500]) + "...")
 			} else {
@@ -173,8 +173,8 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 			return
 		}
 
-		bridgedText += "<b>Caption:</b>\n\n"
 		if len(caption) > 0 {
+			bridgedText += "<b>Caption:</b>\n\n"
 			if len(caption) > 500 {
 				bridgedText += (html.EscapeString(caption[:500]) + "...")
 			} else {
@@ -502,6 +502,14 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 
 		if text == "" {
 			return
+		}
+
+		if v.Message.ExtendedTextMessage != nil && v.Message.ExtendedTextMessage.ContextInfo != nil && v.Message.ExtendedTextMessage.ContextInfo.MentionedJid != nil {
+			for _, jid := range v.Message.ExtendedTextMessage.ContextInfo.MentionedJid {
+				parsedJid, _ := utils.WhatsAppParseJID(jid)
+				name := utils.WhatsAppGetContactName(parsedJid)
+				text = strings.ReplaceAll(text, "@"+parsedJid.User, "@("+html.EscapeString(name)+")")
+			}
 		}
 
 		bridgedText += "<b>Body:</b>\n\n"
