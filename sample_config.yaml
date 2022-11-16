@@ -9,8 +9,16 @@ telegram:
 
 whatsapp:
   tag_all_allowed_groups:
+    - 91xxxxxxxxxx-xxxxxxxxxx
+    - 91xxxxxxxxxx-xxxxxxxxxx
+    - 91xxxxxxxxxx-xxxxxxxxxx
+    - 12xxxxxxxxxxxxx669
   ignore_chats:
+    - 12xxxxxxxxxxxxx063
+    - 91xxxxxxxxxx-xxxxxxxxxx
   status_allowed_chats:
+    - 91xxxxxxxxxx
+    - 1xxxxxxxxxx
 
 # database:
 #   type: postgres
