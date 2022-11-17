@@ -1,6 +1,7 @@
 # wa-tg-bridge
 
-A bridge between Telegram and WhatsApp but in Go
+Despite the name, its not exactly a "bridge". It forwards messages from WhatsApp to Telegram and you can reply to them
+from Telegram.
 
 ## Features and Design Choices
 
