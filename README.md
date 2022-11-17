@@ -14,7 +14,8 @@ A bridge between Telegram and WhatsApp but in Go
 ## Bugs and TODO
 
 - Cannot reply to statuses (Causes some serious errors in WhatsApp application), so don't try
-- May throw error in chats which auto-delete timer
+- May throw error in chats with auto-delete timer
+- Stickers are not supported both to and from WhatsApp
 
 PRs are welcome :)
 
