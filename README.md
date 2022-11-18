@@ -14,8 +14,7 @@ from Telegram.
 
 ## Bugs and TODO
 
-- Cannot reply to statuses (Causes some serious errors in WhatsApp application), so don't try
-- May throw error in chats with auto-delete timer
+- Cannot reply to statuses (Causes some serious errors in WhatsApp application), so don't even try
 - Stickers are not supported both to and from WhatsApp
 
 PRs are welcome :)
