@@ -12,7 +12,7 @@ import (
 
 func WhatsAppParseJID(s string) (types.JID, bool) {
 	if s[0] == '+' {
-		s = s[1:]
+		s = SubString(s, 1, len(s)-1)
 	}
 
 	if !strings.ContainsRune(s, '@') {

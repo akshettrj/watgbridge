@@ -135,7 +135,7 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 		if len(caption) > 0 {
 			bridgedText += "<b>Caption:</b>\n\n"
 			if len(caption) > 500 {
-				bridgedText += (html.EscapeString(caption[:500]) + "...")
+				bridgedText += (html.EscapeString(utils.SubString(caption, 0, 500)) + "...")
 			} else {
 				bridgedText += html.EscapeString(caption)
 			}
@@ -176,7 +176,7 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 		if len(caption) > 0 {
 			bridgedText += "<b>Caption:</b>\n\n"
 			if len(caption) > 500 {
-				bridgedText += (html.EscapeString(caption[:500]) + "...")
+				bridgedText += (html.EscapeString(utils.SubString(caption, 0, 500)) + "...")
 			} else {
 				bridgedText += html.EscapeString(caption)
 			}
@@ -222,7 +222,7 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 		if len(caption) > 0 {
 			bridgedText += "<b>Caption:</b>\n\n"
 			if len(caption) > 500 {
-				bridgedText += (html.EscapeString(caption[:500]) + "...")
+				bridgedText += (html.EscapeString(utils.SubString(caption, 0, 500)) + "...")
 			} else {
 				bridgedText += html.EscapeString(caption)
 			}
@@ -344,7 +344,7 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 		if len(caption) > 0 {
 			bridgedText += "<b>Caption:</b>\n\n"
 			if len(caption) > 500 {
-				bridgedText += (html.EscapeString(caption[:500]) + "...")
+				bridgedText += (html.EscapeString(utils.SubString(caption, 0, 500)) + "...")
 			} else {
 				bridgedText += html.EscapeString(caption)
 			}
@@ -514,7 +514,7 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 
 		bridgedText += "<b>Body:</b>\n\n"
 		if len(text) > 2000 {
-			bridgedText += (html.EscapeString(text[:2000]) + "...")
+			bridgedText += (html.EscapeString(utils.SubString(text, 0, 2000)) + "...")
 		} else {
 			bridgedText += html.UnescapeString(text)
 		}
