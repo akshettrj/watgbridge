@@ -11,6 +11,7 @@ from Telegram.
 - Only those contacts' statuses are bridged which are listed in configuration file
 - Can reply to forwarded messages from Telegram
 - Can tag all people using @all or @everyone. Others can also use this in group chats which you specify in configuration file
+- Can react to messages by replying with desired emoji
 
 ## Bugs and TODO
 
