@@ -250,7 +250,7 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 
 	currMsg := c.EffectiveMessage
 	targetMsg := c.EffectiveMessage.ReplyToMessage
-	if targetMsg == nil || strings.Contains(targetMsg.Text, "👥: status@broadcast") {
+	if strings.Contains(targetMsg.Text, "👥: status@broadcast") || strings.Contains(targetMsg.Caption, "👥: status@broadcast") {
 		_, err := b.SendMessage(
 			c.EffectiveChat.Id,
 			"Replying to status messages has not been handled",
@@ -861,7 +861,7 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 				Url:           proto.String(uploadedAudio.URL),
 				DirectPath:    proto.String(uploadedAudio.DirectPath),
 				MediaKey:      uploadedAudio.MediaKey,
-				Mimetype:      proto.String(currMsg.Voice.MimeType),
+				Mimetype:      proto.String("audio/ogg; codecs=opus"),
 				FileEncSha256: uploadedAudio.FileEncSHA256,
 				Seconds:       proto.Uint32(uint32(currMsg.Voice.Duration)),
 				Ptt:           proto.Bool(true),
