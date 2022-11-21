@@ -15,8 +15,7 @@ from Telegram.
 
 ## Bugs and TODO
 
-- Cannot reply to statuses (Causes some serious errors in WhatsApp application), so don't even try
-- Stickers are not supported both to and from WhatsApp
+- Animated stickers are not supported both to and from WhatsApp
 
 PRs are welcome :)
 
