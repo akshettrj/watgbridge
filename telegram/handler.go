@@ -43,6 +43,7 @@ func AddHandlers() {
 	dispatcher.AddHandler(handlers.NewCommand("synccontacts", SyncContactsHandler))
 	dispatcher.AddHandler(handlers.NewCommand("clearpairhistory", ClearPairHistoryHandler))
 	dispatcher.AddHandler(handlers.NewCommand("restartwa", RestartWhatsAppHandler))
+	dispatcher.AddHandler(handlers.NewCommand("joininvitelink", JoinInviteLinkHandler))
 
 	state.State.TelegramCommands = append(state.State.TelegramCommands,
 		gotgbot.BotCommand{
@@ -64,6 +65,10 @@ func AddHandlers() {
 		gotgbot.BotCommand{
 			Command:     "restartwa",
 			Description: "Restart the WhatsApp client",
+		},
+		gotgbot.BotCommand{
+			Command:     "joininvitelink",
+			Description: "Join a WhatsApp chat using invite link",
 		},
 	)
 }
@@ -1199,6 +1204,49 @@ func RestartWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 		&gotgbot.SendMessageOpts{
 			ReplyToMessageId: c.EffectiveMessage.MessageId,
 		},
+	)
+	return err
+}
+
+func JoinInviteLinkHandler(b *gotgbot.Bot, c *ext.Context) error {
+	if !middlewares.CheckAuthorized(b, c) {
+		return nil
+	}
+
+	usageString := "Usage : <code>/joininvitelink invitelink</code>"
+
+	args := c.Args()
+	if len(args) <= 1 {
+		_, err := b.SendMessage(
+			c.EffectiveChat.Id,
+			usageString,
+			&gotgbot.SendMessageOpts{},
+		)
+		return err
+	}
+	inviteLink := args[1]
+
+	waClient := state.State.WhatsAppClient
+	groupID, err := waClient.JoinGroupWithLink(inviteLink)
+	if err != nil {
+		_, err := b.SendMessage(
+			c.EffectiveChat.Id,
+			fmt.Sprintf(
+				"Failed to join:\n\n<code>%s</code>",
+				html.EscapeString(err.Error()),
+			),
+			&gotgbot.SendMessageOpts{},
+		)
+		return err
+	}
+
+	_, err = b.SendMessage(
+		c.EffectiveChat.Id,
+		fmt.Sprintf(
+			"Joined a new group with ID: <code>%s</code>",
+			groupID.String(),
+		),
+		&gotgbot.SendMessageOpts{},
 	)
 	return err
 }
