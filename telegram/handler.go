@@ -273,6 +273,10 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 		return err
 	}
 
+	if stanzaId == "" {
+		return nil
+	}
+
 	if waChat == waClient.Store.ID.String() || waChat == "status@broadcast" {
 		// private chat or status
 		waChat = participant
@@ -1020,6 +1024,17 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 
 	} else if currMsg.Sticker != nil {
 
+		if currMsg.Sticker.IsAnimated || currMsg.Sticker.IsVideo {
+			_, err = b.SendMessage(
+				c.EffectiveChat.Id,
+				"Animated/Video stickers are not supported at the moment",
+				&gotgbot.SendMessageOpts{
+					ReplyToMessageId: c.EffectiveMessage.MessageId,
+				},
+			)
+			return err
+		}
+
 		stickerFile, err := b.GetFile(currMsg.Sticker.FileId, &gotgbot.GetFileOpts{})
 		if err != nil {
 			_, err = b.SendMessage(
@@ -1049,7 +1064,7 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 			return err
 		}
 
-		uploadedSticker, err := waClient.Upload(context.Background(), stickerBytes, whatsmeow.MediaVideo)
+		uploadedSticker, err := waClient.Upload(context.Background(), stickerBytes, whatsmeow.MediaImage)
 		if err != nil {
 			_, err = b.SendMessage(
 				c.EffectiveChat.Id,
@@ -1065,11 +1080,11 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 		}
 
 		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, "", &waProto.Message{
-			VideoMessage: &waProto.VideoMessage{
+			StickerMessage: &waProto.StickerMessage{
 				Url:           proto.String(uploadedSticker.URL),
 				DirectPath:    proto.String(uploadedSticker.DirectPath),
 				MediaKey:      uploadedSticker.MediaKey,
-				Mimetype:      proto.String(http.DetectContentType(stickerBytes)),
+				Mimetype:      proto.String("image/webp"),
 				FileEncSha256: uploadedSticker.FileEncSHA256,
 				FileSha256:    uploadedSticker.FileSHA256,
 				FileLength:    proto.Uint64(uint64(len(stickerBytes))),

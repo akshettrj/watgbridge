@@ -367,16 +367,54 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 
 	case "sticker":
 
-		bridgedText += "\n<i>It was a sticker which is not supported</i>"
+		stickerMsg := v.Message.GetStickerMessage()
+		if stickerMsg.GetUrl() == "" {
+			return
+		}
 
-		sentMsg, _ := tgBot.SendMessage(
-			cfg.Telegram.TargetChatID,
-			bridgedText,
-			&gotgbot.SendMessageOpts{
-				ReplyToMessageId: replyToMsgId,
-			},
-		)
-		idToSave = sentMsg.MessageId
+		stickerBytes, err := waClient.Download(stickerMsg)
+		if err != nil {
+			tgBot.SendMessage(
+				cfg.Telegram.TargetChatID,
+				fmt.Sprintf(
+					"Error downloading a sticker : <code>%s</code>",
+					html.EscapeString(err.Error()),
+				),
+				&gotgbot.SendMessageOpts{},
+			)
+			return
+		}
+
+		if !stickerMsg.GetIsAnimated() {
+			bridgedText += "\n<i>It was the following sticker</i>"
+			sentMsg, _ := tgBot.SendMessage(
+				cfg.Telegram.TargetChatID,
+				bridgedText,
+				&gotgbot.SendMessageOpts{
+					ReplyToMessageId: replyToMsgId,
+				},
+			)
+			idToSave = sentMsg.MessageId
+
+			tgBot.SendSticker(
+				cfg.Telegram.TargetChatID,
+				stickerBytes,
+				&gotgbot.SendStickerOpts{
+					ReplyToMessageId: sentMsg.MessageId,
+				},
+			)
+		} else {
+			bridgedText += "\n<i>It is an animated sticker which is not supported</i>"
+
+			sentMsg, _ := tgBot.SendMessage(
+				cfg.Telegram.TargetChatID,
+				bridgedText,
+				&gotgbot.SendMessageOpts{
+					ReplyToMessageId: replyToMsgId,
+				},
+			)
+			idToSave = sentMsg.MessageId
+		}
 
 	case "vcard":
 		// Contact

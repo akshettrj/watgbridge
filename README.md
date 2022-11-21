@@ -12,6 +12,7 @@ from Telegram.
 - Can reply to forwarded messages from Telegram
 - Can tag all people using @all or @everyone. Others can also use this in group chats which you specify in configuration file
 - Can react to messages by replying with desired emoji
+- Supports static stickers from both ends
 
 ## Bugs and TODO
 
