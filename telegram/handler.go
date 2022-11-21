@@ -250,16 +250,6 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 
 	currMsg := c.EffectiveMessage
 	targetMsg := c.EffectiveMessage.ReplyToMessage
-	if strings.Contains(targetMsg.Text, "👥: status@broadcast") || strings.Contains(targetMsg.Caption, "👥: status@broadcast") {
-		_, err := b.SendMessage(
-			c.EffectiveChat.Id,
-			"Replying to status messages has not been handled",
-			&gotgbot.SendMessageOpts{
-				ReplyToMessageId: c.EffectiveMessage.MessageId,
-			},
-		)
-		return err
-	}
 
 	stanzaId, participant, waChat, err := database.GetWaFromTg(c.EffectiveChat.Id, targetMsg.MessageId)
 	if err != nil {
@@ -276,8 +266,8 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 		return err
 	}
 
-	if waChat == waClient.Store.ID.String() {
-		// private chat
+	if waChat == waClient.Store.ID.String() || waChat == "status@broadcast" {
+		// private chat or status
 		waChat = participant
 	}
 	waChatJID, _ := utils.WhatsAppParseJID(waChat)

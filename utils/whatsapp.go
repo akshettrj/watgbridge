@@ -16,10 +16,11 @@ func WhatsAppParseJID(s string) (types.JID, bool) {
 	}
 
 	if !strings.ContainsRune(s, '@') {
-		return types.NewJID(s, types.DefaultUserServer), true
+		return types.NewJID(s, types.DefaultUserServer).ToNonAD(), true
 	}
 
 	recipient, err := types.ParseJID(s)
+	recipient = recipient.ToNonAD()
 	if err != nil {
 		return recipient, false
 	} else if recipient.User == "" {
