@@ -6,6 +6,7 @@ import (
 	"html"
 	"net/http"
 	"strings"
+	"time"
 
 	"wa-tg-bridge/database"
 	"wa-tg-bridge/state"
@@ -15,6 +16,7 @@ import (
 	"github.com/PaulSonOfLars/gotgbot/v2"
 	"github.com/PaulSonOfLars/gotgbot/v2/ext"
 	"github.com/PaulSonOfLars/gotgbot/v2/ext/handlers"
+	"github.com/forPelevin/gomoji"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/appstate"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
@@ -1119,6 +1121,44 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 		}
 
 	} else if currMsg.Text != "" {
+
+		if len([]rune(currMsg.Text)) == 1 && gomoji.ContainsEmoji(currMsg.Text) {
+			// react with emoji instead of replying
+			_, err := waClient.SendMessage(context.Background(), waChatJID, "", &waProto.Message{
+				ReactionMessage: &waProto.ReactionMessage{
+					Text:              proto.String(currMsg.Text),
+					SenderTimestampMs: proto.Int64(time.Now().UnixMilli()),
+					Key: &waProto.MessageKey{
+						RemoteJid: proto.String(waChatJID.String()),
+						FromMe:    proto.Bool(targetMsg.From.Id == cfg.Telegram.OwnerID),
+						Id:        proto.String(stanzaId),
+					},
+				},
+			})
+			if err != nil {
+				_, err = b.SendMessage(
+					c.EffectiveChat.Id,
+					fmt.Sprintf(
+						"Failed to send the reaction:\n\n<code>%s</code>",
+						html.EscapeString(err.Error()),
+					),
+					&gotgbot.SendMessageOpts{
+						ReplyToMessageId: c.EffectiveMessage.MessageId,
+					},
+				)
+				return err
+			}
+
+			b.SendMessage(
+				c.EffectiveChat.Id,
+				"Successfully reacted",
+				&gotgbot.SendMessageOpts{
+					ReplyToMessageId: c.EffectiveMessage.MessageId,
+				},
+			)
+
+			return nil
+		}
 
 		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, "", &waProto.Message{
 			ExtendedTextMessage: &waProto.ExtendedTextMessage{
