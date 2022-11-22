@@ -1141,7 +1141,7 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 
 	} else if currMsg.Text != "" {
 
-		if len([]rune(currMsg.Text)) == 1 && gomoji.ContainsEmoji(currMsg.Text) {
+		if emojis := gomoji.CollectAll(currMsg.Text); len(emojis) == 1 && emojis[0].Character == currMsg.Text {
 			// react with emoji instead of replying
 			_, err := waClient.SendMessage(context.Background(), waChatJID, "", &waProto.Message{
 				ReactionMessage: &waProto.ReactionMessage{
