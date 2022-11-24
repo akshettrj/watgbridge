@@ -26,6 +26,12 @@ func main() {
 		cfg.TimeZone = "Asia/Kolkata"
 	}
 
+	localLoc, err := time.LoadLocation(cfg.TimeZone)
+	if err != nil {
+		log.Fatalln("Couldn't set timezone to " + cfg.TimeZone + ": " + err.Error())
+	}
+	state.State.LocalLocation = localLoc
+
 	db, err := database.Connect()
 	if err != nil {
 		log.Fatalln("Couldn't connect to the database : " + err.Error())

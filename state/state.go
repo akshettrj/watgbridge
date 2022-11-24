@@ -20,7 +20,8 @@ type state struct {
 
 	WhatsAppClient *whatsmeow.Client
 
-	StartTime time.Time
+	StartTime     time.Time
+	LocalLocation *time.Location
 }
 
 var State state

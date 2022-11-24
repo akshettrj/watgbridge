@@ -95,7 +95,7 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 	} else {
 		bridgedText += "👥: <b>(PVT)</b>\n"
 	}
-	bridgedText += fmt.Sprintf("🕛: <b>%s</b>\n", html.EscapeString(v.Info.Timestamp.Local().Format(cfg.TimeFormat)))
+	bridgedText += fmt.Sprintf("🕛: <b>%s</b>\n", html.EscapeString(v.Info.Timestamp.In(state.State.LocalLocation).Format(cfg.TimeFormat)))
 
 	var replyToMsgId int64
 	if v.Message.GetExtendedTextMessage() != nil && v.Message.GetExtendedTextMessage().GetContextInfo() != nil {
@@ -688,7 +688,7 @@ You received a new call
 🧑: <i>%s</i>
 🕛: <code>%s</code>`,
 			html.EscapeString(callerName),
-			html.EscapeString(v.Timestamp.Local().Format(cfg.TimeFormat)),
+			html.EscapeString(v.Timestamp.In(state.State.LocalLocation).Format(cfg.TimeFormat)),
 		),
 		&gotgbot.SendMessageOpts{},
 	)
