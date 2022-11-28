@@ -20,14 +20,17 @@ import (
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/appstate"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
+	waTypes "go.mau.fi/whatsmeow/types"
 	"google.golang.org/protobuf/proto"
 )
+
+var commands = []handlers.Command{}
 
 func AddHandlers() {
 	dispatcher := state.State.TelegramDispatcher
 	cfg := state.State.Config
 
-	dispatcher.AddHandler(handlers.NewMessage(
+	dispatcher.AddHandlerToGroup(handlers.NewMessage(
 		func(msg *gotgbot.Message) bool {
 			if msg.Chat.Id != cfg.Telegram.TargetChatID {
 				return false
@@ -37,15 +40,21 @@ func AddHandlers() {
 			}
 			return true
 		}, BridgeTelegramToWhatsAppHandler,
-	))
+	), 1)
 
-	dispatcher.AddHandler(handlers.NewCommand("start", StartCommandHandler))
-	dispatcher.AddHandler(handlers.NewCommand("getwagroups", GetAllWhatsAppGroupsHandler))
-	dispatcher.AddHandler(handlers.NewCommand("findcontact", FindContactHandler))
-	dispatcher.AddHandler(handlers.NewCommand("synccontacts", SyncContactsHandler))
-	dispatcher.AddHandler(handlers.NewCommand("clearpairhistory", ClearPairHistoryHandler))
-	dispatcher.AddHandler(handlers.NewCommand("restartwa", RestartWhatsAppHandler))
-	dispatcher.AddHandler(handlers.NewCommand("joininvitelink", JoinInviteLinkHandler))
+	commands = append(commands,
+		handlers.NewCommand("start", StartCommandHandler),
+		handlers.NewCommand("getwagroups", GetAllWhatsAppGroupsHandler),
+		handlers.NewCommand("findcontact", FindContactHandler),
+		handlers.NewCommand("synccontacts", SyncContactsHandler),
+		handlers.NewCommand("clearpairhistory", ClearPairHistoryHandler),
+		handlers.NewCommand("restartwa", RestartWhatsAppHandler),
+		handlers.NewCommand("joininvitelink", JoinInviteLinkHandler),
+		handlers.NewCommand("send", SendToWhatsAppHandler))
+
+	for _, command := range commands {
+		dispatcher.AddHandler(command)
+	}
 
 	state.State.TelegramCommands = append(state.State.TelegramCommands,
 		gotgbot.BotCommand{
@@ -71,6 +80,10 @@ func AddHandlers() {
 		gotgbot.BotCommand{
 			Command:     "joininvitelink",
 			Description: "Join a WhatsApp chat using invite link",
+		},
+		gotgbot.BotCommand{
+			Command:     "send",
+			Description: "Send a message to WhatsApp",
 		},
 	)
 }
@@ -100,7 +113,7 @@ func FindContactHandler(b *gotgbot.Bot, c *ext.Context) error {
 		return nil
 	}
 
-	usageString := "Usage : <code>/findcontact name</code>"
+	usageString := "Usage : <code>" + html.EscapeString("/findcontact <name>") + "</code>"
 
 	args := c.Args()
 	if len(args) <= 1 {
@@ -247,13 +260,54 @@ func ClearPairHistoryHandler(b *gotgbot.Bot, c *ext.Context) error {
 	return err
 }
 
+func SendToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
+	if !middlewares.CheckAuthorized(b, c) {
+		return nil
+	}
+
+	usageString := "Usage : Reply to a message to forward\n\n  <code>" + html.EscapeString("/send <target_jid>") + "</code>"
+
+	args := c.Args()
+	if len(args) <= 1 || c.EffectiveMessage.ReplyToMessage == nil {
+		_, err := b.SendMessage(
+			c.EffectiveChat.Id,
+			usageString,
+			&gotgbot.SendMessageOpts{},
+		)
+		return err
+	}
+	waChat := args[1]
+
+	currMsg := c.EffectiveMessage.ReplyToMessage
+	var targetMsg *gotgbot.Message = nil
+
+	stanzaId, participant := "", ""
+
+	waChatJID, ok := utils.WhatsAppParseJID(waChat)
+	if !ok {
+		_, err := b.SendMessage(
+			c.EffectiveChat.Id,
+			"The provided JID is not valid",
+			&gotgbot.SendMessageOpts{},
+		)
+		return err
+	}
+
+	return sendToWhatsApp(b, c, currMsg, targetMsg, waChatJID, participant, stanzaId, false)
+}
+
 func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 	if !middlewares.CheckAuthorized(b, c) {
 		return nil
 	}
 
+	for _, command := range commands {
+		if command.CheckUpdate(b, c.Update) {
+			return nil
+		}
+	}
+
 	waClient := state.State.WhatsAppClient
-	cfg := state.State.Config
 
 	currMsg := c.EffectiveMessage
 	targetMsg := c.EffectiveMessage.ReplyToMessage
@@ -282,6 +336,93 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 		waChat = participant
 	}
 	waChatJID, _ := utils.WhatsAppParseJID(waChat)
+
+	return sendToWhatsApp(b, c, currMsg, targetMsg, waChatJID, participant, stanzaId, true)
+}
+
+func RestartWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
+	if !middlewares.CheckAuthorized(b, c) {
+		return nil
+	}
+
+	waClient := state.State.WhatsAppClient
+
+	waClient.Disconnect()
+	err := waClient.Connect()
+	if err != nil {
+		_, err = b.SendMessage(
+			c.EffectiveChat.Id,
+			fmt.Sprintf(
+				"Failed to connect to WA servers:\n\n<code>%s</code>",
+				html.EscapeString(err.Error()),
+			),
+			&gotgbot.SendMessageOpts{
+				ReplyToMessageId: c.EffectiveMessage.MessageId,
+			},
+		)
+		return err
+	}
+
+	_, err = b.SendMessage(
+		c.EffectiveChat.Id,
+		"Successfully restarted WhatsApp connection",
+		&gotgbot.SendMessageOpts{
+			ReplyToMessageId: c.EffectiveMessage.MessageId,
+		},
+	)
+	return err
+}
+
+func JoinInviteLinkHandler(b *gotgbot.Bot, c *ext.Context) error {
+	if !middlewares.CheckAuthorized(b, c) {
+		return nil
+	}
+
+	usageString := "Usage : <code>" + html.EscapeString("/joininvitelink <invitelink>") + "</code>"
+
+	args := c.Args()
+	if len(args) <= 1 {
+		_, err := b.SendMessage(
+			c.EffectiveChat.Id,
+			usageString,
+			&gotgbot.SendMessageOpts{},
+		)
+		return err
+	}
+	inviteLink := args[1]
+
+	waClient := state.State.WhatsAppClient
+	groupID, err := waClient.JoinGroupWithLink(inviteLink)
+	if err != nil {
+		_, err := b.SendMessage(
+			c.EffectiveChat.Id,
+			fmt.Sprintf(
+				"Failed to join:\n\n<code>%s</code>",
+				html.EscapeString(err.Error()),
+			),
+			&gotgbot.SendMessageOpts{},
+		)
+		return err
+	}
+
+	_, err = b.SendMessage(
+		c.EffectiveChat.Id,
+		fmt.Sprintf(
+			"Joined a new group with ID: <code>%s</code>",
+			groupID.String(),
+		),
+		&gotgbot.SendMessageOpts{},
+	)
+	return err
+}
+
+func sendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
+	currMsg, targetMsg *gotgbot.Message,
+	waChatJID waTypes.JID, participant, stanzaId string,
+	isReply bool) error {
+
+	cfg := state.State.Config
+	waClient := state.State.WhatsAppClient
 
 	if currMsg.Photo != nil && len(currMsg.Photo) > 0 {
 
@@ -336,7 +477,7 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 			return err
 		}
 
-		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, "", &waProto.Message{
+		msgToSend := &waProto.Message{
 			ImageMessage: &waProto.ImageMessage{
 				Caption:       proto.String(currMsg.Caption),
 				Url:           proto.String(uploadedImage.URL),
@@ -347,13 +488,17 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 				FileSha256:    uploadedImage.FileSHA256,
 				FileLength:    proto.Uint64(uint64(len(imgBytes))),
 				ViewOnce:      proto.Bool(currMsg.HasProtectedContent),
-				ContextInfo: &waProto.ContextInfo{
-					StanzaId:      proto.String(stanzaId),
-					Participant:   proto.String(participant),
-					QuotedMessage: &waProto.Message{Conversation: proto.String("")},
-				},
 			},
-		})
+		}
+		if isReply {
+			msgToSend.ImageMessage.ContextInfo = &waProto.ContextInfo{
+				StanzaId:      proto.String(stanzaId),
+				Participant:   proto.String(participant),
+				QuotedMessage: &waProto.Message{Conversation: proto.String("")},
+			}
+		}
+
+		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, "", msgToSend)
 		if err != nil {
 			_, err = b.SendMessage(
 				c.EffectiveChat.Id,
@@ -377,8 +522,8 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 		)
 
 		err = database.AddNewWaToTgPair(
-			sentMsg.ID, waClient.Store.ID.User, waChat,
-			cfg.Telegram.TargetChatID, c.EffectiveMessage.MessageId,
+			sentMsg.ID, waClient.Store.ID.User, waChatJID.String(),
+			cfg.Telegram.TargetChatID, currMsg.MessageId,
 		)
 		if err != nil {
 			_, err = b.SendMessage(
@@ -440,7 +585,7 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 			return err
 		}
 
-		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, "", &waProto.Message{
+		msgToSend := &waProto.Message{
 			VideoMessage: &waProto.VideoMessage{
 				Caption:       proto.String(currMsg.Caption),
 				Url:           proto.String(uploadedVideo.URL),
@@ -451,13 +596,17 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 				FileEncSha256: uploadedVideo.FileEncSHA256,
 				FileSha256:    uploadedVideo.FileSHA256,
 				FileLength:    proto.Uint64(uint64(len(vidBytes))),
-				ContextInfo: &waProto.ContextInfo{
-					StanzaId:      proto.String(stanzaId),
-					Participant:   proto.String(participant),
-					QuotedMessage: &waProto.Message{Conversation: proto.String("")},
-				},
 			},
-		})
+		}
+		if isReply {
+			msgToSend.VideoMessage.ContextInfo = &waProto.ContextInfo{
+				StanzaId:      proto.String(stanzaId),
+				Participant:   proto.String(participant),
+				QuotedMessage: &waProto.Message{Conversation: proto.String("")},
+			}
+		}
+
+		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, "", msgToSend)
 		if err != nil {
 			_, err = b.SendMessage(
 				c.EffectiveChat.Id,
@@ -481,8 +630,8 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 		)
 
 		err = database.AddNewWaToTgPair(
-			sentMsg.ID, waClient.Store.ID.User, waChat,
-			cfg.Telegram.TargetChatID, c.EffectiveMessage.MessageId,
+			sentMsg.ID, waClient.Store.ID.User, waChatJID.String(),
+			cfg.Telegram.TargetChatID, currMsg.MessageId,
 		)
 		if err != nil {
 			_, err = b.SendMessage(
@@ -544,7 +693,7 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 			return err
 		}
 
-		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, "", &waProto.Message{
+		msgToSend := &waProto.Message{
 			VideoMessage: &waProto.VideoMessage{
 				Caption:       proto.String(currMsg.Caption),
 				Url:           proto.String(uploadedVideo.URL),
@@ -555,13 +704,17 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 				FileEncSha256: uploadedVideo.FileEncSHA256,
 				FileSha256:    uploadedVideo.FileSHA256,
 				FileLength:    proto.Uint64(uint64(len(vidBytes))),
-				ContextInfo: &waProto.ContextInfo{
-					StanzaId:      proto.String(stanzaId),
-					Participant:   proto.String(participant),
-					QuotedMessage: &waProto.Message{Conversation: proto.String("")},
-				},
 			},
-		})
+		}
+		if isReply {
+			msgToSend.VideoMessage.ContextInfo = &waProto.ContextInfo{
+				StanzaId:      proto.String(stanzaId),
+				Participant:   proto.String(participant),
+				QuotedMessage: &waProto.Message{Conversation: proto.String("")},
+			}
+		}
+
+		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, "", msgToSend)
 		if err != nil {
 			_, err = b.SendMessage(
 				c.EffectiveChat.Id,
@@ -585,8 +738,8 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 		)
 
 		err = database.AddNewWaToTgPair(
-			sentMsg.ID, waClient.Store.ID.User, waChat,
-			cfg.Telegram.TargetChatID, c.EffectiveMessage.MessageId,
+			sentMsg.ID, waClient.Store.ID.User, waChatJID.String(),
+			cfg.Telegram.TargetChatID, currMsg.MessageId,
 		)
 		if err != nil {
 			_, err = b.SendMessage(
@@ -648,7 +801,7 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 			return err
 		}
 
-		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, "", &waProto.Message{
+		msgToSend := &waProto.Message{
 			VideoMessage: &waProto.VideoMessage{
 				Caption:       proto.String(currMsg.Caption),
 				Url:           proto.String(uploadedAnimation.URL),
@@ -660,13 +813,17 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 				FileEncSha256: uploadedAnimation.FileEncSHA256,
 				FileSha256:    uploadedAnimation.FileSHA256,
 				FileLength:    proto.Uint64(uint64(len(animationBytes))),
-				ContextInfo: &waProto.ContextInfo{
-					StanzaId:      proto.String(stanzaId),
-					Participant:   proto.String(participant),
-					QuotedMessage: &waProto.Message{Conversation: proto.String("")},
-				},
 			},
-		})
+		}
+		if isReply {
+			msgToSend.VideoMessage.ContextInfo = &waProto.ContextInfo{
+				StanzaId:      proto.String(stanzaId),
+				Participant:   proto.String(participant),
+				QuotedMessage: &waProto.Message{Conversation: proto.String("")},
+			}
+		}
+
+		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, "", msgToSend)
 		if err != nil {
 			_, err = b.SendMessage(
 				c.EffectiveChat.Id,
@@ -690,8 +847,8 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 		)
 
 		err = database.AddNewWaToTgPair(
-			sentMsg.ID, waClient.Store.ID.User, waChat,
-			cfg.Telegram.TargetChatID, c.EffectiveMessage.MessageId,
+			sentMsg.ID, waClient.Store.ID.User, waChatJID.String(),
+			cfg.Telegram.TargetChatID, currMsg.MessageId,
 		)
 		if err != nil {
 			_, err = b.SendMessage(
@@ -753,7 +910,7 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 			return err
 		}
 
-		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, "", &waProto.Message{
+		msgToSend := &waProto.Message{
 			AudioMessage: &waProto.AudioMessage{
 				Url:           proto.String(uploadedAudio.URL),
 				DirectPath:    proto.String(uploadedAudio.DirectPath),
@@ -764,13 +921,17 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 				FileLength:    proto.Uint64(uint64(len(audioBytes))),
 				Seconds:       proto.Uint32(uint32(currMsg.Audio.Duration)),
 				Ptt:           proto.Bool(false),
-				ContextInfo: &waProto.ContextInfo{
-					StanzaId:      proto.String(stanzaId),
-					Participant:   proto.String(participant),
-					QuotedMessage: &waProto.Message{Conversation: proto.String("")},
-				},
 			},
-		})
+		}
+		if isReply {
+			msgToSend.AudioMessage.ContextInfo = &waProto.ContextInfo{
+				StanzaId:      proto.String(stanzaId),
+				Participant:   proto.String(participant),
+				QuotedMessage: &waProto.Message{Conversation: proto.String("")},
+			}
+		}
+
+		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, "", msgToSend)
 		if err != nil {
 			_, err = b.SendMessage(
 				c.EffectiveChat.Id,
@@ -794,8 +955,8 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 		)
 
 		err = database.AddNewWaToTgPair(
-			sentMsg.ID, waClient.Store.ID.User, waChat,
-			cfg.Telegram.TargetChatID, c.EffectiveMessage.MessageId,
+			sentMsg.ID, waClient.Store.ID.User, waChatJID.String(),
+			cfg.Telegram.TargetChatID, currMsg.MessageId,
 		)
 		if err != nil {
 			_, err = b.SendMessage(
@@ -857,7 +1018,7 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 			return err
 		}
 
-		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, "", &waProto.Message{
+		msgToSend := &waProto.Message{
 			AudioMessage: &waProto.AudioMessage{
 				Url:           proto.String(uploadedAudio.URL),
 				DirectPath:    proto.String(uploadedAudio.DirectPath),
@@ -868,13 +1029,17 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 				Ptt:           proto.Bool(true),
 				FileSha256:    uploadedAudio.FileSHA256,
 				FileLength:    proto.Uint64(uint64(len(audioBytes))),
-				ContextInfo: &waProto.ContextInfo{
-					StanzaId:      proto.String(stanzaId),
-					Participant:   proto.String(participant),
-					QuotedMessage: &waProto.Message{Conversation: proto.String("")},
-				},
 			},
-		})
+		}
+		if isReply {
+			msgToSend.AudioMessage.ContextInfo = &waProto.ContextInfo{
+				StanzaId:      proto.String(stanzaId),
+				Participant:   proto.String(participant),
+				QuotedMessage: &waProto.Message{Conversation: proto.String("")},
+			}
+		}
+
+		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, "", msgToSend)
 		if err != nil {
 			_, err = b.SendMessage(
 				c.EffectiveChat.Id,
@@ -898,8 +1063,8 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 		)
 
 		err = database.AddNewWaToTgPair(
-			sentMsg.ID, waClient.Store.ID.User, waChat,
-			cfg.Telegram.TargetChatID, c.EffectiveMessage.MessageId,
+			sentMsg.ID, waClient.Store.ID.User, waChatJID.String(),
+			cfg.Telegram.TargetChatID, currMsg.MessageId,
 		)
 		if err != nil {
 			_, err = b.SendMessage(
@@ -964,7 +1129,7 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 		splitName := strings.Split(currMsg.Document.FileName, ".")
 		documentFileName := strings.Join(splitName[:len(splitName)-1], ".")
 
-		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, "", &waProto.Message{
+		msgToSend := &waProto.Message{
 			DocumentMessage: &waProto.DocumentMessage{
 				Caption:       proto.String(currMsg.Caption),
 				Title:         proto.String(documentFileName),
@@ -975,13 +1140,17 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 				FileEncSha256: uploadedAnimation.FileEncSHA256,
 				FileSha256:    uploadedAnimation.FileSHA256,
 				FileLength:    proto.Uint64(uint64(len(docBytes))),
-				ContextInfo: &waProto.ContextInfo{
-					StanzaId:      proto.String(stanzaId),
-					Participant:   proto.String(participant),
-					QuotedMessage: &waProto.Message{Conversation: proto.String("")},
-				},
 			},
-		})
+		}
+		if isReply {
+			msgToSend.DocumentMessage.ContextInfo = &waProto.ContextInfo{
+				StanzaId:      proto.String(stanzaId),
+				Participant:   proto.String(participant),
+				QuotedMessage: &waProto.Message{Conversation: proto.String("")},
+			}
+		}
+
+		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, "", msgToSend)
 		if err != nil {
 			_, err = b.SendMessage(
 				c.EffectiveChat.Id,
@@ -1005,8 +1174,8 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 		)
 
 		err = database.AddNewWaToTgPair(
-			sentMsg.ID, waClient.Store.ID.User, waChat,
-			cfg.Telegram.TargetChatID, c.EffectiveMessage.MessageId,
+			sentMsg.ID, waClient.Store.ID.User, waChatJID.String(),
+			cfg.Telegram.TargetChatID, currMsg.MessageId,
 		)
 		if err != nil {
 			_, err = b.SendMessage(
@@ -1025,7 +1194,7 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 	} else if currMsg.Sticker != nil {
 
 		if currMsg.Sticker.IsAnimated || currMsg.Sticker.IsVideo {
-			_, err = b.SendMessage(
+			_, err := b.SendMessage(
 				c.EffectiveChat.Id,
 				"Animated/Video stickers are not supported at the moment",
 				&gotgbot.SendMessageOpts{
@@ -1079,7 +1248,7 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 			return err
 		}
 
-		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, "", &waProto.Message{
+		msgToSend := &waProto.Message{
 			StickerMessage: &waProto.StickerMessage{
 				Url:           proto.String(uploadedSticker.URL),
 				DirectPath:    proto.String(uploadedSticker.DirectPath),
@@ -1092,13 +1261,17 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 				FileEncSha256: uploadedSticker.FileEncSHA256,
 				FileSha256:    uploadedSticker.FileSHA256,
 				FileLength:    proto.Uint64(uint64(len(stickerBytes))),
-				ContextInfo: &waProto.ContextInfo{
-					StanzaId:      proto.String(stanzaId),
-					Participant:   proto.String(participant),
-					QuotedMessage: &waProto.Message{Conversation: proto.String("")},
-				},
 			},
-		})
+		}
+		if isReply {
+			msgToSend.StickerMessage.ContextInfo = &waProto.ContextInfo{
+				StanzaId:      proto.String(stanzaId),
+				Participant:   proto.String(participant),
+				QuotedMessage: &waProto.Message{Conversation: proto.String("")},
+			}
+		}
+
+		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, "", msgToSend)
 		if err != nil {
 			_, err = b.SendMessage(
 				c.EffectiveChat.Id,
@@ -1122,8 +1295,8 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 		)
 
 		err = database.AddNewWaToTgPair(
-			sentMsg.ID, waClient.Store.ID.User, waChat,
-			cfg.Telegram.TargetChatID, c.EffectiveMessage.MessageId,
+			sentMsg.ID, waClient.Store.ID.User, waChatJID.String(),
+			cfg.Telegram.TargetChatID, currMsg.MessageId,
 		)
 		if err != nil {
 			_, err = b.SendMessage(
@@ -1149,7 +1322,7 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 					SenderTimestampMs: proto.Int64(time.Now().UnixMilli()),
 					Key: &waProto.MessageKey{
 						RemoteJid: proto.String(waChatJID.String()),
-						FromMe:    proto.Bool(targetMsg.From.Id == cfg.Telegram.OwnerID),
+						FromMe:    proto.Bool(targetMsg != nil && targetMsg.From.Id == cfg.Telegram.OwnerID),
 						Id:        proto.String(stanzaId),
 					},
 				},
@@ -1179,16 +1352,20 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 			return nil
 		}
 
-		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, "", &waProto.Message{
+		msgToSend := &waProto.Message{
 			ExtendedTextMessage: &waProto.ExtendedTextMessage{
 				Text: proto.String(currMsg.Text),
-				ContextInfo: &waProto.ContextInfo{
-					StanzaId:      proto.String(stanzaId),
-					Participant:   proto.String(participant),
-					QuotedMessage: &waProto.Message{Conversation: proto.String("")},
-				},
 			},
-		})
+		}
+		if isReply {
+			msgToSend.ExtendedTextMessage.ContextInfo = &waProto.ContextInfo{
+				StanzaId:      proto.String(stanzaId),
+				Participant:   proto.String(participant),
+				QuotedMessage: &waProto.Message{Conversation: proto.String("")},
+			}
+		}
+
+		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, "", msgToSend)
 		if err != nil {
 			_, err = b.SendMessage(
 				c.EffectiveChat.Id,
@@ -1212,8 +1389,8 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 		)
 
 		err = database.AddNewWaToTgPair(
-			sentMsg.ID, waClient.Store.ID.User, waChat,
-			cfg.Telegram.TargetChatID, c.EffectiveMessage.MessageId,
+			sentMsg.ID, waClient.Store.ID.User, waChatJID.String(),
+			cfg.Telegram.TargetChatID, currMsg.MessageId,
 		)
 		if err != nil {
 			_, err = b.SendMessage(
@@ -1232,80 +1409,4 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 	}
 
 	return nil
-}
-
-func RestartWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
-	if !middlewares.CheckAuthorized(b, c) {
-		return nil
-	}
-
-	waClient := state.State.WhatsAppClient
-
-	waClient.Disconnect()
-	err := waClient.Connect()
-	if err != nil {
-		_, err = b.SendMessage(
-			c.EffectiveChat.Id,
-			fmt.Sprintf(
-				"Failed to connect to WA servers:\n\n<code>%s</code>",
-				html.EscapeString(err.Error()),
-			),
-			&gotgbot.SendMessageOpts{
-				ReplyToMessageId: c.EffectiveMessage.MessageId,
-			},
-		)
-		return err
-	}
-
-	_, err = b.SendMessage(
-		c.EffectiveChat.Id,
-		"Successfully restarted WhatsApp connection",
-		&gotgbot.SendMessageOpts{
-			ReplyToMessageId: c.EffectiveMessage.MessageId,
-		},
-	)
-	return err
-}
-
-func JoinInviteLinkHandler(b *gotgbot.Bot, c *ext.Context) error {
-	if !middlewares.CheckAuthorized(b, c) {
-		return nil
-	}
-
-	usageString := "Usage : <code>/joininvitelink invitelink</code>"
-
-	args := c.Args()
-	if len(args) <= 1 {
-		_, err := b.SendMessage(
-			c.EffectiveChat.Id,
-			usageString,
-			&gotgbot.SendMessageOpts{},
-		)
-		return err
-	}
-	inviteLink := args[1]
-
-	waClient := state.State.WhatsAppClient
-	groupID, err := waClient.JoinGroupWithLink(inviteLink)
-	if err != nil {
-		_, err := b.SendMessage(
-			c.EffectiveChat.Id,
-			fmt.Sprintf(
-				"Failed to join:\n\n<code>%s</code>",
-				html.EscapeString(err.Error()),
-			),
-			&gotgbot.SendMessageOpts{},
-		)
-		return err
-	}
-
-	_, err = b.SendMessage(
-		c.EffectiveChat.Id,
-		fmt.Sprintf(
-			"Joined a new group with ID: <code>%s</code>",
-			groupID.String(),
-		),
-		&gotgbot.SendMessageOpts{},
-	)
-	return err
 }

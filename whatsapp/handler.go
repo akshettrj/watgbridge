@@ -554,7 +554,7 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 		if len(text) > 2000 {
 			bridgedText += (html.EscapeString(utils.SubString(text, 0, 2000)) + "...")
 		} else {
-			bridgedText += html.UnescapeString(text)
+			bridgedText += html.EscapeString(text)
 		}
 
 		sentMsg, _ := tgBot.SendMessage(
