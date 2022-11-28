@@ -24,11 +24,13 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+var commands = []handlers.Command{}
+
 func AddHandlers() {
 	dispatcher := state.State.TelegramDispatcher
 	cfg := state.State.Config
 
-	dispatcher.AddHandler(handlers.NewMessage(
+	dispatcher.AddHandlerToGroup(handlers.NewMessage(
 		func(msg *gotgbot.Message) bool {
 			if msg.Chat.Id != cfg.Telegram.TargetChatID {
 				return false
@@ -38,16 +40,21 @@ func AddHandlers() {
 			}
 			return true
 		}, BridgeTelegramToWhatsAppHandler,
-	))
+	), 1)
 
-	dispatcher.AddHandler(handlers.NewCommand("start", StartCommandHandler))
-	dispatcher.AddHandler(handlers.NewCommand("getwagroups", GetAllWhatsAppGroupsHandler))
-	dispatcher.AddHandler(handlers.NewCommand("findcontact", FindContactHandler))
-	dispatcher.AddHandler(handlers.NewCommand("synccontacts", SyncContactsHandler))
-	dispatcher.AddHandler(handlers.NewCommand("clearpairhistory", ClearPairHistoryHandler))
-	dispatcher.AddHandler(handlers.NewCommand("restartwa", RestartWhatsAppHandler))
-	dispatcher.AddHandler(handlers.NewCommand("joininvitelink", JoinInviteLinkHandler))
-	dispatcher.AddHandler(handlers.NewCommand("send", SendToWhatsAppHandler))
+	commands = append(commands,
+		handlers.NewCommand("start", StartCommandHandler),
+		handlers.NewCommand("getwagroups", GetAllWhatsAppGroupsHandler),
+		handlers.NewCommand("findcontact", FindContactHandler),
+		handlers.NewCommand("synccontacts", SyncContactsHandler),
+		handlers.NewCommand("clearpairhistory", ClearPairHistoryHandler),
+		handlers.NewCommand("restartwa", RestartWhatsAppHandler),
+		handlers.NewCommand("joininvitelink", JoinInviteLinkHandler),
+		handlers.NewCommand("send", SendToWhatsAppHandler))
+
+	for _, command := range commands {
+		dispatcher.AddHandler(command)
+	}
 
 	state.State.TelegramCommands = append(state.State.TelegramCommands,
 		gotgbot.BotCommand{
@@ -292,6 +299,12 @@ func SendToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 	if !middlewares.CheckAuthorized(b, c) {
 		return nil
+	}
+
+	for _, command := range commands {
+		if command.CheckUpdate(b, c.Update) {
+			return nil
+		}
 	}
 
 	waClient := state.State.WhatsAppClient
