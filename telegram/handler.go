@@ -278,8 +278,8 @@ func SendToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 	}
 	waChat := args[1]
 
-	currMsg := c.EffectiveMessage.ReplyToMessage
-	var targetMsg *gotgbot.Message = nil
+	msgToForward := c.EffectiveMessage.ReplyToMessage
+	var msgToReplyTo *gotgbot.Message = nil
 
 	stanzaId, participant := "", ""
 
@@ -293,7 +293,7 @@ func SendToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 		return err
 	}
 
-	return sendToWhatsApp(b, c, currMsg, targetMsg, waChatJID, participant, stanzaId, false)
+	return sendToWhatsApp(b, c, msgToForward, msgToReplyTo, waChatJID, participant, stanzaId, false)
 }
 
 func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
@@ -309,10 +309,10 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 
 	waClient := state.State.WhatsAppClient
 
-	currMsg := c.EffectiveMessage
-	targetMsg := c.EffectiveMessage.ReplyToMessage
+	msgToForward := c.EffectiveMessage
+	msgToReplyTo := c.EffectiveMessage.ReplyToMessage
 
-	stanzaId, participant, waChat, err := database.GetWaFromTg(c.EffectiveChat.Id, targetMsg.MessageId)
+	stanzaId, participant, waChat, err := database.GetWaFromTg(c.EffectiveChat.Id, msgToReplyTo.MessageId)
 	if err != nil {
 		_, err = b.SendMessage(
 			c.EffectiveChat.Id,
@@ -337,7 +337,7 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 	}
 	waChatJID, _ := utils.WhatsAppParseJID(waChat)
 
-	return sendToWhatsApp(b, c, currMsg, targetMsg, waChatJID, participant, stanzaId, true)
+	return sendToWhatsApp(b, c, msgToForward, msgToReplyTo, waChatJID, participant, stanzaId, true)
 }
 
 func RestartWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
@@ -417,17 +417,17 @@ func JoinInviteLinkHandler(b *gotgbot.Bot, c *ext.Context) error {
 }
 
 func sendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
-	currMsg, targetMsg *gotgbot.Message,
+	msgToForward, msgToReplyTo *gotgbot.Message,
 	waChatJID waTypes.JID, participant, stanzaId string,
 	isReply bool) error {
 
 	cfg := state.State.Config
 	waClient := state.State.WhatsAppClient
 
-	if currMsg.Photo != nil && len(currMsg.Photo) > 0 {
+	if msgToForward.Photo != nil && len(msgToForward.Photo) > 0 {
 
-		bestPhoto := currMsg.Photo[0]
-		for _, photo := range currMsg.Photo {
+		bestPhoto := msgToForward.Photo[0]
+		for _, photo := range msgToForward.Photo {
 			if photo.Height*photo.Width > bestPhoto.Height*bestPhoto.Width {
 				bestPhoto = photo
 			}
@@ -479,7 +479,7 @@ func sendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 
 		msgToSend := &waProto.Message{
 			ImageMessage: &waProto.ImageMessage{
-				Caption:       proto.String(currMsg.Caption),
+				Caption:       proto.String(msgToForward.Caption),
 				Url:           proto.String(uploadedImage.URL),
 				DirectPath:    proto.String(uploadedImage.DirectPath),
 				MediaKey:      uploadedImage.MediaKey,
@@ -487,7 +487,7 @@ func sendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 				FileEncSha256: uploadedImage.FileEncSHA256,
 				FileSha256:    uploadedImage.FileSHA256,
 				FileLength:    proto.Uint64(uint64(len(imgBytes))),
-				ViewOnce:      proto.Bool(currMsg.HasProtectedContent),
+				ViewOnce:      proto.Bool(msgToForward.HasProtectedContent),
 			},
 		}
 		if isReply {
@@ -523,7 +523,7 @@ func sendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 
 		err = database.AddNewWaToTgPair(
 			sentMsg.ID, waClient.Store.ID.User, waChatJID.String(),
-			cfg.Telegram.TargetChatID, currMsg.MessageId,
+			cfg.Telegram.TargetChatID, msgToForward.MessageId,
 		)
 		if err != nil {
 			_, err = b.SendMessage(
@@ -539,9 +539,9 @@ func sendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			return err
 		}
 
-	} else if currMsg.Video != nil {
+	} else if msgToForward.Video != nil {
 
-		vidFile, err := b.GetFile(currMsg.Video.FileId, &gotgbot.GetFileOpts{})
+		vidFile, err := b.GetFile(msgToForward.Video.FileId, &gotgbot.GetFileOpts{})
 		if err != nil {
 			_, err = b.SendMessage(
 				c.EffectiveChat.Id,
@@ -587,12 +587,12 @@ func sendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 
 		msgToSend := &waProto.Message{
 			VideoMessage: &waProto.VideoMessage{
-				Caption:       proto.String(currMsg.Caption),
+				Caption:       proto.String(msgToForward.Caption),
 				Url:           proto.String(uploadedVideo.URL),
 				DirectPath:    proto.String(uploadedVideo.DirectPath),
 				MediaKey:      uploadedVideo.MediaKey,
-				Mimetype:      proto.String(currMsg.Video.MimeType),
-				ViewOnce:      proto.Bool(currMsg.HasProtectedContent),
+				Mimetype:      proto.String(msgToForward.Video.MimeType),
+				ViewOnce:      proto.Bool(msgToForward.HasProtectedContent),
 				FileEncSha256: uploadedVideo.FileEncSHA256,
 				FileSha256:    uploadedVideo.FileSHA256,
 				FileLength:    proto.Uint64(uint64(len(vidBytes))),
@@ -631,7 +631,7 @@ func sendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 
 		err = database.AddNewWaToTgPair(
 			sentMsg.ID, waClient.Store.ID.User, waChatJID.String(),
-			cfg.Telegram.TargetChatID, currMsg.MessageId,
+			cfg.Telegram.TargetChatID, msgToForward.MessageId,
 		)
 		if err != nil {
 			_, err = b.SendMessage(
@@ -647,9 +647,9 @@ func sendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			return err
 		}
 
-	} else if currMsg.VideoNote != nil {
+	} else if msgToForward.VideoNote != nil {
 
-		vidFile, err := b.GetFile(currMsg.VideoNote.FileId, &gotgbot.GetFileOpts{})
+		vidFile, err := b.GetFile(msgToForward.VideoNote.FileId, &gotgbot.GetFileOpts{})
 		if err != nil {
 			_, err = b.SendMessage(
 				c.EffectiveChat.Id,
@@ -695,12 +695,12 @@ func sendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 
 		msgToSend := &waProto.Message{
 			VideoMessage: &waProto.VideoMessage{
-				Caption:       proto.String(currMsg.Caption),
+				Caption:       proto.String(msgToForward.Caption),
 				Url:           proto.String(uploadedVideo.URL),
 				DirectPath:    proto.String(uploadedVideo.DirectPath),
 				MediaKey:      uploadedVideo.MediaKey,
 				Mimetype:      proto.String(http.DetectContentType(vidBytes)),
-				ViewOnce:      proto.Bool(currMsg.HasProtectedContent),
+				ViewOnce:      proto.Bool(msgToForward.HasProtectedContent),
 				FileEncSha256: uploadedVideo.FileEncSHA256,
 				FileSha256:    uploadedVideo.FileSHA256,
 				FileLength:    proto.Uint64(uint64(len(vidBytes))),
@@ -739,7 +739,7 @@ func sendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 
 		err = database.AddNewWaToTgPair(
 			sentMsg.ID, waClient.Store.ID.User, waChatJID.String(),
-			cfg.Telegram.TargetChatID, currMsg.MessageId,
+			cfg.Telegram.TargetChatID, msgToForward.MessageId,
 		)
 		if err != nil {
 			_, err = b.SendMessage(
@@ -755,9 +755,9 @@ func sendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			return err
 		}
 
-	} else if currMsg.Animation != nil {
+	} else if msgToForward.Animation != nil {
 
-		animationFile, err := b.GetFile(currMsg.Animation.FileId, &gotgbot.GetFileOpts{})
+		animationFile, err := b.GetFile(msgToForward.Animation.FileId, &gotgbot.GetFileOpts{})
 		if err != nil {
 			_, err = b.SendMessage(
 				c.EffectiveChat.Id,
@@ -803,12 +803,12 @@ func sendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 
 		msgToSend := &waProto.Message{
 			VideoMessage: &waProto.VideoMessage{
-				Caption:       proto.String(currMsg.Caption),
+				Caption:       proto.String(msgToForward.Caption),
 				Url:           proto.String(uploadedAnimation.URL),
 				DirectPath:    proto.String(uploadedAnimation.DirectPath),
 				MediaKey:      uploadedAnimation.MediaKey,
-				Mimetype:      proto.String(currMsg.Animation.MimeType),
-				ViewOnce:      proto.Bool(currMsg.HasProtectedContent),
+				Mimetype:      proto.String(msgToForward.Animation.MimeType),
+				ViewOnce:      proto.Bool(msgToForward.HasProtectedContent),
 				GifPlayback:   proto.Bool(true),
 				FileEncSha256: uploadedAnimation.FileEncSHA256,
 				FileSha256:    uploadedAnimation.FileSHA256,
@@ -848,7 +848,7 @@ func sendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 
 		err = database.AddNewWaToTgPair(
 			sentMsg.ID, waClient.Store.ID.User, waChatJID.String(),
-			cfg.Telegram.TargetChatID, currMsg.MessageId,
+			cfg.Telegram.TargetChatID, msgToForward.MessageId,
 		)
 		if err != nil {
 			_, err = b.SendMessage(
@@ -864,9 +864,9 @@ func sendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			return err
 		}
 
-	} else if currMsg.Audio != nil {
+	} else if msgToForward.Audio != nil {
 
-		audioFile, err := b.GetFile(currMsg.Audio.FileId, &gotgbot.GetFileOpts{})
+		audioFile, err := b.GetFile(msgToForward.Audio.FileId, &gotgbot.GetFileOpts{})
 		if err != nil {
 			_, err = b.SendMessage(
 				c.EffectiveChat.Id,
@@ -915,11 +915,11 @@ func sendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 				Url:           proto.String(uploadedAudio.URL),
 				DirectPath:    proto.String(uploadedAudio.DirectPath),
 				MediaKey:      uploadedAudio.MediaKey,
-				Mimetype:      proto.String(currMsg.Audio.MimeType),
+				Mimetype:      proto.String(msgToForward.Audio.MimeType),
 				FileEncSha256: uploadedAudio.FileEncSHA256,
 				FileSha256:    uploadedAudio.FileSHA256,
 				FileLength:    proto.Uint64(uint64(len(audioBytes))),
-				Seconds:       proto.Uint32(uint32(currMsg.Audio.Duration)),
+				Seconds:       proto.Uint32(uint32(msgToForward.Audio.Duration)),
 				Ptt:           proto.Bool(false),
 			},
 		}
@@ -956,7 +956,7 @@ func sendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 
 		err = database.AddNewWaToTgPair(
 			sentMsg.ID, waClient.Store.ID.User, waChatJID.String(),
-			cfg.Telegram.TargetChatID, currMsg.MessageId,
+			cfg.Telegram.TargetChatID, msgToForward.MessageId,
 		)
 		if err != nil {
 			_, err = b.SendMessage(
@@ -972,9 +972,9 @@ func sendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			return err
 		}
 
-	} else if currMsg.Voice != nil {
+	} else if msgToForward.Voice != nil {
 
-		audioFile, err := b.GetFile(currMsg.Voice.FileId, &gotgbot.GetFileOpts{})
+		audioFile, err := b.GetFile(msgToForward.Voice.FileId, &gotgbot.GetFileOpts{})
 		if err != nil {
 			_, err = b.SendMessage(
 				c.EffectiveChat.Id,
@@ -1025,7 +1025,7 @@ func sendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 				MediaKey:      uploadedAudio.MediaKey,
 				Mimetype:      proto.String("audio/ogg; codecs=opus"),
 				FileEncSha256: uploadedAudio.FileEncSHA256,
-				Seconds:       proto.Uint32(uint32(currMsg.Voice.Duration)),
+				Seconds:       proto.Uint32(uint32(msgToForward.Voice.Duration)),
 				Ptt:           proto.Bool(true),
 				FileSha256:    uploadedAudio.FileSHA256,
 				FileLength:    proto.Uint64(uint64(len(audioBytes))),
@@ -1064,7 +1064,7 @@ func sendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 
 		err = database.AddNewWaToTgPair(
 			sentMsg.ID, waClient.Store.ID.User, waChatJID.String(),
-			cfg.Telegram.TargetChatID, currMsg.MessageId,
+			cfg.Telegram.TargetChatID, msgToForward.MessageId,
 		)
 		if err != nil {
 			_, err = b.SendMessage(
@@ -1080,9 +1080,9 @@ func sendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			return err
 		}
 
-	} else if currMsg.Document != nil {
+	} else if msgToForward.Document != nil {
 
-		docFile, err := b.GetFile(currMsg.Document.FileId, &gotgbot.GetFileOpts{})
+		docFile, err := b.GetFile(msgToForward.Document.FileId, &gotgbot.GetFileOpts{})
 		if err != nil {
 			_, err = b.SendMessage(
 				c.EffectiveChat.Id,
@@ -1126,17 +1126,17 @@ func sendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			return err
 		}
 
-		splitName := strings.Split(currMsg.Document.FileName, ".")
+		splitName := strings.Split(msgToForward.Document.FileName, ".")
 		documentFileName := strings.Join(splitName[:len(splitName)-1], ".")
 
 		msgToSend := &waProto.Message{
 			DocumentMessage: &waProto.DocumentMessage{
-				Caption:       proto.String(currMsg.Caption),
+				Caption:       proto.String(msgToForward.Caption),
 				Title:         proto.String(documentFileName),
 				Url:           proto.String(uploadedAnimation.URL),
 				DirectPath:    proto.String(uploadedAnimation.DirectPath),
 				MediaKey:      uploadedAnimation.MediaKey,
-				Mimetype:      proto.String(currMsg.Document.MimeType),
+				Mimetype:      proto.String(msgToForward.Document.MimeType),
 				FileEncSha256: uploadedAnimation.FileEncSHA256,
 				FileSha256:    uploadedAnimation.FileSHA256,
 				FileLength:    proto.Uint64(uint64(len(docBytes))),
@@ -1175,7 +1175,7 @@ func sendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 
 		err = database.AddNewWaToTgPair(
 			sentMsg.ID, waClient.Store.ID.User, waChatJID.String(),
-			cfg.Telegram.TargetChatID, currMsg.MessageId,
+			cfg.Telegram.TargetChatID, msgToForward.MessageId,
 		)
 		if err != nil {
 			_, err = b.SendMessage(
@@ -1191,9 +1191,9 @@ func sendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			return err
 		}
 
-	} else if currMsg.Sticker != nil {
+	} else if msgToForward.Sticker != nil {
 
-		if currMsg.Sticker.IsAnimated || currMsg.Sticker.IsVideo {
+		if msgToForward.Sticker.IsAnimated || msgToForward.Sticker.IsVideo {
 			_, err := b.SendMessage(
 				c.EffectiveChat.Id,
 				"Animated/Video stickers are not supported at the moment",
@@ -1204,7 +1204,7 @@ func sendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			return err
 		}
 
-		stickerFile, err := b.GetFile(currMsg.Sticker.FileId, &gotgbot.GetFileOpts{})
+		stickerFile, err := b.GetFile(msgToForward.Sticker.FileId, &gotgbot.GetFileOpts{})
 		if err != nil {
 			_, err = b.SendMessage(
 				c.EffectiveChat.Id,
@@ -1255,8 +1255,8 @@ func sendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 				MediaKey:      uploadedSticker.MediaKey,
 				IsAnimated:    proto.Bool(false),
 				IsAvatar:      proto.Bool(false),
-				Height:        proto.Uint32(uint32(currMsg.Sticker.Height)),
-				Width:         proto.Uint32(uint32(currMsg.Sticker.Width)),
+				Height:        proto.Uint32(uint32(msgToForward.Sticker.Height)),
+				Width:         proto.Uint32(uint32(msgToForward.Sticker.Width)),
 				Mimetype:      proto.String("image/webp"),
 				FileEncSha256: uploadedSticker.FileEncSHA256,
 				FileSha256:    uploadedSticker.FileSHA256,
@@ -1296,7 +1296,7 @@ func sendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 
 		err = database.AddNewWaToTgPair(
 			sentMsg.ID, waClient.Store.ID.User, waChatJID.String(),
-			cfg.Telegram.TargetChatID, currMsg.MessageId,
+			cfg.Telegram.TargetChatID, msgToForward.MessageId,
 		)
 		if err != nil {
 			_, err = b.SendMessage(
@@ -1312,17 +1312,17 @@ func sendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			return err
 		}
 
-	} else if currMsg.Text != "" {
+	} else if msgToForward.Text != "" {
 
-		if emojis := gomoji.CollectAll(currMsg.Text); len(emojis) == 1 && emojis[0].Character == currMsg.Text {
+		if emojis := gomoji.CollectAll(msgToForward.Text); len(emojis) == 1 && emojis[0].Character == msgToForward.Text {
 			// react with emoji instead of replying
 			_, err := waClient.SendMessage(context.Background(), waChatJID, "", &waProto.Message{
 				ReactionMessage: &waProto.ReactionMessage{
-					Text:              proto.String(currMsg.Text),
+					Text:              proto.String(msgToForward.Text),
 					SenderTimestampMs: proto.Int64(time.Now().UnixMilli()),
 					Key: &waProto.MessageKey{
 						RemoteJid: proto.String(waChatJID.String()),
-						FromMe:    proto.Bool(targetMsg != nil && targetMsg.From.Id == cfg.Telegram.OwnerID),
+						FromMe:    proto.Bool(msgToReplyTo != nil && msgToReplyTo.From.Id == cfg.Telegram.OwnerID),
 						Id:        proto.String(stanzaId),
 					},
 				},
@@ -1354,7 +1354,7 @@ func sendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 
 		msgToSend := &waProto.Message{
 			ExtendedTextMessage: &waProto.ExtendedTextMessage{
-				Text: proto.String(currMsg.Text),
+				Text: proto.String(msgToForward.Text),
 			},
 		}
 		if isReply {
@@ -1390,7 +1390,7 @@ func sendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 
 		err = database.AddNewWaToTgPair(
 			sentMsg.ID, waClient.Store.ID.User, waChatJID.String(),
-			cfg.Telegram.TargetChatID, currMsg.MessageId,
+			cfg.Telegram.TargetChatID, msgToForward.MessageId,
 		)
 		if err != nil {
 			_, err = b.SendMessage(
