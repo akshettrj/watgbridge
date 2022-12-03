@@ -3,6 +3,14 @@
 Despite the name, its not exactly a "bridge". It forwards messages from WhatsApp to Telegram and you can reply to them
 from Telegram.
 
+
+## Sample Screenshots
+
+<p align="center">
+  <img src="./assets/telegram_side_sample.png" width="350" alt="Telegram Side">
+  <img src="./assets/whatsapp_side_sample.jpg" width="350" alt="WhatsApp Side">
+</p>
+
 ## Features and Design Choices
 
 - Can bridge messages from WhatsApp to Telegram
