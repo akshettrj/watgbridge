@@ -66,14 +66,14 @@ func WhatsAppGetGroupName(jid types.JID) string {
 	return groupInfo.Name
 }
 
-func WhatsAppFindContact(query string) (map[string]string, error) {
+func WhatsAppFindContact(query string) (map[string]string, int, error) {
 	waClient := state.State.WhatsAppClient
 
 	var results = make(map[string]string)
 
 	contacts, err := waClient.Store.Contacts.GetAllContacts()
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	var contactsInfo []string
@@ -114,5 +114,5 @@ func WhatsAppFindContact(query string) (map[string]string, error) {
 		results[info[0]] = name
 	}
 
-	return results, nil
+	return results, len(fuzzyResults), nil
 }

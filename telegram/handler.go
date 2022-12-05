@@ -126,7 +126,7 @@ func FindContactHandler(b *gotgbot.Bot, c *ext.Context) error {
 	}
 	query := args[1]
 
-	results, err := utils.WhatsAppFindContact(query)
+	results, resultsCount, err := utils.WhatsAppFindContact(query)
 	if err != nil {
 		_, err := b.SendMessage(
 			c.EffectiveChat.Id,
@@ -140,12 +140,25 @@ func FindContactHandler(b *gotgbot.Bot, c *ext.Context) error {
 	}
 
 	responseText := "Here are the matching contacts:\n\n"
+	loopNum := 0
 	for jid, name := range results {
 		responseText += fmt.Sprintf(
 			"- <i>%s</i> [ <code>%s</code> ]\n",
 			html.EscapeString(name),
 			html.EscapeString(jid),
 		)
+
+		if len(responseText) >= 1500 && loopNum < resultsCount-1 {
+			b.SendMessage(
+				c.EffectiveChat.Id,
+				responseText,
+				&gotgbot.SendMessageOpts{},
+			)
+			time.Sleep(500 * time.Millisecond)
+			responseText = ""
+		}
+
+		loopNum += 1
 	}
 
 	_, err = b.SendMessage(
@@ -186,6 +199,18 @@ func GetAllWhatsAppGroupsHandler(b *gotgbot.Bot, c *ext.Context) error {
 			html.EscapeString(group.Name),
 			html.EscapeString(group.JID.String()),
 		)
+
+		if len(groupString) >= 1500 && groupNum < len(waGroups)-1 {
+			b.SendMessage(
+				c.EffectiveChat.Id,
+				groupString,
+				&gotgbot.SendMessageOpts{
+					ReplyToMessageId: c.EffectiveMessage.MessageId,
+				},
+			)
+			time.Sleep(500 * time.Millisecond)
+			groupString = ""
+		}
 	}
 
 	_, err = b.SendMessage(
