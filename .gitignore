@@ -15,5 +15,5 @@
 # vendor/
 
 config.yaml
-wa-tg-bridge
+watgbridge
 *.db

@@ -5,11 +5,11 @@ import (
 	"os"
 	"time"
 
-	"wa-tg-bridge/database"
-	"wa-tg-bridge/state"
-	"wa-tg-bridge/telegram"
-	"wa-tg-bridge/utils"
-	"wa-tg-bridge/whatsapp"
+	"watgbridge/database"
+	"watgbridge/state"
+	"watgbridge/telegram"
+	"watgbridge/utils"
+	"watgbridge/whatsapp"
 )
 
 func main() {

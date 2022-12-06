@@ -8,9 +8,9 @@ import (
 	"log"
 	"strings"
 
-	"wa-tg-bridge/database"
-	"wa-tg-bridge/state"
-	"wa-tg-bridge/utils"
+	"watgbridge/database"
+	"watgbridge/state"
+	"watgbridge/utils"
 
 	"github.com/PaulSonOfLars/gotgbot/v2"
 	goVCard "github.com/emersion/go-vcard"

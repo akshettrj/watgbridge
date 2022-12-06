@@ -7,7 +7,7 @@ Type=idle
 Restart=on-failure
 User=akshettrj
 RuntimeMaxSec=1d
-ExecStart=/bin/bash -c 'sleep 20 && cd /home/akshettrj/work/go/src/wa-tg-bridge && ./wa-tg-bridge'
+ExecStart=/bin/bash -c 'sleep 20 && cd /home/akshettrj/work/go/src/watgbridge && ./watgbridge'
 
 [Install]
 WantedBy=multi-user.target

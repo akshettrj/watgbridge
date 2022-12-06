@@ -6,7 +6,7 @@ import (
 	"log"
 	"os"
 
-	"wa-tg-bridge/state"
+	"watgbridge/state"
 
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/mdp/qrterminal/v3"
@@ -19,7 +19,7 @@ import (
 )
 
 func NewClient() error {
-	store.DeviceProps.Os = proto.String("wa-tg-bridge")
+	store.DeviceProps.Os = proto.String("watgbridge")
 	store.DeviceProps.RequireFullSync = proto.Bool(true)
 	store.DeviceProps.PlatformType = waProto.DeviceProps_DESKTOP.Enum()
 	dbLog := waLog.Stdout("WA_Database", "WARN", true)

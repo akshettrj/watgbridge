@@ -1,4 +1,4 @@
-module wa-tg-bridge
+module watgbridge
 
 go 1.19
 

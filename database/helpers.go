@@ -1,6 +1,6 @@
 package database
 
-import "wa-tg-bridge/state"
+import "watgbridge/state"
 
 func AddNewWaToTgPair(waMsgId, participant, waChat string, tgChatId, tgMsgId int64) error {
 	db := state.State.Database

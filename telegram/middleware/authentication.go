@@ -1,7 +1,7 @@
 package middlewares
 
 import (
-	"wa-tg-bridge/state"
+	"watgbridge/state"
 
 	"github.com/PaulSonOfLars/gotgbot/v2"
 	"github.com/PaulSonOfLars/gotgbot/v2/ext"

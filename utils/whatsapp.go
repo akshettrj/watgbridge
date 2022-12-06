@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"wa-tg-bridge/state"
+	"watgbridge/state"
 
 	"github.com/lithammer/fuzzysearch/fuzzy"
 	"go.mau.fi/whatsmeow/types"

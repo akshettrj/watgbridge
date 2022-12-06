@@ -3,7 +3,7 @@ package database
 import (
 	"fmt"
 
-	"wa-tg-bridge/state"
+	"watgbridge/state"
 
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"

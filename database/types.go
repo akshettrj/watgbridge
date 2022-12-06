@@ -1,6 +1,6 @@
 package database
 
-import "wa-tg-bridge/state"
+import "watgbridge/state"
 
 type MsgIdPairs struct {
 	ID          string `gorm:"primaryKey;"`

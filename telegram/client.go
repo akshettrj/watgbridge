@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"time"
 
-	"wa-tg-bridge/state"
-	mw "wa-tg-bridge/telegram/middleware"
+	"watgbridge/state"
+	mw "watgbridge/telegram/middleware"
 
 	"github.com/PaulSonOfLars/gotgbot/v2"
 	"github.com/PaulSonOfLars/gotgbot/v2/ext"

@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"wa-tg-bridge/database"
-	"wa-tg-bridge/state"
-	middlewares "wa-tg-bridge/telegram/middleware"
-	"wa-tg-bridge/utils"
+	"watgbridge/database"
+	"watgbridge/state"
+	middlewares "watgbridge/telegram/middleware"
+	"watgbridge/utils"
 
 	"github.com/PaulSonOfLars/gotgbot/v2"
 	"github.com/PaulSonOfLars/gotgbot/v2/ext"
