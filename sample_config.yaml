@@ -4,6 +4,7 @@ time_format: 02 Jan, 2006 - Mon @ 15:04
 telegram:
   bot_token: 186779
   api_url: http://localhost:8082
+  self_hosted_api: true
   owner_id: 704338780
   target_chat_id: 704338780
 

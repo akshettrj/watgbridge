@@ -458,6 +458,17 @@ func sendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			}
 		}
 
+		if !state.State.Config.Telegram.SelfHostedApi && bestPhoto.FileSize > DOWNLOAD_LIMIT {
+			_, err := b.SendMessage(
+				c.EffectiveChat.Id,
+				"Not able to send photo as it exceeds Telegram size restriction",
+				&gotgbot.SendMessageOpts{
+					ReplyToMessageId: c.EffectiveMessage.MessageId,
+				},
+			)
+			return err
+		}
+
 		imgFile, err := b.GetFile(bestPhoto.FileId, &gotgbot.GetFileOpts{})
 		if err != nil {
 			_, err = b.SendMessage(
@@ -565,6 +576,17 @@ func sendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		}
 
 	} else if msgToForward.Video != nil {
+
+		if !state.State.Config.Telegram.SelfHostedApi && msgToForward.Video.FileSize > DOWNLOAD_LIMIT {
+			_, err := b.SendMessage(
+				c.EffectiveChat.Id,
+				"Not able to send video as it exceeds Telegram size restriction",
+				&gotgbot.SendMessageOpts{
+					ReplyToMessageId: c.EffectiveMessage.MessageId,
+				},
+			)
+			return err
+		}
 
 		vidFile, err := b.GetFile(msgToForward.Video.FileId, &gotgbot.GetFileOpts{})
 		if err != nil {
@@ -674,6 +696,17 @@ func sendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 
 	} else if msgToForward.VideoNote != nil {
 
+		if !state.State.Config.Telegram.SelfHostedApi && msgToForward.VideoNote.FileSize > DOWNLOAD_LIMIT {
+			_, err := b.SendMessage(
+				c.EffectiveChat.Id,
+				"Not able to send video note as it exceeds Telegram size restriction",
+				&gotgbot.SendMessageOpts{
+					ReplyToMessageId: c.EffectiveMessage.MessageId,
+				},
+			)
+			return err
+		}
+
 		vidFile, err := b.GetFile(msgToForward.VideoNote.FileId, &gotgbot.GetFileOpts{})
 		if err != nil {
 			_, err = b.SendMessage(
@@ -781,6 +814,17 @@ func sendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		}
 
 	} else if msgToForward.Animation != nil {
+
+		if !state.State.Config.Telegram.SelfHostedApi && msgToForward.Animation.FileSize > DOWNLOAD_LIMIT {
+			_, err := b.SendMessage(
+				c.EffectiveChat.Id,
+				"Not able to send animation as it exceeds Telegram size restriction",
+				&gotgbot.SendMessageOpts{
+					ReplyToMessageId: c.EffectiveMessage.MessageId,
+				},
+			)
+			return err
+		}
 
 		animationFile, err := b.GetFile(msgToForward.Animation.FileId, &gotgbot.GetFileOpts{})
 		if err != nil {
@@ -891,6 +935,17 @@ func sendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 
 	} else if msgToForward.Audio != nil {
 
+		if !state.State.Config.Telegram.SelfHostedApi && msgToForward.Audio.FileSize > DOWNLOAD_LIMIT {
+			_, err := b.SendMessage(
+				c.EffectiveChat.Id,
+				"Not able to send audio as it exceeds Telegram size restriction",
+				&gotgbot.SendMessageOpts{
+					ReplyToMessageId: c.EffectiveMessage.MessageId,
+				},
+			)
+			return err
+		}
+
 		audioFile, err := b.GetFile(msgToForward.Audio.FileId, &gotgbot.GetFileOpts{})
 		if err != nil {
 			_, err = b.SendMessage(
@@ -999,6 +1054,17 @@ func sendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 
 	} else if msgToForward.Voice != nil {
 
+		if !state.State.Config.Telegram.SelfHostedApi && msgToForward.Voice.FileSize > DOWNLOAD_LIMIT {
+			_, err := b.SendMessage(
+				c.EffectiveChat.Id,
+				"Not able to send voice note as it exceeds Telegram size restriction",
+				&gotgbot.SendMessageOpts{
+					ReplyToMessageId: c.EffectiveMessage.MessageId,
+				},
+			)
+			return err
+		}
+
 		audioFile, err := b.GetFile(msgToForward.Voice.FileId, &gotgbot.GetFileOpts{})
 		if err != nil {
 			_, err = b.SendMessage(
@@ -1106,6 +1172,17 @@ func sendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		}
 
 	} else if msgToForward.Document != nil {
+
+		if !state.State.Config.Telegram.SelfHostedApi && msgToForward.Document.FileSize > DOWNLOAD_LIMIT {
+			_, err := b.SendMessage(
+				c.EffectiveChat.Id,
+				"Not able to send document as it exceeds Telegram size restriction",
+				&gotgbot.SendMessageOpts{
+					ReplyToMessageId: c.EffectiveMessage.MessageId,
+				},
+			)
+			return err
+		}
 
 		docFile, err := b.GetFile(msgToForward.Document.FileId, &gotgbot.GetFileOpts{})
 		if err != nil {
@@ -1217,6 +1294,17 @@ func sendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		}
 
 	} else if msgToForward.Sticker != nil {
+
+		if !state.State.Config.Telegram.SelfHostedApi && msgToForward.Sticker.FileSize > DOWNLOAD_LIMIT {
+			_, err := b.SendMessage(
+				c.EffectiveChat.Id,
+				"Not able to send sticker as it exceeds Telegram size restriction",
+				&gotgbot.SendMessageOpts{
+					ReplyToMessageId: c.EffectiveMessage.MessageId,
+				},
+			)
+			return err
+		}
 
 		if msgToForward.Sticker.IsAnimated || msgToForward.Sticker.IsVideo {
 			_, err := b.SendMessage(

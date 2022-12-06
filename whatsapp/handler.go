@@ -10,6 +10,7 @@ import (
 
 	"watgbridge/database"
 	"watgbridge/state"
+	"watgbridge/telegram"
 	"watgbridge/utils"
 
 	"github.com/PaulSonOfLars/gotgbot/v2"
@@ -119,37 +120,49 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 			return
 		}
 
-		imageBytes, err := waClient.Download(imgMsg)
-		if err != nil {
-			tgBot.SendMessage(
+		if !state.State.Config.Telegram.SelfHostedApi && imgMsg.GetFileLength() > telegram.UPLOAD_LIMIT {
+			bridgedText += "\n<i>Could not send the photo as it exceeds Telegram size restrictions</i>"
+			sentMsg, _ := tgBot.SendMessage(
 				cfg.Telegram.TargetChatID,
-				fmt.Sprintf(
-					"Error downloading an image : <code>%s</code>",
-					html.EscapeString(err.Error()),
-				),
-				&gotgbot.SendMessageOpts{},
+				bridgedText,
+				&gotgbot.SendMessageOpts{
+					ReplyToMessageId: replyToMsgId,
+				},
 			)
-			return
-		}
-
-		if len(caption) > 0 {
-			bridgedText += "<b>Caption:</b>\n\n"
-			if len(caption) > 500 {
-				bridgedText += (html.EscapeString(utils.SubString(caption, 0, 500)) + "...")
-			} else {
-				bridgedText += html.EscapeString(caption)
+			idToSave = sentMsg.MessageId
+		} else {
+			imageBytes, err := waClient.Download(imgMsg)
+			if err != nil {
+				tgBot.SendMessage(
+					cfg.Telegram.TargetChatID,
+					fmt.Sprintf(
+						"Error downloading an image : <code>%s</code>",
+						html.EscapeString(err.Error()),
+					),
+					&gotgbot.SendMessageOpts{},
+				)
+				return
 			}
-		}
 
-		sentMsg, _ := tgBot.SendPhoto(
-			cfg.Telegram.TargetChatID,
-			imageBytes,
-			&gotgbot.SendPhotoOpts{
-				Caption:          bridgedText,
-				ReplyToMessageId: replyToMsgId,
-			},
-		)
-		idToSave = sentMsg.MessageId
+			if len(caption) > 0 {
+				bridgedText += "<b>Caption:</b>\n\n"
+				if len(caption) > 500 {
+					bridgedText += (html.EscapeString(utils.SubString(caption, 0, 500)) + "...")
+				} else {
+					bridgedText += html.EscapeString(caption)
+				}
+			}
+
+			sentMsg, _ := tgBot.SendPhoto(
+				cfg.Telegram.TargetChatID,
+				imageBytes,
+				&gotgbot.SendPhotoOpts{
+					Caption:          bridgedText,
+					ReplyToMessageId: replyToMsgId,
+				},
+			)
+			idToSave = sentMsg.MessageId
+		}
 
 	case "gif":
 
@@ -160,42 +173,54 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 			return
 		}
 
-		gifBytes, err := waClient.Download(gifMsg)
-		if err != nil {
-			tgBot.SendMessage(
+		if !state.State.Config.Telegram.SelfHostedApi && gifMsg.GetFileLength() > telegram.UPLOAD_LIMIT {
+			bridgedText += "\n<i>Could not send the GIF as it exceeds Telegram size restrictions</i>"
+			sentMsg, _ := tgBot.SendMessage(
 				cfg.Telegram.TargetChatID,
-				fmt.Sprintf(
-					"Error downloading an gif : <code>%s</code>",
-					html.EscapeString(err.Error()),
-				),
-				&gotgbot.SendMessageOpts{},
+				bridgedText,
+				&gotgbot.SendMessageOpts{
+					ReplyToMessageId: replyToMsgId,
+				},
 			)
-			return
-		}
-
-		if len(caption) > 0 {
-			bridgedText += "<b>Caption:</b>\n\n"
-			if len(caption) > 500 {
-				bridgedText += (html.EscapeString(utils.SubString(caption, 0, 500)) + "...")
-			} else {
-				bridgedText += html.EscapeString(caption)
+			idToSave = sentMsg.MessageId
+		} else {
+			gifBytes, err := waClient.Download(gifMsg)
+			if err != nil {
+				tgBot.SendMessage(
+					cfg.Telegram.TargetChatID,
+					fmt.Sprintf(
+						"Error downloading an gif : <code>%s</code>",
+						html.EscapeString(err.Error()),
+					),
+					&gotgbot.SendMessageOpts{},
+				)
+				return
 			}
-		}
 
-		fileToSend := gotgbot.NamedFile{
-			FileName: "animation.gif",
-			File:     bytes.NewReader(gifBytes),
-		}
+			if len(caption) > 0 {
+				bridgedText += "<b>Caption:</b>\n\n"
+				if len(caption) > 500 {
+					bridgedText += (html.EscapeString(utils.SubString(caption, 0, 500)) + "...")
+				} else {
+					bridgedText += html.EscapeString(caption)
+				}
+			}
 
-		sentMsg, _ := tgBot.SendAnimation(
-			cfg.Telegram.TargetChatID,
-			fileToSend,
-			&gotgbot.SendAnimationOpts{
-				Caption:          bridgedText,
-				ReplyToMessageId: replyToMsgId,
-			},
-		)
-		idToSave = sentMsg.MessageId
+			fileToSend := gotgbot.NamedFile{
+				FileName: "animation.gif",
+				File:     bytes.NewReader(gifBytes),
+			}
+
+			sentMsg, _ := tgBot.SendAnimation(
+				cfg.Telegram.TargetChatID,
+				fileToSend,
+				&gotgbot.SendAnimationOpts{
+					Caption:          bridgedText,
+					ReplyToMessageId: replyToMsgId,
+				},
+			)
+			idToSave = sentMsg.MessageId
+		}
 
 	case "video":
 
@@ -206,42 +231,54 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 			return
 		}
 
-		vidBytes, err := waClient.Download(vidMsg)
-		if err != nil {
-			tgBot.SendMessage(
+		if !state.State.Config.Telegram.SelfHostedApi && vidMsg.GetFileLength() > telegram.UPLOAD_LIMIT {
+			bridgedText += "\n<i>Could not send the video as it exceeds Telegram size restrictions</i>"
+			sentMsg, _ := tgBot.SendMessage(
 				cfg.Telegram.TargetChatID,
-				fmt.Sprintf(
-					"Error downloading a video : <code>%s</code>",
-					html.EscapeString(err.Error()),
-				),
-				&gotgbot.SendMessageOpts{},
+				bridgedText,
+				&gotgbot.SendMessageOpts{
+					ReplyToMessageId: replyToMsgId,
+				},
 			)
-			return
-		}
-
-		if len(caption) > 0 {
-			bridgedText += "<b>Caption:</b>\n\n"
-			if len(caption) > 500 {
-				bridgedText += (html.EscapeString(utils.SubString(caption, 0, 500)) + "...")
-			} else {
-				bridgedText += html.EscapeString(caption)
+			idToSave = sentMsg.MessageId
+		} else {
+			vidBytes, err := waClient.Download(vidMsg)
+			if err != nil {
+				tgBot.SendMessage(
+					cfg.Telegram.TargetChatID,
+					fmt.Sprintf(
+						"Error downloading a video : <code>%s</code>",
+						html.EscapeString(err.Error()),
+					),
+					&gotgbot.SendMessageOpts{},
+				)
+				return
 			}
-		}
 
-		fileToSend := gotgbot.NamedFile{
-			FileName: "video." + strings.Split(vidMsg.GetMimetype(), "/")[1],
-			File:     bytes.NewReader(vidBytes),
-		}
+			if len(caption) > 0 {
+				bridgedText += "<b>Caption:</b>\n\n"
+				if len(caption) > 500 {
+					bridgedText += (html.EscapeString(utils.SubString(caption, 0, 500)) + "...")
+				} else {
+					bridgedText += html.EscapeString(caption)
+				}
+			}
 
-		sentMsg, _ := tgBot.SendVideo(
-			cfg.Telegram.TargetChatID,
-			fileToSend,
-			&gotgbot.SendVideoOpts{
-				Caption:          bridgedText,
-				ReplyToMessageId: replyToMsgId,
-			},
-		)
-		idToSave = sentMsg.MessageId
+			fileToSend := gotgbot.NamedFile{
+				FileName: "video." + strings.Split(vidMsg.GetMimetype(), "/")[1],
+				File:     bytes.NewReader(vidBytes),
+			}
+
+			sentMsg, _ := tgBot.SendVideo(
+				cfg.Telegram.TargetChatID,
+				fileToSend,
+				&gotgbot.SendVideoOpts{
+					Caption:          bridgedText,
+					ReplyToMessageId: replyToMsgId,
+				},
+			)
+			idToSave = sentMsg.MessageId
+		}
 
 	case "ptt":
 		// Voice Notes
@@ -252,34 +289,46 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 			return
 		}
 
-		audioBytes, err := waClient.Download(audioMsg)
-		if err != nil {
-			tgBot.SendMessage(
+		if !state.State.Config.Telegram.SelfHostedApi && audioMsg.GetFileLength() > telegram.UPLOAD_LIMIT {
+			bridgedText += "\n<i>Could not send the audio as it exceeds Telegram size restrictions</i>"
+			sentMsg, _ := tgBot.SendMessage(
 				cfg.Telegram.TargetChatID,
-				fmt.Sprintf(
-					"Error downloading an audio : <code>%s</code>",
-					html.EscapeString(err.Error()),
-				),
-				&gotgbot.SendMessageOpts{},
+				bridgedText,
+				&gotgbot.SendMessageOpts{
+					ReplyToMessageId: replyToMsgId,
+				},
 			)
-			return
-		}
+			idToSave = sentMsg.MessageId
+		} else {
+			audioBytes, err := waClient.Download(audioMsg)
+			if err != nil {
+				tgBot.SendMessage(
+					cfg.Telegram.TargetChatID,
+					fmt.Sprintf(
+						"Error downloading an audio : <code>%s</code>",
+						html.EscapeString(err.Error()),
+					),
+					&gotgbot.SendMessageOpts{},
+				)
+				return
+			}
 
-		fileToSend := gotgbot.NamedFile{
-			FileName: "audio.ogg",
-			File:     bytes.NewReader(audioBytes),
-		}
+			fileToSend := gotgbot.NamedFile{
+				FileName: "audio.ogg",
+				File:     bytes.NewReader(audioBytes),
+			}
 
-		sentMsg, _ := tgBot.SendAudio(
-			cfg.Telegram.TargetChatID,
-			fileToSend,
-			&gotgbot.SendAudioOpts{
-				Caption:          bridgedText,
-				Duration:         int64(audioMsg.GetSeconds()),
-				ReplyToMessageId: replyToMsgId,
-			},
-		)
-		idToSave = sentMsg.MessageId
+			sentMsg, _ := tgBot.SendAudio(
+				cfg.Telegram.TargetChatID,
+				fileToSend,
+				&gotgbot.SendAudioOpts{
+					Caption:          bridgedText,
+					Duration:         int64(audioMsg.GetSeconds()),
+					ReplyToMessageId: replyToMsgId,
+				},
+			)
+			idToSave = sentMsg.MessageId
+		}
 
 	case "audio":
 
@@ -289,34 +338,46 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 			return
 		}
 
-		audioBytes, err := waClient.Download(audioMsg)
-		if err != nil {
-			tgBot.SendMessage(
+		if !state.State.Config.Telegram.SelfHostedApi && audioMsg.GetFileLength() > telegram.UPLOAD_LIMIT {
+			bridgedText += "\n<i>Could not send the audio as it exceeds Telegram size restrictions</i>"
+			sentMsg, _ := tgBot.SendMessage(
 				cfg.Telegram.TargetChatID,
-				fmt.Sprintf(
-					"Error downloading an audio : <code>%s</code>",
-					html.EscapeString(err.Error()),
-				),
-				&gotgbot.SendMessageOpts{},
+				bridgedText,
+				&gotgbot.SendMessageOpts{
+					ReplyToMessageId: replyToMsgId,
+				},
 			)
-			return
-		}
+			idToSave = sentMsg.MessageId
+		} else {
+			audioBytes, err := waClient.Download(audioMsg)
+			if err != nil {
+				tgBot.SendMessage(
+					cfg.Telegram.TargetChatID,
+					fmt.Sprintf(
+						"Error downloading an audio : <code>%s</code>",
+						html.EscapeString(err.Error()),
+					),
+					&gotgbot.SendMessageOpts{},
+				)
+				return
+			}
 
-		fileToSend := gotgbot.NamedFile{
-			FileName: "audio.m4a",
-			File:     bytes.NewReader(audioBytes),
-		}
+			fileToSend := gotgbot.NamedFile{
+				FileName: "audio.m4a",
+				File:     bytes.NewReader(audioBytes),
+			}
 
-		sentMsg, _ := tgBot.SendAudio(
-			cfg.Telegram.TargetChatID,
-			fileToSend,
-			&gotgbot.SendAudioOpts{
-				Caption:          bridgedText,
-				Duration:         int64(audioMsg.GetSeconds()),
-				ReplyToMessageId: replyToMsgId,
-			},
-		)
-		idToSave = sentMsg.MessageId
+			sentMsg, _ := tgBot.SendAudio(
+				cfg.Telegram.TargetChatID,
+				fileToSend,
+				&gotgbot.SendAudioOpts{
+					Caption:          bridgedText,
+					Duration:         int64(audioMsg.GetSeconds()),
+					ReplyToMessageId: replyToMsgId,
+				},
+			)
+			idToSave = sentMsg.MessageId
+		}
 
 	case "document":
 		// Any document like PDF, image, video etc
@@ -328,42 +389,54 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 			return
 		}
 
-		docBytes, err := waClient.Download(docMsg)
-		if err != nil {
-			tgBot.SendMessage(
+		if !state.State.Config.Telegram.SelfHostedApi && docMsg.GetFileLength() > telegram.UPLOAD_LIMIT {
+			bridgedText += "\n<i>Could not send the document as it exceeds Telegram size restrictions</i>"
+			sentMsg, _ := tgBot.SendMessage(
 				cfg.Telegram.TargetChatID,
-				fmt.Sprintf(
-					"Error downloading a document : <code>%s</code>",
-					html.EscapeString(err.Error()),
-				),
-				&gotgbot.SendMessageOpts{},
+				bridgedText,
+				&gotgbot.SendMessageOpts{
+					ReplyToMessageId: replyToMsgId,
+				},
 			)
-			return
-		}
-
-		if len(caption) > 0 {
-			bridgedText += "<b>Caption:</b>\n\n"
-			if len(caption) > 500 {
-				bridgedText += (html.EscapeString(utils.SubString(caption, 0, 500)) + "...")
-			} else {
-				bridgedText += html.EscapeString(caption)
+			idToSave = sentMsg.MessageId
+		} else {
+			docBytes, err := waClient.Download(docMsg)
+			if err != nil {
+				tgBot.SendMessage(
+					cfg.Telegram.TargetChatID,
+					fmt.Sprintf(
+						"Error downloading a document : <code>%s</code>",
+						html.EscapeString(err.Error()),
+					),
+					&gotgbot.SendMessageOpts{},
+				)
+				return
 			}
-		}
 
-		fileToSend := gotgbot.NamedFile{
-			FileName: docMsg.GetTitle(),
-			File:     bytes.NewReader(docBytes),
-		}
+			if len(caption) > 0 {
+				bridgedText += "<b>Caption:</b>\n\n"
+				if len(caption) > 500 {
+					bridgedText += (html.EscapeString(utils.SubString(caption, 0, 500)) + "...")
+				} else {
+					bridgedText += html.EscapeString(caption)
+				}
+			}
 
-		sentMsg, _ := tgBot.SendDocument(
-			cfg.Telegram.TargetChatID,
-			fileToSend,
-			&gotgbot.SendDocumentOpts{
-				Caption:          bridgedText,
-				ReplyToMessageId: replyToMsgId,
-			},
-		)
-		idToSave = sentMsg.MessageId
+			fileToSend := gotgbot.NamedFile{
+				FileName: docMsg.GetTitle(),
+				File:     bytes.NewReader(docBytes),
+			}
+
+			sentMsg, _ := tgBot.SendDocument(
+				cfg.Telegram.TargetChatID,
+				fileToSend,
+				&gotgbot.SendDocumentOpts{
+					Caption:          bridgedText,
+					ReplyToMessageId: replyToMsgId,
+				},
+			)
+			idToSave = sentMsg.MessageId
+		}
 
 	case "sticker":
 
@@ -372,21 +445,8 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 			return
 		}
 
-		stickerBytes, err := waClient.Download(stickerMsg)
-		if err != nil {
-			tgBot.SendMessage(
-				cfg.Telegram.TargetChatID,
-				fmt.Sprintf(
-					"Error downloading a sticker : <code>%s</code>",
-					html.EscapeString(err.Error()),
-				),
-				&gotgbot.SendMessageOpts{},
-			)
-			return
-		}
-
-		if !stickerMsg.GetIsAnimated() {
-			bridgedText += "\n<i>It was the following sticker</i>"
+		if !state.State.Config.Telegram.SelfHostedApi && stickerMsg.GetFileLength() > telegram.UPLOAD_LIMIT {
+			bridgedText += "\n<i>Could not send the sticker as it exceeds Telegram size restrictions</i>"
 			sentMsg, _ := tgBot.SendMessage(
 				cfg.Telegram.TargetChatID,
 				bridgedText,
@@ -395,25 +455,50 @@ func NewMessageFromOthersHandler(text string, v *events.Message) {
 				},
 			)
 			idToSave = sentMsg.MessageId
-
-			tgBot.SendSticker(
-				cfg.Telegram.TargetChatID,
-				stickerBytes,
-				&gotgbot.SendStickerOpts{
-					ReplyToMessageId: sentMsg.MessageId,
-				},
-			)
 		} else {
-			bridgedText += "\n<i>It is an animated sticker which is not supported</i>"
+			stickerBytes, err := waClient.Download(stickerMsg)
+			if err != nil {
+				tgBot.SendMessage(
+					cfg.Telegram.TargetChatID,
+					fmt.Sprintf(
+						"Error downloading a sticker : <code>%s</code>",
+						html.EscapeString(err.Error()),
+					),
+					&gotgbot.SendMessageOpts{},
+				)
+				return
+			}
 
-			sentMsg, _ := tgBot.SendMessage(
-				cfg.Telegram.TargetChatID,
-				bridgedText,
-				&gotgbot.SendMessageOpts{
-					ReplyToMessageId: replyToMsgId,
-				},
-			)
-			idToSave = sentMsg.MessageId
+			if !stickerMsg.GetIsAnimated() {
+				bridgedText += "\n<i>It was the following sticker</i>"
+				sentMsg, _ := tgBot.SendMessage(
+					cfg.Telegram.TargetChatID,
+					bridgedText,
+					&gotgbot.SendMessageOpts{
+						ReplyToMessageId: replyToMsgId,
+					},
+				)
+				idToSave = sentMsg.MessageId
+
+				tgBot.SendSticker(
+					cfg.Telegram.TargetChatID,
+					stickerBytes,
+					&gotgbot.SendStickerOpts{
+						ReplyToMessageId: sentMsg.MessageId,
+					},
+				)
+			} else {
+				bridgedText += "\n<i>It is an animated sticker which is not supported</i>"
+
+				sentMsg, _ := tgBot.SendMessage(
+					cfg.Telegram.TargetChatID,
+					bridgedText,
+					&gotgbot.SendMessageOpts{
+						ReplyToMessageId: replyToMsgId,
+					},
+				)
+				idToSave = sentMsg.MessageId
+			}
 		}
 
 	case "vcard":

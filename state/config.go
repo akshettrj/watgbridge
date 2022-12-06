@@ -14,10 +14,11 @@ type Config struct {
 	TimeFormat string `yaml:"time_format"`
 
 	Telegram struct {
-		BotToken     string `yaml:"bot_token"`
-		ApiURL       string `yaml:"api_url"`
-		OwnerID      int64  `yaml:"owner_id"`
-		TargetChatID int64  `yaml:"target_chat_id"`
+		BotToken      string `yaml:"bot_token"`
+		ApiURL        string `yaml:"api_url"`
+		SelfHostedApi bool   `yaml:"self_hosted_api"`
+		OwnerID       int64  `yaml:"owner_id"`
+		TargetChatID  int64  `yaml:"target_chat_id"`
 	} `yaml:"telegram"`
 
 	WhatsApp struct {
