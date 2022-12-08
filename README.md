@@ -41,6 +41,8 @@ PRs are welcome :)
         - `tag_all_allowed_groups`: these are the groups in which others can use @all/@everyone to tag everyone. The values that you need to fill in this section can be found by sending `/getwagroups` to the bot after running it once. You have to fill in the value before @ character in the JID.
         - `ignore_chats`: these are the groups which will not be bridged to telegram. The values have to be filled in the same way as `tag_all_allowed_groups`.
         - `status_allowed_chats`: these are the contacts (along with the country code) whose statuses will be bridged to Telegram. DO NOT TRY TO REPLY TO THESE BRIDGED STATUSES.
+- Execute the binary by running `./watgbridge`
+- On first run, it will show QR code for logging into WhatsApp that can by scanned by the WhatsApp app in `Linked devices`
 - It is recommended to restart the bot after every few hours becuase WhatsApp likes to disconnect a lot. So a Systemd service file has been provided. Edit the `User` and `ExecStart` according to your setup:
     - If you do not have local bot API server, remove `tgbotapi.service` from the `After` key in `Unit` section.
     - This service file will restart the bot every 24 hours

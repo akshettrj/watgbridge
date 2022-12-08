@@ -3,23 +3,28 @@ time_format: 02 Jan, 2006 - Mon @ 15:04
 
 telegram:
   bot_token: 186779
-  api_url: http://localhost:8082
+  # api_url: http://localhost:8082        # Uncomment if you have a local bot API server running (for bypassing file size limits)
   self_hosted_api: true
   owner_id: 704338780
   target_chat_id: 704338780
 
 whatsapp:
-  tag_all_allowed_groups:
+  # All these values can be obtained by running /findcontacts and /getwagroups commands
+  # You have to put only the values preceding the @ character
+  tag_all_allowed_groups:         # Members of these groups can tag everyone by sending @all or @everyone
     - 91xxxxxxxxxx-xxxxxxxxxx
     - 91xxxxxxxxxx-xxxxxxxxxx
     - 91xxxxxxxxxx-xxxxxxxxxx
     - 12xxxxxxxxxxxxx669
-  ignore_chats:
+  ignore_chats:                   # These chats will not be forwarded to Telegram
     - 12xxxxxxxxxxxxx063
     - 91xxxxxxxxxx-xxxxxxxxxx
-  status_allowed_chats:
+  status_allowed_chats:           # Statuses of only these people will be forwarded to Telegram
     - 91xxxxxxxxxx
     - 1xxxxxxxxxx
+
+# Uncomment any on of these sections
+# Using the sqlite database will be easiest as it does not require any hosted database server and stores data in a single file on your device
 
 # database:
 #   type: postgres
