@@ -99,7 +99,7 @@ func StartCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
 		c.EffectiveChat.Id,
 		fmt.Sprintf(
 			"Hoi, the bot has been up since %s",
-			html.EscapeString(state.State.StartTime.Local().Format(cfg.TimeFormat)),
+			html.EscapeString(state.State.StartTime.In(state.State.LocalLocation).Format(cfg.TimeFormat)),
 		),
 		&gotgbot.SendMessageOpts{
 			ReplyToMessageId: c.EffectiveMessage.MessageId,
