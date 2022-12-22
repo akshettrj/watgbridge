@@ -12,7 +12,6 @@ builds:
       - windows
       - darwin
     goarch:
-      - 386
       - amd64
       - arm64
 archives:
@@ -20,7 +19,6 @@ archives:
     name_template: watgbridge_{{ .Version }}_{{ .Os }}_{{ .Arch }}
     replacements:
       darwin: Darwin
-      386: i386
       linux: Linux
       windows: Windows
       amd64: x86_64
