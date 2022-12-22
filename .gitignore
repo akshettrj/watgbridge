@@ -17,3 +17,5 @@
 config.yaml
 watgbridge
 *.db
+
+dist/
