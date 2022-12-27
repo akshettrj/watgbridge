@@ -33,28 +33,6 @@ jobs:
         with:
           name: watgbridge-linux
           path: dist/watgbridge*
-  build-windows-binary:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-      - run: git fetch --force --tags
-      - uses: actions/setup-go@v3
-        with:
-          go-version: '>=1.19.4'
-          cache: true
-      - name: Build
-        uses: goreleaser/goreleaser-action@v4
-        with:
-          args: release --skip-publish --config .goreleaser/windows.yaml
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Upload
-        uses: actions/upload-artifact@v3
-        with:
-          name: watgbridge-windows
-          path: dist/watgbridge*
   build-darwin-binary:
     runs-on: macos-latest
     steps:
@@ -78,7 +56,7 @@ jobs:
           name: watgbridge-darwin
           path: dist/watgbridge*
   draft-release:
-    needs: [build-linux-binary, build-windows-binary, build-darwin-binary]
+    needs: [build-linux-binary, build-darwin-binary]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -90,17 +68,11 @@ jobs:
         run: |
           mkdir -p ./watgbridge-build/linux
           mkdir -p ./watgbridge-build/darwin
-          mkdir -p ./watgbridge-build/windows
       - name: Download linux binaries
         uses: actions/download-artifact@v3
         with:
           name: watgbridge-linux
           path: ./watgbridge-build/linux
-      - name: Download windows binaries
-        uses: actions/download-artifact@v3
-        with:
-          name: watgbridge-windows
-          path: ./watgbridge-build/windows
       - name: Download darwin binaries
         uses: actions/download-artifact@v3
         with:
