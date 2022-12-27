@@ -17,3 +17,4 @@
 config.yaml
 watgbridge
 *.db
+watgbridge-build/
