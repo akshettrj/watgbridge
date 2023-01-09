@@ -10,6 +10,8 @@ import (
 	"watgbridge/telegram"
 	"watgbridge/utils"
 	"watgbridge/whatsapp"
+
+	"github.com/go-co-op/gocron"
 )
 
 func main() {
@@ -64,6 +66,15 @@ func main() {
 	state.State.WhatsAppClient.AddEventHandler(whatsapp.WhatsAppEventHandler)
 
 	state.State.StartTime = time.Now().UTC()
+
+	s := gocron.NewScheduler(time.UTC)
+	s.TagsUnique()
+	_, _ = s.Every(1).Hour().Tag("foo").Do(func() {
+		contacts, err := state.State.WhatsAppClient.Store.Contacts.GetAllContacts()
+		if err == nil {
+			_ = database.ContactNameBulkAddOrUpdate(contacts)
+		}
+	})
 
 	state.State.TelegramUpdater.Idle()
 }
