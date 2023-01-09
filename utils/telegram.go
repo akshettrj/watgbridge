@@ -86,9 +86,13 @@ func TgDownloadByFilePath(b *gotgbot.Bot, filePath string) ([]byte, error) {
 }
 
 func TgReplyTextByContext(b *gotgbot.Bot, c *ext.Context, text string) error {
-	_, err := b.SendMessage(c.EffectiveChat.Id, text, &gotgbot.SendMessageOpts{
+	sendOpts := &gotgbot.SendMessageOpts{
 		ReplyToMessageId: c.EffectiveMessage.MessageId,
-		MessageThreadId:  c.EffectiveMessage.MessageThreadId})
+	}
+	if c.EffectiveMessage.IsTopicMessage {
+		sendOpts.MessageThreadId = c.EffectiveMessage.MessageThreadId
+	}
+	_, err := b.SendMessage(c.EffectiveChat.Id, text, sendOpts)
 	return err
 }
 
@@ -129,14 +133,15 @@ func TgReplyWithErrorByContext(b *gotgbot.Bot, c *ext.Context, eMessage string, 
 		return err
 	}
 
-	_, err := b.SendMessage(
-		c.EffectiveChat.Id,
+	sendOpts := &gotgbot.SendMessageOpts{
+		ReplyToMessageId: c.EffectiveMessage.MessageId,
+	}
+	if c.EffectiveMessage.IsTopicMessage {
+		sendOpts.MessageThreadId = c.EffectiveMessage.MessageThreadId
+	}
+	_, err := b.SendMessage(c.EffectiveChat.Id,
 		fmt.Sprintf("%s:\n\n<code>%s</code>", eMessage, html.EscapeString(e.Error())),
-		&gotgbot.SendMessageOpts{
-			ReplyToMessageId: c.EffectiveMessage.MessageId,
-			MessageThreadId:  c.EffectiveMessage.MessageThreadId,
-		},
-	)
+		sendOpts)
 	return err
 }
 
@@ -639,6 +644,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		if err != nil {
 			return TgReplyWithErrorByContext(b, c, "Failed to send message to WhatsApp", err)
 		}
+		fmt.Println(c.EffectiveMessage.MessageThreadId)
 		TgReplyTextByContext(b, c, "Successfully sent")
 
 		err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.User, waChatJID.String(),
