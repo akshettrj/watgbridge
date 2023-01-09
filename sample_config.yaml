@@ -4,9 +4,9 @@ time_format: 02 Jan, 2006 - Mon @ 15:04
 telegram:
   bot_token: 186779
   # api_url: http://localhost:8082        # Uncomment if you have a local bot API server running (for bypassing file size limits)
-  self_hosted_api: true
+  self_hosted_api: false
   owner_id: 704338780
-  target_chat_id: 704338780
+  target_chat_id: 704338780               # This is the chat where messages will be forwarded
 
 whatsapp:
   # All these values can be obtained by running /findcontacts and /getwagroups commands
@@ -16,10 +16,7 @@ whatsapp:
     - 91xxxxxxxxxx-xxxxxxxxxx
     - 91xxxxxxxxxx-xxxxxxxxxx
     - 12xxxxxxxxxxxxx669
-  ignore_chats:                   # These chats will not be forwarded to Telegram
-    - 12xxxxxxxxxxxxx063
-    - 91xxxxxxxxxx-xxxxxxxxxx
-  status_allowed_chats:           # Statuses of only these people will be forwarded to Telegram
+  status_ignored_chats:           # Statuses of these people WILL NOT BE FORWARDED to Telegram
     - 91xxxxxxxxxx
     - 1xxxxxxxxxx
 
