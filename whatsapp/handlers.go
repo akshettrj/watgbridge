@@ -135,7 +135,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 	if contextInfo := v.Message.GetExtendedTextMessage().GetContextInfo(); contextInfo != nil {
 		stanzaId := contextInfo.GetStanzaId()
 		tgChatId, tgThreadId, tgMsgId, err := database.MsgIdGetTgFromWa(stanzaId, v.Info.Chat.String())
-		if err != nil && tgChatId == cfg.Telegram.TargetChatID {
+		if err == nil && tgChatId == cfg.Telegram.TargetChatID {
 			replyToMsgId = tgMsgId
 			threadId = tgThreadId
 			threadIdFound = true
