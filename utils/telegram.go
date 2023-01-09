@@ -1,56 +1,658 @@
 package utils
 
 import (
+	"context"
 	"fmt"
-	"io/ioutil"
+	"html"
+	"io"
 	"net/http"
 	"os"
+	"strings"
+	"time"
+
+	"watgbridge/database"
+	"watgbridge/state"
 
 	"github.com/PaulSonOfLars/gotgbot/v2"
+	"github.com/PaulSonOfLars/gotgbot/v2/ext"
+	"github.com/forPelevin/gomoji"
+	"go.mau.fi/whatsmeow"
+	waProto "go.mau.fi/whatsmeow/binary/proto"
+	waTypes "go.mau.fi/whatsmeow/types"
+	"google.golang.org/protobuf/proto"
 )
 
-func RegisterBotCommand(bot *gotgbot.Bot, commands ...gotgbot.BotCommand) error {
-	_, err := bot.SetMyCommands(commands, &gotgbot.SetMyCommandsOpts{
-		Scope:        gotgbot.BotCommandScopeAllPrivateChats{},
+const (
+	DownloadSizeLimit int64  = 20971520
+	UploadSizeLimit   uint64 = 52428800
+)
+
+func TgRegisterBotCommands(b *gotgbot.Bot, commands ...gotgbot.BotCommand) error {
+	_, err := b.SetMyCommands(commands, &gotgbot.SetMyCommandsOpts{
 		LanguageCode: "en",
+		Scope:        gotgbot.BotCommandScopeDefault{},
 	})
 	return err
 }
 
-func TelegramDownloadFileByPath(bot *gotgbot.Bot, filePath string) ([]byte, error) {
+func TgGetOrMakeThreadFromWa(waChatId string, tgChatId int64, threadName string) (int64, error) {
+	threadId, threadFound, err := database.ChatThreadGetTgFromWa(waChatId, tgChatId)
+	if err != nil {
+		return 0, err
+	}
 
-	if bot.GetAPIURL() == gotgbot.DefaultAPIURL {
-		req, err := http.NewRequest(
-			"GET",
-			fmt.Sprintf(
-				"%s/file/bot%s/%s",
-				bot.GetAPIURL(),
-				bot.GetToken(),
-				filePath,
-			),
-			nil,
-		)
+	if !threadFound {
+		tgBot := state.State.TelegramBot
+		newForum, err := tgBot.CreateForumTopic(tgChatId, threadName, &gotgbot.CreateForumTopicOpts{})
 		if err != nil {
-			return nil, err
+			return 0, err
 		}
-
-		res, err := http.DefaultClient.Do(req)
+		err = database.ChatThreadAddNewPair(waChatId, tgChatId, newForum.MessageThreadId)
 		if err != nil {
-			return nil, err
+			return newForum.MessageThreadId, err
 		}
-		defer res.Body.Close()
+		return newForum.MessageThreadId, nil
+	}
 
-		if res.StatusCode != 200 {
-			return nil, fmt.Errorf("Received non-200 status code : " + res.Status)
-		}
+	return threadId, nil
+}
 
-		bodyBytes, err := ioutil.ReadAll(res.Body)
-		if err != nil {
-			return nil, err
-		}
-
-		return bodyBytes, nil
-	} else {
+func TgDownloadByFilePath(b *gotgbot.Bot, filePath string) ([]byte, error) {
+	if state.State.Config.Telegram.SelfHostedAPI {
 		return os.ReadFile(filePath)
 	}
+
+	req, err := http.NewRequest("GET", fmt.Sprintf("%s/file/bot%s/%s",
+		b.GetAPIURL(), b.GetToken(), filePath), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != 200 {
+		return nil, fmt.Errorf("received non-200 status code : %s", res.Status)
+	}
+
+	bodyBytes, err := io.ReadAll(res.Body)
+	if err != nil {
+		return nil, err
+	}
+	return bodyBytes, nil
+}
+
+func TgReplyTextByContext(b *gotgbot.Bot, c *ext.Context, text string) error {
+	sendOpts := &gotgbot.SendMessageOpts{
+		ReplyToMessageId: c.EffectiveMessage.MessageId,
+	}
+	if c.EffectiveMessage.IsTopicMessage {
+		sendOpts.MessageThreadId = c.EffectiveMessage.MessageThreadId
+	}
+	_, err := b.SendMessage(c.EffectiveChat.Id, text, sendOpts)
+	return err
+}
+
+func TgSendTextById(b *gotgbot.Bot, chatId int64, threadId int64, text string) error {
+	_, err := b.SendMessage(chatId, text, &gotgbot.SendMessageOpts{
+		MessageThreadId: threadId})
+	return err
+}
+
+func TgUpdateIsAuthorized(b *gotgbot.Bot, c *ext.Context) bool {
+	var (
+		cfg     = state.State.Config
+		sender  = c.EffectiveSender.User
+		ownerID = cfg.Telegram.OwnerID
+	)
+
+	if sender != nil && sender.Id == ownerID {
+		return true
+	}
+
+	if c.CallbackQuery != nil {
+		c.CallbackQuery.Answer(b, &gotgbot.AnswerCallbackQueryOpts{
+			Text:      "Not authorized to use this bot",
+			ShowAlert: true,
+			CacheTime: 60,
+		})
+	}
+
+	return false
+}
+
+func TgReplyWithErrorByContext(b *gotgbot.Bot, c *ext.Context, eMessage string, e error) error {
+	if c.CallbackQuery != nil {
+		_, err := c.CallbackQuery.Answer(b, &gotgbot.AnswerCallbackQueryOpts{
+			Text:      eMessage + ":\n\n" + e.Error(),
+			ShowAlert: true,
+		})
+		return err
+	}
+
+	sendOpts := &gotgbot.SendMessageOpts{
+		ReplyToMessageId: c.EffectiveMessage.MessageId,
+	}
+	if c.EffectiveMessage.IsTopicMessage {
+		sendOpts.MessageThreadId = c.EffectiveMessage.MessageThreadId
+	}
+	_, err := b.SendMessage(c.EffectiveChat.Id,
+		fmt.Sprintf("%s:\n\n<code>%s</code>", eMessage, html.EscapeString(e.Error())),
+		sendOpts)
+	return err
+}
+
+func TgSendErrorById(b *gotgbot.Bot, chatId, threadId int64, eMessage string, e error) error {
+	_, err := b.SendMessage(
+		chatId,
+		fmt.Sprintf("%s:\n\n<code>%s</code>", eMessage, html.EscapeString(e.Error())),
+		&gotgbot.SendMessageOpts{
+			MessageThreadId: threadId,
+		},
+	)
+	return err
+}
+
+func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
+	msgToForward, msgToReplyTo *gotgbot.Message,
+	waChatJID waTypes.JID, participant, stanzaId string,
+	isReply bool) error {
+
+	var (
+		cfg      = state.State.Config
+		waClient = state.State.WhatsAppClient
+	)
+
+	if msgToForward.Photo != nil && len(msgToForward.Photo) > 0 {
+
+		bestPhoto := msgToForward.Photo[0]
+		for _, photo := range msgToForward.Photo {
+			if photo.Height*photo.Width > bestPhoto.Height*bestPhoto.Width {
+				bestPhoto = photo
+			}
+		}
+
+		if !cfg.Telegram.SelfHostedAPI && bestPhoto.FileSize > DownloadSizeLimit {
+			return TgReplyTextByContext(b, c, "Unable to send photo as it exceeds Telegram size restriction")
+		}
+
+		imageFile, err := b.GetFile(bestPhoto.FileId, &gotgbot.GetFileOpts{})
+		if err != nil {
+			return TgReplyWithErrorByContext(b, c, "Failed to retreive image file from Telegram", err)
+		}
+
+		imageBytes, err := TgDownloadByFilePath(b, imageFile.FilePath)
+		if err != nil {
+			return TgReplyWithErrorByContext(b, c, "Failed to download image from Telegram", err)
+		}
+
+		uploadedImage, err := waClient.Upload(context.Background(), imageBytes, whatsmeow.MediaImage)
+		if err != nil {
+			return TgReplyWithErrorByContext(b, c, "Failed to upload image to WhatsApp", err)
+		}
+
+		msgToSend := &waProto.Message{
+			ImageMessage: &waProto.ImageMessage{
+				Caption:       proto.String(msgToForward.Caption),
+				Url:           proto.String(uploadedImage.URL),
+				DirectPath:    proto.String(uploadedImage.DirectPath),
+				MediaKey:      uploadedImage.MediaKey,
+				Mimetype:      proto.String(http.DetectContentType(imageBytes)),
+				FileEncSha256: uploadedImage.FileEncSHA256,
+				FileSha256:    uploadedImage.FileSHA256,
+				FileLength:    proto.Uint64(uint64(len(imageBytes))),
+				ViewOnce:      proto.Bool(msgToForward.HasProtectedContent),
+			},
+		}
+		if isReply {
+			msgToSend.ImageMessage.ContextInfo = &waProto.ContextInfo{
+				StanzaId:      proto.String(stanzaId),
+				Participant:   proto.String(participant),
+				QuotedMessage: &waProto.Message{Conversation: proto.String("")},
+			}
+		}
+
+		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, msgToSend)
+		if err != nil {
+			return TgReplyWithErrorByContext(b, c, "Failed to send image to WhatsApp", err)
+		}
+		TgReplyTextByContext(b, c, "Successfully sent")
+
+		err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.User, waChatJID.String(),
+			cfg.Telegram.TargetChatID, msgToForward.MessageId, msgToForward.MessageThreadId)
+		if err != nil {
+			return TgReplyWithErrorByContext(b, c, "Failed to add to database", err)
+		}
+
+	} else if msgToForward.Video != nil {
+
+		if !cfg.Telegram.SelfHostedAPI && msgToForward.Video.FileSize > DownloadSizeLimit {
+			return TgReplyTextByContext(b, c, "Unable to send video as it exceeds Telegram size restriction")
+		}
+
+		videoFile, err := b.GetFile(msgToForward.Video.FileId, &gotgbot.GetFileOpts{})
+		if err != nil {
+			return TgReplyWithErrorByContext(b, c, "Failed to retreive video file from Telegram", err)
+		}
+
+		videoBytes, err := TgDownloadByFilePath(b, videoFile.FilePath)
+		if err != nil {
+			return TgReplyWithErrorByContext(b, c, "Failed to download video from Telegram", err)
+		}
+
+		uploadedVideo, err := waClient.Upload(context.Background(), videoBytes, whatsmeow.MediaVideo)
+		if err != nil {
+			return TgReplyWithErrorByContext(b, c, "Failed to upload video to WhatsApp", err)
+		}
+
+		msgToSend := &waProto.Message{
+			VideoMessage: &waProto.VideoMessage{
+				Caption:       proto.String(msgToForward.Caption),
+				Url:           proto.String(uploadedVideo.URL),
+				DirectPath:    proto.String(uploadedVideo.DirectPath),
+				MediaKey:      uploadedVideo.MediaKey,
+				Mimetype:      proto.String(msgToForward.Video.MimeType),
+				FileEncSha256: uploadedVideo.FileEncSHA256,
+				FileSha256:    uploadedVideo.FileSHA256,
+				FileLength:    proto.Uint64(uint64(len(videoBytes))),
+				ViewOnce:      proto.Bool(msgToForward.HasProtectedContent),
+			},
+		}
+		if isReply {
+			msgToSend.VideoMessage.ContextInfo = &waProto.ContextInfo{
+				StanzaId:      proto.String(stanzaId),
+				Participant:   proto.String(participant),
+				QuotedMessage: &waProto.Message{Conversation: proto.String("")},
+			}
+		}
+
+		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, msgToSend)
+		if err != nil {
+			return TgReplyWithErrorByContext(b, c, "Failed to send video to WhatsApp", err)
+		}
+		TgReplyTextByContext(b, c, "Successfully sent")
+
+		err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.User, waChatJID.String(),
+			cfg.Telegram.TargetChatID, msgToForward.MessageId, msgToForward.MessageThreadId)
+		if err != nil {
+			return TgReplyWithErrorByContext(b, c, "Failed to add to database", err)
+		}
+	} else if msgToForward.VideoNote != nil {
+
+		if !cfg.Telegram.SelfHostedAPI && msgToForward.VideoNote.FileSize > DownloadSizeLimit {
+			return TgReplyTextByContext(b, c, "Unable to send video note as it exceeds Telegram size restriction")
+		}
+
+		videoFile, err := b.GetFile(msgToForward.VideoNote.FileId, &gotgbot.GetFileOpts{})
+		if err != nil {
+			return TgReplyWithErrorByContext(b, c, "Failed to retreive video note file from Telegram", err)
+		}
+
+		videoBytes, err := TgDownloadByFilePath(b, videoFile.FilePath)
+		if err != nil {
+			return TgReplyWithErrorByContext(b, c, "Failed to download video note from Telegram", err)
+		}
+
+		uploadedVideo, err := waClient.Upload(context.Background(), videoBytes, whatsmeow.MediaVideo)
+		if err != nil {
+			return TgReplyWithErrorByContext(b, c, "Failed to upload video note to WhatsApp", err)
+		}
+
+		msgToSend := &waProto.Message{
+			VideoMessage: &waProto.VideoMessage{
+				Caption:       proto.String(msgToForward.Caption),
+				Url:           proto.String(uploadedVideo.URL),
+				DirectPath:    proto.String(uploadedVideo.DirectPath),
+				MediaKey:      uploadedVideo.MediaKey,
+				Mimetype:      proto.String(http.DetectContentType(videoBytes)),
+				FileEncSha256: uploadedVideo.FileEncSHA256,
+				FileSha256:    uploadedVideo.FileSHA256,
+				FileLength:    proto.Uint64(uint64(len(videoBytes))),
+				ViewOnce:      proto.Bool(msgToForward.HasProtectedContent),
+			},
+		}
+		if isReply {
+			msgToSend.VideoMessage.ContextInfo = &waProto.ContextInfo{
+				StanzaId:      proto.String(stanzaId),
+				Participant:   proto.String(participant),
+				QuotedMessage: &waProto.Message{Conversation: proto.String("")},
+			}
+		}
+
+		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, msgToSend)
+		if err != nil {
+			return TgReplyWithErrorByContext(b, c, "Failed to send video note to WhatsApp", err)
+		}
+		TgReplyTextByContext(b, c, "Successfully sent")
+
+		err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.User, waChatJID.String(),
+			cfg.Telegram.TargetChatID, msgToForward.MessageId, msgToForward.MessageThreadId)
+		if err != nil {
+			return TgReplyWithErrorByContext(b, c, "Failed to add to database", err)
+		}
+	} else if msgToForward.Animation != nil {
+
+		if !cfg.Telegram.SelfHostedAPI && msgToForward.Animation.FileSize > DownloadSizeLimit {
+			return TgReplyTextByContext(b, c, "Unable to send animation as it exceeds Telegram size restriction")
+		}
+
+		animationFile, err := b.GetFile(msgToForward.Animation.FileId, &gotgbot.GetFileOpts{})
+		if err != nil {
+			return TgReplyWithErrorByContext(b, c, "Failed to retreive animation file from Telegram", err)
+		}
+
+		animationBytes, err := TgDownloadByFilePath(b, animationFile.FilePath)
+		if err != nil {
+			return TgReplyWithErrorByContext(b, c, "Failed to download animation from Telegram", err)
+		}
+
+		uploadedAnimation, err := waClient.Upload(context.Background(), animationBytes, whatsmeow.MediaVideo)
+		if err != nil {
+			return TgReplyWithErrorByContext(b, c, "Failed to upload animation to WhatsApp", err)
+		}
+
+		msgToSend := &waProto.Message{
+			VideoMessage: &waProto.VideoMessage{
+				Caption:       proto.String(msgToForward.Caption),
+				Url:           proto.String(uploadedAnimation.URL),
+				DirectPath:    proto.String(uploadedAnimation.DirectPath),
+				MediaKey:      uploadedAnimation.MediaKey,
+				Mimetype:      proto.String(msgToForward.Animation.MimeType),
+				GifPlayback:   proto.Bool(true),
+				FileEncSha256: uploadedAnimation.FileEncSHA256,
+				FileSha256:    uploadedAnimation.FileSHA256,
+				FileLength:    proto.Uint64(uint64(len(animationBytes))),
+				ViewOnce:      proto.Bool(msgToForward.HasProtectedContent),
+			},
+		}
+		if isReply {
+			msgToSend.VideoMessage.ContextInfo = &waProto.ContextInfo{
+				StanzaId:      proto.String(stanzaId),
+				Participant:   proto.String(participant),
+				QuotedMessage: &waProto.Message{Conversation: proto.String("")},
+			}
+		}
+
+		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, msgToSend)
+		if err != nil {
+			return TgReplyWithErrorByContext(b, c, "Failed to send animation to WhatsApp", err)
+		}
+		TgReplyTextByContext(b, c, "Successfully sent")
+
+		err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.User, waChatJID.String(),
+			cfg.Telegram.TargetChatID, msgToForward.MessageId, msgToForward.MessageThreadId)
+		if err != nil {
+			return TgReplyWithErrorByContext(b, c, "Failed to add to database", err)
+		}
+	} else if msgToForward.Audio != nil {
+
+		if !cfg.Telegram.SelfHostedAPI && msgToForward.Audio.FileSize > DownloadSizeLimit {
+			return TgReplyTextByContext(b, c, "Unable to send audio as it exceeds Telegram size restriction")
+		}
+
+		audioFile, err := b.GetFile(msgToForward.Audio.FileId, &gotgbot.GetFileOpts{})
+		if err != nil {
+			return TgReplyWithErrorByContext(b, c, "Failed to retreive audio file from Telegram", err)
+		}
+
+		audioBytes, err := TgDownloadByFilePath(b, audioFile.FilePath)
+		if err != nil {
+			return TgReplyWithErrorByContext(b, c, "Failed to download audio from Telegram", err)
+		}
+
+		uploadedAudio, err := waClient.Upload(context.Background(), audioBytes, whatsmeow.MediaAudio)
+		if err != nil {
+			return TgReplyWithErrorByContext(b, c, "Failed to upload audio to WhatsApp", err)
+		}
+
+		msgToSend := &waProto.Message{
+			AudioMessage: &waProto.AudioMessage{
+				Url:           proto.String(uploadedAudio.URL),
+				DirectPath:    proto.String(uploadedAudio.DirectPath),
+				MediaKey:      uploadedAudio.MediaKey,
+				Mimetype:      proto.String(msgToForward.Audio.MimeType),
+				FileEncSha256: uploadedAudio.FileEncSHA256,
+				FileSha256:    uploadedAudio.FileSHA256,
+				FileLength:    proto.Uint64(uint64(len(audioBytes))),
+				Seconds:       proto.Uint32(uint32(msgToForward.Audio.Duration)),
+				Ptt:           proto.Bool(false),
+			},
+		}
+		if isReply {
+			msgToSend.AudioMessage.ContextInfo = &waProto.ContextInfo{
+				StanzaId:      proto.String(stanzaId),
+				Participant:   proto.String(participant),
+				QuotedMessage: &waProto.Message{Conversation: proto.String("")},
+			}
+		}
+
+		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, msgToSend)
+		if err != nil {
+			return TgReplyWithErrorByContext(b, c, "Failed to send audio to WhatsApp", err)
+		}
+		TgReplyTextByContext(b, c, "Successfully sent")
+
+		err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.User, waChatJID.String(),
+			cfg.Telegram.TargetChatID, msgToForward.MessageId, msgToForward.MessageThreadId)
+		if err != nil {
+			return TgReplyWithErrorByContext(b, c, "Failed to add to database", err)
+		}
+	} else if msgToForward.Voice != nil {
+
+		if !cfg.Telegram.SelfHostedAPI && msgToForward.Voice.FileSize > DownloadSizeLimit {
+			return TgReplyTextByContext(b, c, "Unable to send voice as it exceeds Telegram size restriction")
+		}
+
+		voiceFile, err := b.GetFile(msgToForward.Voice.FileId, &gotgbot.GetFileOpts{})
+		if err != nil {
+			return TgReplyWithErrorByContext(b, c, "Failed to retreive voice file from Telegram", err)
+		}
+
+		voiceBytes, err := TgDownloadByFilePath(b, voiceFile.FilePath)
+		if err != nil {
+			return TgReplyWithErrorByContext(b, c, "Failed to download voice from Telegram", err)
+		}
+
+		uploadedVoice, err := waClient.Upload(context.Background(), voiceBytes, whatsmeow.MediaAudio)
+		if err != nil {
+			return TgReplyWithErrorByContext(b, c, "Failed to upload voice to WhatsApp", err)
+		}
+
+		msgToSend := &waProto.Message{
+			AudioMessage: &waProto.AudioMessage{
+				Url:           proto.String(uploadedVoice.URL),
+				DirectPath:    proto.String(uploadedVoice.DirectPath),
+				MediaKey:      uploadedVoice.MediaKey,
+				Mimetype:      proto.String(msgToForward.Audio.MimeType),
+				FileEncSha256: uploadedVoice.FileEncSHA256,
+				FileSha256:    uploadedVoice.FileSHA256,
+				FileLength:    proto.Uint64(uint64(len(voiceBytes))),
+				Seconds:       proto.Uint32(uint32(msgToForward.Audio.Duration)),
+				Ptt:           proto.Bool(true),
+			},
+		}
+		if isReply {
+			msgToSend.AudioMessage.ContextInfo = &waProto.ContextInfo{
+				StanzaId:      proto.String(stanzaId),
+				Participant:   proto.String(participant),
+				QuotedMessage: &waProto.Message{Conversation: proto.String("")},
+			}
+		}
+
+		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, msgToSend)
+		if err != nil {
+			return TgReplyWithErrorByContext(b, c, "Failed to send voice to WhatsApp", err)
+		}
+		TgReplyTextByContext(b, c, "Successfully sent")
+
+		err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.User, waChatJID.String(),
+			cfg.Telegram.TargetChatID, msgToForward.MessageId, msgToForward.MessageThreadId)
+		if err != nil {
+			return TgReplyWithErrorByContext(b, c, "Failed to add to database", err)
+		}
+	} else if msgToForward.Document != nil {
+
+		if !cfg.Telegram.SelfHostedAPI && msgToForward.Document.FileSize > DownloadSizeLimit {
+			return TgReplyTextByContext(b, c, "Unable to send document as it exceeds Telegram size restriction")
+		}
+
+		documentFile, err := b.GetFile(msgToForward.Document.FileId, &gotgbot.GetFileOpts{})
+		if err != nil {
+			return TgReplyWithErrorByContext(b, c, "Failed to retreive document file from Telegram", err)
+		}
+
+		documentBytes, err := TgDownloadByFilePath(b, documentFile.FilePath)
+		if err != nil {
+			return TgReplyWithErrorByContext(b, c, "Failed to download document from Telegram", err)
+		}
+
+		uploadedDocument, err := waClient.Upload(context.Background(), documentBytes, whatsmeow.MediaDocument)
+		if err != nil {
+			return TgReplyWithErrorByContext(b, c, "Failed to upload document to WhatsApp", err)
+		}
+
+		extension := strings.Split(msgToForward.Document.MimeType, "/")[1]
+
+		msgToSend := &waProto.Message{
+			DocumentMessage: &waProto.DocumentMessage{
+				Caption:       proto.String(msgToForward.Caption),
+				Title:         proto.String(msgToForward.Document.FileName + "." + extension),
+				Url:           proto.String(uploadedDocument.URL),
+				DirectPath:    proto.String(uploadedDocument.DirectPath),
+				MediaKey:      uploadedDocument.MediaKey,
+				Mimetype:      proto.String(msgToForward.Document.MimeType),
+				FileEncSha256: uploadedDocument.FileEncSHA256,
+				FileSha256:    uploadedDocument.FileSHA256,
+				FileLength:    proto.Uint64(uint64(len(documentBytes))),
+			},
+		}
+		if isReply {
+			msgToSend.DocumentMessage.ContextInfo = &waProto.ContextInfo{
+				StanzaId:      proto.String(stanzaId),
+				Participant:   proto.String(participant),
+				QuotedMessage: &waProto.Message{Conversation: proto.String("")},
+			}
+		}
+
+		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, msgToSend)
+		if err != nil {
+			return TgReplyWithErrorByContext(b, c, "Failed to send document to WhatsApp", err)
+		}
+		TgReplyTextByContext(b, c, "Successfully sent")
+
+		err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.User, waChatJID.String(),
+			cfg.Telegram.TargetChatID, msgToForward.MessageId, msgToForward.MessageThreadId)
+		if err != nil {
+			return TgReplyWithErrorByContext(b, c, "Failed to add to database", err)
+		}
+	} else if msgToForward.Sticker != nil {
+
+		if !cfg.Telegram.SelfHostedAPI && msgToForward.Sticker.FileSize > DownloadSizeLimit {
+			return TgReplyTextByContext(b, c, "Unable to send sticker as it exceeds Telegram size restriction")
+		}
+
+		if msgToForward.Sticker.IsAnimated || msgToForward.Sticker.IsVideo {
+			return TgReplyTextByContext(b, c, "Unable to send sticker as animated/video stickers are not supported at present")
+		}
+
+		stickerFile, err := b.GetFile(msgToForward.Sticker.FileId, &gotgbot.GetFileOpts{})
+		if err != nil {
+			return TgReplyWithErrorByContext(b, c, "Failed to retreive sticker file from Telegram", err)
+		}
+
+		stickerBytes, err := TgDownloadByFilePath(b, stickerFile.FilePath)
+		if err != nil {
+			return TgReplyWithErrorByContext(b, c, "Failed to download sticker from Telegram", err)
+		}
+
+		uploadedSticker, err := waClient.Upload(context.Background(), stickerBytes, whatsmeow.MediaImage)
+		if err != nil {
+			return TgReplyWithErrorByContext(b, c, "Failed to upload sticker to WhatsApp", err)
+		}
+
+		msgToSend := &waProto.Message{
+			StickerMessage: &waProto.StickerMessage{
+				Url:           proto.String(uploadedSticker.URL),
+				DirectPath:    proto.String(uploadedSticker.DirectPath),
+				MediaKey:      uploadedSticker.MediaKey,
+				IsAnimated:    proto.Bool(false),
+				IsAvatar:      proto.Bool(false),
+				Height:        proto.Uint32(uint32(msgToForward.Sticker.Height)),
+				Width:         proto.Uint32(uint32(msgToForward.Sticker.Width)),
+				Mimetype:      proto.String("image/webp"),
+				FileEncSha256: uploadedSticker.FileEncSHA256,
+				FileSha256:    uploadedSticker.FileSHA256,
+				FileLength:    proto.Uint64(uint64(len(stickerBytes))),
+			},
+		}
+		if isReply {
+			msgToSend.StickerMessage.ContextInfo = &waProto.ContextInfo{
+				StanzaId:      proto.String(stanzaId),
+				Participant:   proto.String(participant),
+				QuotedMessage: &waProto.Message{Conversation: proto.String("")},
+			}
+		}
+
+		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, msgToSend)
+		if err != nil {
+			return TgReplyWithErrorByContext(b, c, "Failed to send sticker to WhatsApp", err)
+		}
+		TgReplyTextByContext(b, c, "Successfully sent")
+
+		err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.User, waChatJID.String(),
+			cfg.Telegram.TargetChatID, msgToForward.MessageId, msgToForward.MessageThreadId)
+		if err != nil {
+			return TgReplyWithErrorByContext(b, c, "Failed to add to database", err)
+		}
+	} else if msgToForward.Text != "" {
+
+		if emojis := gomoji.CollectAll(msgToForward.Text); len(emojis) == 1 && gomoji.RemoveEmojis(msgToForward.Text) == "" {
+			_, err := waClient.SendMessage(context.Background(), waChatJID, &waProto.Message{
+				ReactionMessage: &waProto.ReactionMessage{
+					Text:              proto.String(msgToForward.Text),
+					SenderTimestampMs: proto.Int64(time.Now().UnixMilli()),
+					Key: &waProto.MessageKey{
+						RemoteJid: proto.String(waChatJID.String()),
+						FromMe:    proto.Bool(msgToReplyTo != nil && msgToReplyTo.From.Id == cfg.Telegram.OwnerID),
+						Id:        proto.String(stanzaId),
+					},
+				},
+			})
+			if err != nil {
+				return TgReplyWithErrorByContext(b, c, "Failed to send reaction to WhatsApp", err)
+			}
+			return TgReplyTextByContext(b, c, "Successfully reacted")
+		}
+
+		msgToSend := &waProto.Message{
+			ExtendedTextMessage: &waProto.ExtendedTextMessage{
+				Text: proto.String(msgToForward.Text),
+			},
+		}
+		if isReply {
+			msgToSend.ExtendedTextMessage.ContextInfo = &waProto.ContextInfo{
+				StanzaId:      proto.String(stanzaId),
+				Participant:   proto.String(participant),
+				QuotedMessage: &waProto.Message{Conversation: proto.String("")},
+			}
+		}
+
+		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, msgToSend)
+		if err != nil {
+			return TgReplyWithErrorByContext(b, c, "Failed to send message to WhatsApp", err)
+		}
+		fmt.Println(c.EffectiveMessage.MessageThreadId)
+		TgReplyTextByContext(b, c, "Successfully sent")
+
+		err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.User, waChatJID.String(),
+			cfg.Telegram.TargetChatID, msgToForward.MessageId, msgToForward.MessageThreadId)
+		if err != nil {
+			return TgReplyWithErrorByContext(b, c, "Failed to add to database", err)
+		}
+	}
+
+	return nil
 }

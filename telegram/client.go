@@ -7,46 +7,43 @@ import (
 	"time"
 
 	"watgbridge/state"
-	mw "watgbridge/telegram/middleware"
+	"watgbridge/telegram/middlewares"
 
 	"github.com/PaulSonOfLars/gotgbot/v2"
 	"github.com/PaulSonOfLars/gotgbot/v2/ext"
 )
 
-func NewClient() error {
+func NewTelegramClient() error {
 	cfg := state.State.Config
 
-	bot, err := gotgbot.NewBot(
-		cfg.Telegram.BotToken,
-		&gotgbot.BotOpts{
-			Client: http.Client{},
-			DefaultRequestOpts: &gotgbot.RequestOpts{
-				Timeout: gotgbot.DefaultTimeout,
-				APIURL:  cfg.Telegram.ApiURL,
-			},
+	bot, err := gotgbot.NewBot(cfg.Telegram.BotToken, &gotgbot.BotOpts{
+		Client: http.Client{},
+		DefaultRequestOpts: &gotgbot.RequestOpts{
+			APIURL: cfg.Telegram.APIURL,
 		},
-	)
+	})
 	if err != nil {
-		return fmt.Errorf("Could not initialize bot : %s", err)
+		return fmt.Errorf("Could not initialize telegram bot : %s", err)
 	}
 	state.State.TelegramBot = bot
 
-	bot.UseMiddleware(mw.ParseAsHTML)
-	bot.UseMiddleware(mw.SendWithoutReply)
+	bot.UseMiddleware(middlewares.ParseAsHTML)
+	bot.UseMiddleware(middlewares.SendWithoutReply)
+
+	dispatcher := ext.NewDispatcher(&ext.DispatcherOpts{
+		Error: func(_ *gotgbot.Bot, _ *ext.Context, err error) ext.DispatcherAction {
+			log.Println("[telegram] an error occurred while handling update : " + err.Error())
+			return ext.DispatcherActionNoop
+		},
+		MaxRoutines: ext.DefaultMaxRoutines,
+	})
 
 	updater := ext.NewUpdater(&ext.UpdaterOpts{
-		ErrorLog: nil,
-		DispatcherOpts: ext.DispatcherOpts{
-			Error: func(_ *gotgbot.Bot, _ *ext.Context, err error) ext.DispatcherAction {
-				log.Println("[telegram] An error occurred while handling update : " + err.Error())
-				return ext.DispatcherActionNoop
-			},
-			MaxRoutines: ext.DefaultMaxRoutines,
-		},
+		ErrorLog:   nil,
+		Dispatcher: dispatcher,
 	})
-	state.State.TelegramUpdater = &updater
 
-	dispatcher := updater.Dispatcher
+	state.State.TelegramUpdater = updater
 	state.State.TelegramDispatcher = dispatcher
 
 	err = updater.StartPolling(bot, &ext.PollingOpts{
@@ -54,12 +51,12 @@ func NewClient() error {
 		GetUpdatesOpts: gotgbot.GetUpdatesOpts{
 			Timeout: 9,
 			RequestOpts: &gotgbot.RequestOpts{
-				Timeout: time.Second * 10,
+				Timeout: 10 * time.Second,
 			},
 		},
 	})
 	if err != nil {
-		return fmt.Errorf("failed to start polling : %s", err)
+		return fmt.Errorf("[telegram] failed to start polling : %s", err)
 	}
 
 	return nil

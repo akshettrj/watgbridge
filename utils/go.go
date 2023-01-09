@@ -1,15 +1,15 @@
 package utils
 
-func SubString(s string, start, end int) string {
+func SubString(s string, start, length int) string {
 	asRunes := []rune(s)
 
-	if start > len(asRunes) {
+	if start >= len(asRunes) {
 		return ""
 	}
 
-	if end > len(asRunes) {
-		end = len(asRunes)
+	if start+length > len(asRunes) {
+		length = len(asRunes) - start
 	}
 
-	return s[start:end]
+	return string(s[start : start+length])
 }

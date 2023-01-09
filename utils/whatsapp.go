@@ -1,16 +1,22 @@
 package utils
 
 import (
+	"context"
 	"fmt"
+	"html"
+	"log"
 	"strings"
 
+	"watgbridge/database"
 	"watgbridge/state"
 
 	"github.com/lithammer/fuzzysearch/fuzzy"
+	waProto "go.mau.fi/whatsmeow/binary/proto"
 	"go.mau.fi/whatsmeow/types"
+	"google.golang.org/protobuf/proto"
 )
 
-func WhatsAppParseJID(s string) (types.JID, bool) {
+func WaParseJID(s string) (types.JID, bool) {
 	if s[0] == '+' {
 		s = SubString(s, 1, len(s)-1)
 	}
@@ -20,99 +26,177 @@ func WhatsAppParseJID(s string) (types.JID, bool) {
 	}
 
 	recipient, err := types.ParseJID(s)
+
 	recipient = recipient.ToNonAD()
-	if err != nil {
-		return recipient, false
-	} else if recipient.User == "" {
+	if err != nil || recipient.User == "" {
 		return recipient, false
 	}
+
 	return recipient, true
 }
 
-func WhatsAppGetContactName(jid types.JID) string {
-	waClient := state.State.WhatsAppClient
+func WaFuzzyFindContacts(query string) (map[string]string, int, error) {
+	var (
+		results      = make(map[string]string)
+		resultsCount = 0
+	)
 
-	contact, err := waClient.Store.Contacts.GetContact(jid)
-	if err != nil || !contact.Found {
-		return jid.User
+	contacts, err := database.ContactGetAll()
+	if err != nil {
+		return nil, 0, err
 	}
 
+	var searchSpace []string
+	for _, contact := range contacts {
+		jid := contact.ID
+		if contact.FirstName != "" {
+			searchSpace = append(searchSpace, jid+"||"+strings.ToLower(contact.FirstName))
+		}
+		if contact.FullName != "" {
+			searchSpace = append(searchSpace, jid+"||"+strings.ToLower(contact.FullName))
+		}
+		if contact.PushName != "" {
+			searchSpace = append(searchSpace, jid+"||"+strings.ToLower(contact.PushName))
+		}
+		if contact.BusinessName != "" {
+			searchSpace = append(searchSpace, jid+"||"+strings.ToLower(contact.BusinessName))
+		}
+	}
+
+	fuzzyResults := fuzzy.Find(strings.ToLower(query), searchSpace)
+	for _, res := range fuzzyResults {
+		info := strings.SplitN(res, "||", 2)
+
+		contact := contacts[info[0]]
+		if _, exists := results[info[0]]; exists {
+			continue
+		}
+
+		resultsCount += 1
+		name := ""
+		if contact.FullName != "" {
+			name += (contact.FullName + " (s)")
+		}
+		if contact.BusinessName != "" {
+			if name != "" {
+				name += ", "
+			}
+			name += (contact.BusinessName + " (b)")
+		}
+		if contact.PushName != "" {
+			if name != "" {
+				name += ", "
+			}
+			name += (contact.PushName + " (p)")
+		}
+		results[contact.ID] = name
+	}
+
+	return results, resultsCount, nil
+}
+
+func WaGetGroupName(jid types.JID) string {
+	waClient := state.State.WhatsAppClient
+
+	groupInfo, err := waClient.GetGroupInfo(jid)
+	if err != nil {
+		return jid.User
+	}
+	return groupInfo.Name + " [ " + jid.User + " ]"
+}
+
+func WaGetContactName(jid types.JID) string {
 	var name string
-	if contact.FullName != "" {
-		name = contact.FullName
-	} else if contact.BusinessName != "" {
-		name = contact.BusinessName
-	} else if contact.PushName != "" {
-		name = contact.PushName
+
+	firstName, fullName, pushName, businessName, err := database.ContactNameGet(jid.User)
+	if err == nil {
+		if fullName != "" {
+			name = fullName
+		} else if businessName != "" {
+			name = businessName
+		} else if pushName != "" {
+			name = pushName
+		} else if firstName != "" {
+			name = firstName
+		}
+	} else {
+		waClient := state.State.WhatsAppClient
+		contact, err := waClient.Store.Contacts.GetContact(jid)
+		if err == nil && contact.Found {
+			if contact.FullName != "" {
+				name = contact.FullName
+			} else if contact.BusinessName != "" {
+				name = contact.BusinessName
+			} else if contact.PushName != "" {
+				name = contact.PushName
+			} else if contact.FirstName != "" {
+				name = contact.FirstName
+			}
+		}
 	}
 
 	if name == "" {
 		name = jid.User
 	} else {
-		name += (" [ " + jid.User + " ]")
+		name += " [ " + jid.User + " ]"
 	}
 
 	return name
 }
 
-func WhatsAppGetGroupName(jid types.JID) string {
-	waClient := state.State.WhatsAppClient
+func WaTagAll(group types.JID, msg *waProto.Message, msgId, msgSender string, msgIsFromMe bool) {
+	var (
+		cfg      = state.State.Config
+		waClient = state.State.WhatsAppClient
+		tgBot    = state.State.TelegramBot
+	)
 
-	groupInfo, err := waClient.GetGroupInfo(jid)
+	groupInfo, err := waClient.GetGroupInfo(group)
 	if err != nil {
-		return jid.String()
+		log.Printf("[whatsapp] failed to get group info of '%s': %s\n", group.String(), err)
+		return
 	}
 
-	return groupInfo.Name
-}
+	var (
+		replyText = ""
+		mentioned = []string{}
+	)
 
-func WhatsAppFindContact(query string) (map[string]string, int, error) {
-	waClient := state.State.WhatsAppClient
+	for _, participant := range groupInfo.Participants {
+		if participant.JID.User == waClient.Store.ID.User {
+			continue
+		}
 
-	var results = make(map[string]string)
+		replyText += fmt.Sprintf("@%s ", participant.JID.User)
+		mentioned = append(mentioned, participant.JID.String())
+	}
 
-	contacts, err := waClient.Store.Contacts.GetAllContacts()
+	_, err = waClient.SendMessage(context.Background(), group, &waProto.Message{
+		ExtendedTextMessage: &waProto.ExtendedTextMessage{
+			Text: proto.String(replyText),
+			ContextInfo: &waProto.ContextInfo{
+				StanzaId:      proto.String(msgId),
+				Participant:   proto.String(msgSender),
+				QuotedMessage: msg,
+				MentionedJid:  mentioned,
+			},
+		},
+	})
 	if err != nil {
-		return nil, 0, err
+		log.Printf("[whatsapp] failed to reply to '@all/@everyone': %s\n", err)
+		return
 	}
 
-	var contactsInfo []string
-	for jid, contact := range contacts {
-		contactsInfo = append(contactsInfo, fmt.Sprintf(
-			"%s||%s||%s||%s||%s",
-			jid.String(),
-			strings.ToLower(contact.FullName),
-			strings.ToLower(contact.BusinessName),
-			strings.ToLower(contact.FirstName),
-			strings.ToLower(contact.PushName),
-		))
-	}
+	if !msgIsFromMe {
+		tagsThreadId, err := TgGetOrMakeThreadFromWa("status@broadcast", cfg.Telegram.TargetChatID, "Status/Calls/Tags [ status@broadcast ]")
+		if err != nil {
+			TgSendErrorById(tgBot, cfg.Telegram.TargetChatID, 0, "Failed to create/retreive corresponding thread id for status/calls/tags", err)
+			return
+		}
 
-	fuzzyResults := fuzzy.Find(query, contactsInfo)
-	for _, res := range fuzzyResults {
-		info := strings.Split(res, "||")
-		jid, _ := WhatsAppParseJID(info[0])
-		contact := contacts[jid]
-		name := ""
-		if len(contact.FullName) != 0 {
-			name += (contact.FullName + " (s)")
-		}
-		if len(contact.BusinessName) != 0 {
-			if len(name) == 0 {
-				name += (contact.BusinessName + " (b)")
-			} else {
-				name += (", " + contact.BusinessName + " (b)")
-			}
-		}
-		if len(contact.PushName) != 0 {
-			if len(name) == 0 {
-				name += (contact.PushName + " (p)")
-			} else {
-				name += (", " + contact.PushName + " (p)")
-			}
-		}
-		results[info[0]] = name
-	}
+		bridgedText := fmt.Sprintf("#tagall\n\nEveryone was mentioned in a group\n\n👥: <i>%s</i>",
+			html.EscapeString(groupInfo.Name))
 
-	return results, len(fuzzyResults), nil
+		TgSendTextById(tgBot, cfg.Telegram.TargetChatID, tagsThreadId, bridgedText)
+	}
 }

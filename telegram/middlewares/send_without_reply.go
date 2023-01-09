@@ -13,14 +13,18 @@ type sendWithoutReplyBotClient struct {
 	gotgbot.BotClient
 }
 
-func (b *sendWithoutReplyBotClient) RequestWithContext(ctx context.Context, method string, params map[string]string, data map[string]gotgbot.NamedReader, opts *gotgbot.RequestOpts) (json.RawMessage, error) {
+func (b *sendWithoutReplyBotClient) RequestWithContext(ctx context.Context,
+	method string, params map[string]string,
+	data map[string]gotgbot.NamedReader,
+	opts *gotgbot.RequestOpts) (json.RawMessage, error) {
+
 	if strings.HasPrefix(method, "send") || method == "copyMessage" {
 		params["allow_sending_without_reply"] = "true"
 	}
 
 	val, err := b.BotClient.RequestWithContext(ctx, method, params, data, opts)
 	if err != nil {
-		fmt.Println("warning, got an error:", err)
+		fmt.Println("warning, middleware 'send_without_reply' got an error :", err)
 	}
 	return val, err
 }

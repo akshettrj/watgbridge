@@ -18,7 +18,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func NewClient() error {
+func NewWhatsAppClient() error {
 	store.DeviceProps.Os = proto.String("watgbridge")
 	store.DeviceProps.RequireFullSync = proto.Bool(true)
 	store.DeviceProps.PlatformType = waProto.DeviceProps_DESKTOP.Enum()

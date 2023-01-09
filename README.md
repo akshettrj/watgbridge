@@ -14,9 +14,8 @@ from Telegram.
 ## Features and Design Choices
 
 - Can bridge messages from WhatsApp to Telegram
-- All messages from various chats (WhatsApp) are sent to the same target chat (Telegram)
-- By default all chats are bridged. You can specify which chats NOT to bridge in configuration file
-- Only those contacts' statuses are bridged which are listed in configuration file
+- All messages from various chats (WhatsApp) are sent to different topics withing the same target chat (Telegram)
+- By default all the statuses are bridged, you can specify which contacts' statuses not to bridge
 - Can reply to forwarded messages from Telegram
 - Can tag all people using @all or @everyone. Others can also use this in group chats which you specify in configuration file
 - Can react to messages by replying with desired emoji
@@ -31,6 +30,9 @@ PRs are welcome :)
 
 ## Installation
 
+- Make a supergroup with topics enabled
+- Add your bot in the group, make it an admin with permissions to `Manage topics`
+- Install `git`, `gcc` and `golang` on your system
 - Clone this repository in `$GOPATH/src`
 - Navigate into the cloned directory
 - Run `go build`
@@ -39,10 +41,12 @@ PRs are welcome :)
     - Uncomment one of the `database` sections according to your preferences
     - In the `whatsapp` section:
         - `tag_all_allowed_groups`: these are the groups in which others can use @all/@everyone to tag everyone. The values that you need to fill in this section can be found by sending `/getwagroups` to the bot after running it once. You have to fill in the value before @ character in the JID.
-        - `ignore_chats`: these are the groups which will not be bridged to telegram. The values have to be filled in the same way as `tag_all_allowed_groups`.
-        - `status_allowed_chats`: these are the contacts (along with the country code) whose statuses will be bridged to Telegram. DO NOT TRY TO REPLY TO THESE BRIDGED STATUSES.
+        - `status_ignored_chats`: these are the contacts (along with the country code) whose statuses will not be bridged to Telegram.
 - Execute the binary by running `./watgbridge`
 - On first run, it will show QR code for logging into WhatsApp that can by scanned by the WhatsApp app in `Linked devices`
 - It is recommended to restart the bot after every few hours becuase WhatsApp likes to disconnect a lot. So a Systemd service file has been provided. Edit the `User` and `ExecStart` according to your setup:
     - If you do not have local bot API server, remove `tgbotapi.service` from the `After` key in `Unit` section.
     - This service file will restart the bot every 24 hours
+
+
+- A small guide can also be found in <a href="https://youtu.be/xc75XLoTmA4">this YouTube video</a>

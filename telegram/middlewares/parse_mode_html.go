@@ -13,14 +13,18 @@ type parseModeHTMLBotClient struct {
 	gotgbot.BotClient
 }
 
-func (b *parseModeHTMLBotClient) RequestWithContext(ctx context.Context, method string, params map[string]string, data map[string]gotgbot.NamedReader, opts *gotgbot.RequestOpts) (json.RawMessage, error) {
-	if strings.HasPrefix(method, "send") || strings.HasPrefix(method, "edit") || method == "copyMessage" {
+func (b *parseModeHTMLBotClient) RequestWithContext(ctx context.Context,
+	method string, params map[string]string,
+	data map[string]gotgbot.NamedReader,
+	opts *gotgbot.RequestOpts) (json.RawMessage, error) {
+
+	if strings.HasPrefix(method, "send") || strings.HasPrefix(method, "edit") {
 		params["parse_mode"] = "html"
 	}
 
 	val, err := b.BotClient.RequestWithContext(ctx, method, params, data, opts)
 	if err != nil {
-		fmt.Println("warning, got an error:", err)
+		fmt.Println("warning, middleware 'parse_mode_html' got an error :", err)
 	}
 	return val, err
 }

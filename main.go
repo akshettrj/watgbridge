@@ -13,63 +13,57 @@ import (
 )
 
 func main() {
-	// Load config file
+	// Load configuration file
 	cfg := state.State.Config
 	if len(os.Args) > 1 {
 		cfg.Path = os.Args[1]
 	} else {
 		cfg.Path = "config.yaml"
 	}
-	cfg.LoadConfig()
-
-	if cfg.TimeZone == "" {
-		cfg.TimeZone = "Asia/Kolkata"
-	}
-
-	localLoc, err := time.LoadLocation(cfg.TimeZone)
+	err := cfg.LoadConfig()
 	if err != nil {
-		log.Fatalln("Couldn't set timezone to " + cfg.TimeZone + ": " + err.Error())
+		log.Fatalln(err)
 	}
-	state.State.LocalLocation = localLoc
 
+	// Create local location for time
+	if cfg.TimeZone == "" {
+		cfg.TimeZone = "UTC"
+	}
+	locLoc, err := time.LoadLocation(cfg.TimeZone)
+	if err != nil {
+		log.Fatalln("could not set timezone to '" + cfg.TimeZone + "': " + err.Error())
+	}
+	state.State.LocalLocation = locLoc
+
+	// Setup database
 	db, err := database.Connect()
 	if err != nil {
-		log.Fatalln("Couldn't connect to the database : " + err.Error())
+		log.Fatalln("could not connect to database : " + err.Error())
 	}
 	state.State.Database = db
-
 	err = database.AutoMigrate()
 	if err != nil {
-		log.Fatalln("Couldn't migrate the database tables : " + err.Error())
+		log.Fatalln("could not migrate database tables : " + err.Error())
 	}
 
-	err = telegram.NewClient()
+	err = telegram.NewTelegramClient()
 	if err != nil {
 		panic(err)
 	}
-	log.Printf(
-		"[telegram] logged in as : %s [ @%s ]\n",
-		state.State.TelegramBot.FirstName,
-		state.State.TelegramBot.Username,
-	)
+	log.Printf("[telegram] logged in as : %s [ @%s ]\n",
+		state.State.TelegramBot.FirstName, state.State.TelegramBot.Username)
+	telegram.AddTelegramHandlers()
+	utils.TgRegisterBotCommands(state.State.TelegramBot, state.State.TelegramCommands...)
 
-	err = whatsapp.NewClient()
+	err = whatsapp.NewWhatsAppClient()
 	if err != nil {
 		panic(err)
 	}
-	log.Printf(
-		"[whatsapp] logged in as : %s [ %s ]\n",
-		state.State.WhatsAppClient.Store.PushName,
-		state.State.WhatsAppClient.Store.ID.User,
-	)
+	log.Printf("[whatsapp] logged in as : %s [ @%s ]\n",
+		state.State.WhatsAppClient.Store.PushName, state.State.WhatsAppClient.Store.ID.User)
+	state.State.WhatsAppClient.AddEventHandler(whatsapp.WhatsAppEventHandler)
 
-	state.State.StartTime = time.Now()
-
-	waClient := state.State.WhatsAppClient
-	waClient.AddEventHandler(whatsapp.WhatsAppEventHandler)
-
-	telegram.AddHandlers()
-	utils.RegisterBotCommand(state.State.TelegramBot, state.State.TelegramCommands...)
+	state.State.StartTime = time.Now().UTC()
 
 	state.State.TelegramUpdater.Idle()
 }
