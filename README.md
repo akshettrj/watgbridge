@@ -30,7 +30,7 @@ PRs are welcome :)
 
 ## Installation
 
-- Install `git` and `golang` on your system
+- Install `git`, `gcc` and `golang` on your system
 - Clone this repository in `$GOPATH/src`
 - Navigate into the cloned directory
 - Run `go build`
