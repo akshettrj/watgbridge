@@ -3,7 +3,7 @@ module watgbridge
 go 1.19
 
 require (
-	github.com/PaulSonOfLars/gotgbot/v2 v2.0.0-rc.12
+	github.com/PaulSonOfLars/gotgbot/v2 v2.0.0-rc.13
 	github.com/emersion/go-vcard v0.0.0-20220507122617-d4056df0ec4a
 	github.com/forPelevin/gomoji v1.1.8
 	github.com/lithammer/fuzzysearch v1.1.5
