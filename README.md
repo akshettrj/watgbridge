@@ -30,6 +30,8 @@ PRs are welcome :)
 
 ## Installation
 
+- Make a supergroup with topics enabled
+- Add your bot in the group, make it an admin with permissions to `Manage topics`
 - Install `git`, `gcc` and `golang` on your system
 - Clone this repository in `$GOPATH/src`
 - Navigate into the cloned directory
@@ -45,3 +47,6 @@ PRs are welcome :)
 - It is recommended to restart the bot after every few hours becuase WhatsApp likes to disconnect a lot. So a Systemd service file has been provided. Edit the `User` and `ExecStart` according to your setup:
     - If you do not have local bot API server, remove `tgbotapi.service` from the `After` key in `Unit` section.
     - This service file will restart the bot every 24 hours
+
+
+- A small guide can also be found in <a href="https://youtu.be/xc75XLoTmA4">this YouTube video</a>
