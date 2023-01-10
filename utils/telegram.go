@@ -466,7 +466,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 				Url:           proto.String(uploadedVoice.URL),
 				DirectPath:    proto.String(uploadedVoice.DirectPath),
 				MediaKey:      uploadedVoice.MediaKey,
-				Mimetype:      proto.String(msgToForward.Voice.MimeType),
+				Mimetype:      proto.String("audio/ogg; codecs=opus"),
 				FileEncSha256: uploadedVoice.FileEncSHA256,
 				FileSha256:    uploadedVoice.FileSHA256,
 				FileLength:    proto.Uint64(uint64(len(voiceBytes))),
@@ -514,12 +514,13 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			return TgReplyWithErrorByContext(b, c, "Failed to upload document to WhatsApp", err)
 		}
 
-		extension := strings.Split(msgToForward.Document.MimeType, "/")[1]
+		splitName := strings.Split(msgToForward.Document.FileName, ".")
+		documentFileName := strings.Join(splitName[:len(splitName)-1], ".")
 
 		msgToSend := &waProto.Message{
 			DocumentMessage: &waProto.DocumentMessage{
 				Caption:       proto.String(msgToForward.Caption),
-				Title:         proto.String(msgToForward.Document.FileName + "." + extension),
+				Title:         proto.String(documentFileName),
 				Url:           proto.String(uploadedDocument.URL),
 				DirectPath:    proto.String(uploadedDocument.DirectPath),
 				MediaKey:      uploadedDocument.MediaKey,
