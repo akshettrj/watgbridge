@@ -218,7 +218,7 @@ func SyncContactsHandler(b *gotgbot.Bot, c *ext.Context) error {
 
 	waClient := state.State.WhatsAppClient
 
-	err := waClient.FetchAppState(appstate.WAPatchCriticalUnblockLow, true, false)
+	err := waClient.FetchAppState(appstate.WAPatchCriticalUnblockLow, false, false)
 	if err != nil {
 		return utils.TgReplyWithErrorByContext(b, c, "Failed to sync contacts", err)
 	}
