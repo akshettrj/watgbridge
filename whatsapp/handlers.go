@@ -170,6 +170,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 		}
 	}
 
+MEDIATYPESWITCH:
 	switch v.Info.MediaType {
 
 	case "image":
@@ -665,6 +666,37 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 
 	case "url", "":
 		if text == "" {
+			if v.Message.GetImageMessage() != nil {
+				v.Info.MediaType = "image"
+			} else if videoMsg := v.Message.GetVideoMessage(); videoMsg != nil {
+				if videoMsg.GetGifPlayback() {
+					v.Info.MediaType = "gif"
+				} else {
+					v.Info.MediaType = "video"
+				}
+			} else if audioMsg := v.Message.GetAudioMessage(); audioMsg != nil {
+				if audioMsg.GetPtt() {
+					v.Info.MediaType = "ptt"
+				} else {
+					v.Info.MediaType = "audio"
+				}
+			} else if v.Message.GetDocumentMessage() != nil {
+				v.Info.MediaType = "document"
+			} else if v.Message.GetStickerMessage() != nil {
+				v.Info.MediaType = "sticker"
+			} else if v.Message.GetContactMessage() != nil {
+				v.Info.MediaType = "vcard"
+			} else if v.Message.GetContactsArrayMessage() != nil {
+				v.Info.MediaType = "contact_array"
+			} else if v.Message.GetLocationMessage() != nil {
+				v.Info.MediaType = "location"
+			} else if v.Message.GetLiveLocationMessage() != nil {
+				v.Info.MediaType = "livelocation"
+			}
+
+			if v.Info.MediaType != "" {
+				goto MEDIATYPESWITCH
+			}
 			return
 		}
 
