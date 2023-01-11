@@ -3,6 +3,7 @@ module watgbridge
 go 1.19
 
 require (
+	github.com/Benau/tgsconverter v0.0.0-20210809170556-99f4a4f6337f
 	github.com/PaulSonOfLars/gotgbot/v2 v2.0.0-rc.13
 	github.com/emersion/go-vcard v0.0.0-20220507122617-d4056df0ec4a
 	github.com/forPelevin/gomoji v1.1.8
@@ -22,6 +23,8 @@ require (
 
 require (
 	filippo.io/edwards25519 v1.0.0 // indirect
+	github.com/Benau/go_rlottie v0.0.0-20210807002906-98c1b2421989 // indirect
+	github.com/av-elier/go-decimal-to-rational v0.0.0-20191127152832-89e6aad02ecf // indirect
 	github.com/go-sql-driver/mysql v1.7.0 // indirect
 	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
@@ -29,8 +32,10 @@ require (
 	github.com/jackc/pgx/v5 v5.2.0 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
+	github.com/kettek/apng v0.0.0-20191108220231-414630eed80f // indirect
 	github.com/rivo/uniseg v0.4.3 // indirect
 	github.com/robfig/cron/v3 v3.0.1 // indirect
+	github.com/sizeofint/webpanimation v0.0.0-20210809145948-1d2b32119882 // indirect
 	go.mau.fi/libsignal v0.1.0 // indirect
 	golang.org/x/crypto v0.5.0 // indirect
 	golang.org/x/sync v0.1.0 // indirect

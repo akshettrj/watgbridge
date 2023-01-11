@@ -540,31 +540,23 @@ MEDIATYPESWITCH:
 				return
 			}
 
-			if !stickerMsg.GetIsAnimated() {
-				bridgedText += "\n<i>It was the following sticker</i>"
-				sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
-					ReplyToMessageId: replyToMsgId,
-					MessageThreadId:  threadId,
-				})
-				if sentMsg.MessageId != 0 {
-					database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
-						cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
-				}
-				tgBot.SendSticker(cfg.Telegram.TargetChatID, stickerBytes, &gotgbot.SendStickerOpts{
-					ReplyToMessageId: sentMsg.MessageId,
-					MessageThreadId:  threadId,
-				})
+			if stickerMsg.GetIsAnimated() {
+				bridgedText += "\n<i>It was an animated sticker, here is the first frame</i>"
 			} else {
-				bridgedText += "\n<i>It was an animated sticker which is not supported</i>"
-				sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
-					ReplyToMessageId: replyToMsgId,
-					MessageThreadId:  threadId,
-				})
-				if sentMsg.MessageId != 0 {
-					database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
-						cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
-				}
+				bridgedText += "\n<i>It was the following sticker</i>"
 			}
+			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+				ReplyToMessageId: replyToMsgId,
+				MessageThreadId:  threadId,
+			})
+			if sentMsg.MessageId != 0 {
+				database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
+					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
+			}
+			tgBot.SendSticker(cfg.Telegram.TargetChatID, stickerBytes, &gotgbot.SendStickerOpts{
+				ReplyToMessageId: sentMsg.MessageId,
+				MessageThreadId:  threadId,
+			})
 		}
 
 	case "vcard":

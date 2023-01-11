@@ -20,10 +20,11 @@ from Telegram.
 - Can tag all people using @all or @everyone. Others can also use this in group chats which you specify in configuration file
 - Can react to messages by replying with desired emoji
 - Supports static stickers from both ends
+- Can send Animated (TGS) stickers from Telegram
 
 ## Bugs and TODO
 
-- Animated stickers are not supported both to and from WhatsApp
+- Animated stickers are not supported from WhatsApp
 
 PRs are welcome :)
 

@@ -568,8 +568,8 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			return TgReplyTextByContext(b, c, "Unable to send sticker as it exceeds Telegram size restriction")
 		}
 
-		if msgToForward.Sticker.IsAnimated || msgToForward.Sticker.IsVideo {
-			return TgReplyTextByContext(b, c, "Unable to send sticker as animated/video stickers are not supported at present")
+		if msgToForward.Sticker.IsVideo {
+			return TgReplyTextByContext(b, c, "Unable to send sticker as video stickers are not supported at present")
 		}
 
 		stickerFile, err := b.GetFile(msgToForward.Sticker.FileId, &gotgbot.GetFileOpts{})
@@ -582,6 +582,13 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			return TgReplyWithErrorByContext(b, c, "Failed to download sticker from Telegram", err)
 		}
 
+		if msgToForward.Sticker.IsAnimated {
+			stickerBytes, err = TGSConvertToWebp(stickerBytes)
+			if err != nil {
+				return TgReplyWithErrorByContext(b, c, "Failed to convert TGS sticker to WebP", err)
+			}
+		}
+
 		uploadedSticker, err := waClient.Upload(context.Background(), stickerBytes, whatsmeow.MediaImage)
 		if err != nil {
 			return TgReplyWithErrorByContext(b, c, "Failed to upload sticker to WhatsApp", err)
@@ -592,7 +599,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 				Url:           proto.String(uploadedSticker.URL),
 				DirectPath:    proto.String(uploadedSticker.DirectPath),
 				MediaKey:      uploadedSticker.MediaKey,
-				IsAnimated:    proto.Bool(false),
+				IsAnimated:    proto.Bool(msgToForward.Sticker.IsAnimated),
 				IsAvatar:      proto.Bool(false),
 				Height:        proto.Uint32(uint32(msgToForward.Sticker.Height)),
 				Width:         proto.Uint32(uint32(msgToForward.Sticker.Width)),
