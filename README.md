@@ -25,6 +25,7 @@ from Telegram.
 ## Bugs and TODO
 
 - Animated stickers are not supported from WhatsApp
+- Document naming is messed up and not consistent on Telegram, have to find a way to always send sane names
 
 PRs are welcome :)
 
