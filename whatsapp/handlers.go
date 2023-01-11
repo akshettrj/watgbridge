@@ -88,6 +88,14 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 		}
 	}
 
+	{
+		// Return if status is from ignored chat
+		if v.Info.IsIncomingBroadcast() && v.Info.Chat.User == "status" &&
+			slices.Contains(cfg.WhatsApp.StatusIgnoredChats, v.Info.MessageSource.Sender.User) {
+			return
+		}
+	}
+
 	if lowercaseText := strings.ToLower(text); v.Info.IsGroup && slices.Contains(cfg.WhatsApp.TagAllAllowedGroups, v.Info.Chat.User) &&
 		(strings.Contains(lowercaseText, "@all") || strings.Contains(lowercaseText, "@everyone")) {
 		utils.WaTagAll(v.Info.Chat, v.Message, v.Info.ID, v.Info.MessageSource.Sender.String(), false)
