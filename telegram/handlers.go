@@ -38,6 +38,7 @@ func AddTelegramHandlers() {
 		handlers.NewCommand("clearpairhistory", ClearMessageIdPairsHistoryHandler),
 		handlers.NewCommand("restartwa", RestartWhatsAppConnectionHandler),
 		handlers.NewCommand("joininvitelink", JoinInviteLinkHandler),
+		handlers.NewCommand("settargetchat", SetTargetChatHandler),
 		handlers.NewCommand("send", SendToWhatsAppHandler),
 		handlers.NewCommand("help", HelpCommandHandler),
 	)
@@ -70,6 +71,10 @@ func AddTelegramHandlers() {
 		gotgbot.BotCommand{
 			Command:     "joininvitelink",
 			Description: "Join a WhatsApp chat using invite link",
+		},
+		gotgbot.BotCommand{
+			Command:     "settargetchat",
+			Description: "Set the target WhatsApp chat for current thread",
 		},
 		gotgbot.BotCommand{
 			Command:     "send",
@@ -282,6 +287,50 @@ func JoinInviteLinkHandler(b *gotgbot.Bot, c *ext.Context) error {
 
 	return utils.TgReplyTextByContext(b, c,
 		fmt.Sprintf("Joined a new group with ID: <code>%s</code>", groupID.String()))
+}
+
+func SetTargetChatHandler(b *gotgbot.Bot, c *ext.Context) error {
+	if !utils.TgUpdateIsAuthorized(b, c) {
+		return nil
+	}
+
+	usageString := "Usage: (Send in a topic) <code>" + html.EscapeString("/settargetchat <group_id>") + "</code>"
+
+	args := c.Args()
+	if len(args) <= 1 {
+		return utils.TgReplyTextByContext(b, c, usageString)
+	}
+
+	if !c.EffectiveMessage.IsTopicMessage || c.EffectiveMessage.MessageThreadId == 0 {
+		return utils.TgReplyTextByContext(b, c, "The command should be sent in a topic")
+	}
+
+	var (
+		cfg      = state.State.Config
+		groupID  = args[1]
+		waClient = state.State.WhatsAppClient
+	)
+
+	groupJID, _ := utils.WaParseJID(groupID)
+	groupInfo, err := waClient.GetGroupInfo(groupJID)
+	if err != nil {
+		return utils.TgReplyWithErrorByContext(b, c, "Failed to get group info", err)
+	}
+	groupJID = groupInfo.JID
+
+	_, threadFound, err := database.ChatThreadGetTgFromWa(groupJID.String(), cfg.Telegram.TargetChatID)
+	if err != nil {
+		return utils.TgReplyWithErrorByContext(b, c, "Failed to check database for existing mapping", err)
+	} else if threadFound {
+		return utils.TgReplyTextByContext(b, c, "A topic already exists in database for the given WhatsApp chat. Aborting...")
+	}
+
+	err = database.ChatThreadAddNewPair(groupJID.String(), cfg.Telegram.TargetChatID, c.EffectiveMessage.MessageThreadId)
+	if err != nil {
+		return utils.TgReplyWithErrorByContext(b, c, "Failed to add the mapping in database. Unsuccessful", err)
+	}
+
+	return utils.TgReplyTextByContext(b, c, "Successfully mapped")
 }
 
 func HelpCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
