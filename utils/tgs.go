@@ -13,7 +13,7 @@ func TGSConvertToWebp(tgsStickerData []byte) ([]byte, error) {
 		quality float32 = 100
 		fps     uint    = 30
 	)
-	for quality > 2 && fps > 10 {
+	for quality > 2 && fps > 5 {
 		opt.SetFPS(fps)
 		opt.SetWebpQuality(quality)
 		webpStickerData, err := libtgsconverter.ImportFromData(tgsStickerData, opt)
@@ -23,7 +23,7 @@ func TGSConvertToWebp(tgsStickerData []byte) ([]byte, error) {
 			return webpStickerData, nil
 		}
 		quality /= 2
-		fps -= 5
+		fps = uint(float32(fps) / 1.5)
 	}
 	return nil, fmt.Errorf("sticker has a lot of data which cannot be handled by WhatsApp")
 }
