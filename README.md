@@ -4,6 +4,8 @@ Despite the name, its not exactly a "bridge". It forwards messages from WhatsApp
 from Telegram.
 
 
+- Join this <a href="https://t.me/AkshettProjects">Telegram Channel</a> for updates
+
 ## Sample Screenshots
 
 <p align="center">
