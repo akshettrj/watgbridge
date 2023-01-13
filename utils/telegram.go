@@ -179,7 +179,11 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			return TgReplyTextByContext(b, c, "Unable to send photo as it exceeds Telegram size restriction")
 		}
 
-		imageFile, err := b.GetFile(bestPhoto.FileId, &gotgbot.GetFileOpts{Timeout: -1})
+		imageFile, err := b.GetFile(bestPhoto.FileId, &gotgbot.GetFileOpts{
+			RequestOpts: &gotgbot.RequestOpts{
+				Timeout: -1,
+			},
+		})
 		if err != nil {
 			return TgReplyWithErrorByContext(b, c, "Failed to retreive image file from Telegram", err)
 		}
@@ -236,7 +240,11 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			return TgReplyTextByContext(b, c, "Unable to send video as it exceeds Telegram size restriction")
 		}
 
-		videoFile, err := b.GetFile(msgToForward.Video.FileId, &gotgbot.GetFileOpts{Timeout: -1})
+		videoFile, err := b.GetFile(msgToForward.Video.FileId, &gotgbot.GetFileOpts{
+			RequestOpts: &gotgbot.RequestOpts{
+				Timeout: -1,
+			},
+		})
 		if err != nil {
 			return TgReplyWithErrorByContext(b, c, "Failed to retreive video file from Telegram", err)
 		}
@@ -293,7 +301,11 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			return TgReplyTextByContext(b, c, "Unable to send video note as it exceeds Telegram size restriction")
 		}
 
-		videoFile, err := b.GetFile(msgToForward.VideoNote.FileId, &gotgbot.GetFileOpts{Timeout: -1})
+		videoFile, err := b.GetFile(msgToForward.VideoNote.FileId, &gotgbot.GetFileOpts{
+			RequestOpts: &gotgbot.RequestOpts{
+				Timeout: -1,
+			},
+		})
 		if err != nil {
 			return TgReplyWithErrorByContext(b, c, "Failed to retreive video note file from Telegram", err)
 		}
@@ -348,7 +360,11 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			return TgReplyTextByContext(b, c, "Unable to send animation as it exceeds Telegram size restriction")
 		}
 
-		animationFile, err := b.GetFile(msgToForward.Animation.FileId, &gotgbot.GetFileOpts{Timeout: -1})
+		animationFile, err := b.GetFile(msgToForward.Animation.FileId, &gotgbot.GetFileOpts{
+			RequestOpts: &gotgbot.RequestOpts{
+				Timeout: -1,
+			},
+		})
 		if err != nil {
 			return TgReplyWithErrorByContext(b, c, "Failed to retreive animation file from Telegram", err)
 		}
@@ -406,7 +422,11 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			return TgReplyTextByContext(b, c, "Unable to send audio as it exceeds Telegram size restriction")
 		}
 
-		audioFile, err := b.GetFile(msgToForward.Audio.FileId, &gotgbot.GetFileOpts{Timeout: -1})
+		audioFile, err := b.GetFile(msgToForward.Audio.FileId, &gotgbot.GetFileOpts{
+			RequestOpts: &gotgbot.RequestOpts{
+				Timeout: -1,
+			},
+		})
 		if err != nil {
 			return TgReplyWithErrorByContext(b, c, "Failed to retreive audio file from Telegram", err)
 		}
@@ -459,7 +479,11 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			return TgReplyTextByContext(b, c, "Unable to send voice as it exceeds Telegram size restriction")
 		}
 
-		voiceFile, err := b.GetFile(msgToForward.Voice.FileId, &gotgbot.GetFileOpts{Timeout: -1})
+		voiceFile, err := b.GetFile(msgToForward.Voice.FileId, &gotgbot.GetFileOpts{
+			RequestOpts: &gotgbot.RequestOpts{
+				Timeout: -1,
+			},
+		})
 		if err != nil {
 			return TgReplyWithErrorByContext(b, c, "Failed to retreive voice file from Telegram", err)
 		}
@@ -512,7 +536,11 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			return TgReplyTextByContext(b, c, "Unable to send document as it exceeds Telegram size restriction")
 		}
 
-		documentFile, err := b.GetFile(msgToForward.Document.FileId, &gotgbot.GetFileOpts{Timeout: -1})
+		documentFile, err := b.GetFile(msgToForward.Document.FileId, &gotgbot.GetFileOpts{
+			RequestOpts: &gotgbot.RequestOpts{
+				Timeout: -1,
+			},
+		})
 		if err != nil {
 			return TgReplyWithErrorByContext(b, c, "Failed to retreive document file from Telegram", err)
 		}
@@ -572,7 +600,11 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			return TgReplyTextByContext(b, c, "Unable to send sticker as video stickers are not supported at present")
 		}
 
-		stickerFile, err := b.GetFile(msgToForward.Sticker.FileId, &gotgbot.GetFileOpts{Timeout: -1})
+		stickerFile, err := b.GetFile(msgToForward.Sticker.FileId, &gotgbot.GetFileOpts{
+			RequestOpts: &gotgbot.RequestOpts{
+				Timeout: -1,
+			},
+		})
 		if err != nil {
 			return TgReplyWithErrorByContext(b, c, "Failed to retreive sticker file from Telegram", err)
 		}
