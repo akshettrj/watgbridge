@@ -3,7 +3,9 @@ package telegram
 import (
 	"fmt"
 	"html"
+	"os/exec"
 	"strings"
+	"syscall"
 	"time"
 
 	"watgbridge/database"
@@ -40,6 +42,7 @@ func AddTelegramHandlers() {
 		handlers.NewCommand("joininvitelink", JoinInviteLinkHandler),
 		handlers.NewCommand("settargetgroupchat", SetTargetGroupChatHandler),
 		handlers.NewCommand("settargetprivatechat", SetTargetPrivateChatHandler),
+		handlers.NewCommand("updateandrestart", UpdateAndRestartHandler),
 		handlers.NewCommand("send", SendToWhatsAppHandler),
 		handlers.NewCommand("help", HelpCommandHandler),
 	)
@@ -88,6 +91,10 @@ func AddTelegramHandlers() {
 		gotgbot.BotCommand{
 			Command:     "help",
 			Description: "Get all the available commands",
+		},
+		gotgbot.BotCommand{
+			Command:     "updateandrestart",
+			Description: "Try to fetch updates from GitHub and build and restart the bot",
 		},
 	)
 }
@@ -145,8 +152,14 @@ func StartCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
 		return nil
 	}
 
-	return utils.TgReplyTextByContext(b, c, fmt.Sprintf("Hi! The bot has been up since %s",
-		html.EscapeString(state.State.StartTime.In(state.State.LocalLocation).Format(state.State.Config.TimeFormat))))
+	return utils.TgReplyTextByContext(b, c, fmt.Sprintf("Hi! The bot has been up since %s\n\nVersion: v%s",
+		html.EscapeString(
+			state.State.StartTime.
+				In(state.State.LocalLocation).
+				Format(state.State.Config.TimeFormat),
+		),
+		state.WATGBRIDGE_VERSION,
+	))
 }
 
 func GetWhatsAppGroupsHandler(b *gotgbot.Bot, c *ext.Context) error {
@@ -216,6 +229,31 @@ func FindContactHandler(b *gotgbot.Bot, c *ext.Context) error {
 	if len(outputString) > 0 {
 		return utils.TgReplyTextByContext(b, c, outputString)
 	}
+	return nil
+}
+
+func UpdateAndRestartHandler(b *gotgbot.Bot, c *ext.Context) error {
+	if !utils.TgUpdateIsAuthorized(b, c) {
+		return nil
+	}
+
+	gitPullCmd := exec.Command("git", "pull", "--rebase")
+	err := gitPullCmd.Run()
+	if err != nil {
+		return utils.TgReplyWithErrorByContext(b, c, "Failed to execute 'git pull --rebase' command", err)
+	}
+
+	goBuildCmd := exec.Command("go", "build")
+	err = goBuildCmd.Run()
+	if err != nil {
+		return utils.TgReplyWithErrorByContext(b, c, "Failed to execute 'go build' command", err)
+	}
+
+	err = syscall.Exec("./watgbridge", []string{}, []string{})
+	if err != nil {
+		return utils.TgReplyWithErrorByContext(b, c, "Failed to run exec syscall to restart the bot", err)
+	}
+
 	return nil
 }
 
