@@ -242,12 +242,14 @@ func UpdateAndRestartHandler(b *gotgbot.Bot, c *ext.Context) error {
 	if err != nil {
 		return utils.TgReplyWithErrorByContext(b, c, "Failed to execute 'git pull --rebase' command", err)
 	}
+	utils.TgReplyTextByContext(b, c, "Successfully pulled from GitHub")
 
 	goBuildCmd := exec.Command("go", "build")
 	err = goBuildCmd.Run()
 	if err != nil {
 		return utils.TgReplyWithErrorByContext(b, c, "Failed to execute 'go build' command", err)
 	}
+	utils.TgReplyTextByContext(b, c, "Successfully built the binary, now restarting...")
 
 	err = syscall.Exec("./watgbridge", []string{}, []string{})
 	if err != nil {
