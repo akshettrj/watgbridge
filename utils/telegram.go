@@ -699,7 +699,6 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		if err != nil {
 			return TgReplyWithErrorByContext(b, c, "Failed to send message to WhatsApp", err)
 		}
-		fmt.Println(c.EffectiveMessage.MessageThreadId)
 		TgReplyTextByContext(b, c, "Successfully sent")
 
 		err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.User, waChatJID.String(),

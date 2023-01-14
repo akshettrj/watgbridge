@@ -9,7 +9,7 @@ import (
 	"gorm.io/gorm"
 )
 
-const WATGBRIDGE_VERSION = "1.0.2"
+const WATGBRIDGE_VERSION = "1.0.3"
 
 type state struct {
 	Config   *Config
