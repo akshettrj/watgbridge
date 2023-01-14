@@ -67,8 +67,9 @@ func MessageFromMeEventHandler(text string, v *events.Message) {
 	}
 
 	// Tag everyone in the group
-	if lowercaseText := strings.ToLower(text); v.Info.IsGroup &&
-		(strings.Contains(lowercaseText, "@all") || strings.Contains(lowercaseText, "@everyone")) {
+	textSplit := strings.Split(strings.ToLower(text), " \n\t")
+	if v.Info.IsGroup &&
+		(slices.Contains(textSplit, "@all") || slices.Contains(textSplit, "@everyone")) {
 		utils.WaTagAll(v.Info.Chat, v.Message, v.Info.ID, v.Info.MessageSource.Sender.String(), true)
 	}
 }
@@ -178,10 +179,8 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 		}
 	}
 
-MEDIATYPESWITCH:
-	switch v.Info.MediaType {
+	if v.Message.GetImageMessage() != nil {
 
-	case "image":
 		imageMsg := v.Message.GetImageMessage()
 		if imageMsg.GetUrl() == "" {
 			return
@@ -234,7 +233,8 @@ MEDIATYPESWITCH:
 			return
 		}
 
-	case "gif":
+	} else if v.Message.GetVideoMessage() != nil && v.Message.GetVideoMessage().GetGifPlayback() {
+
 		gifMsg := v.Message.GetVideoMessage()
 		if gifMsg.GetUrl() == "" {
 			return
@@ -292,7 +292,8 @@ MEDIATYPESWITCH:
 			return
 		}
 
-	case "video":
+	} else if v.Message.GetVideoMessage() != nil {
+
 		videoMsg := v.Message.GetVideoMessage()
 		if videoMsg.GetUrl() == "" {
 			return
@@ -350,7 +351,8 @@ MEDIATYPESWITCH:
 			return
 		}
 
-	case "ptt":
+	} else if v.Message.GetAudioMessage() != nil && v.Message.GetAudioMessage().GetPtt() {
+
 		audioMsg := v.Message.GetAudioMessage()
 		if audioMsg.GetUrl() == "" {
 			return
@@ -400,7 +402,8 @@ MEDIATYPESWITCH:
 			return
 		}
 
-	case "audio":
+	} else if v.Message.GetAudioMessage() != nil {
+
 		audioMsg := v.Message.GetAudioMessage()
 		if audioMsg.GetUrl() == "" {
 			return
@@ -450,7 +453,8 @@ MEDIATYPESWITCH:
 			return
 		}
 
-	case "document":
+	} else if v.Message.GetDocumentMessage() != nil {
+
 		documentMsg := v.Message.GetDocumentMessage()
 		if documentMsg.GetUrl() == "" {
 			return
@@ -508,7 +512,8 @@ MEDIATYPESWITCH:
 			return
 		}
 
-	case "sticker":
+	} else if v.Message.GetStickerMessage() != nil {
+
 		stickerMsg := v.Message.GetStickerMessage()
 		if stickerMsg.GetUrl() == "" {
 			return
@@ -559,7 +564,8 @@ MEDIATYPESWITCH:
 			})
 		}
 
-	case "vcard":
+	} else if v.Message.GetContactMessage() != nil {
+
 		contactMsg := v.Message.GetContactMessage()
 
 		decoder := goVCard.NewDecoder(bytes.NewReader([]byte(contactMsg.GetVcard())))
@@ -594,7 +600,8 @@ MEDIATYPESWITCH:
 			})
 		return
 
-	case "contact_array":
+	} else if v.Message.GetContactsArrayMessage() != nil {
+
 		contactsMsg := v.Message.GetContactsArrayMessage()
 
 		bridgedText += "\n<i>It was the following vCards</i>"
@@ -629,7 +636,8 @@ MEDIATYPESWITCH:
 		}
 		return
 
-	case "location":
+	} else if v.Message.GetLocationMessage() != nil {
+
 		locationMsg := v.Message.GetLocationMessage()
 
 		bridgedText += "\n<i>It was the following location</i>"
@@ -651,7 +659,8 @@ MEDIATYPESWITCH:
 			})
 		return
 
-	case "livelocation":
+	} else if v.Message.GetLiveLocationMessage() != nil {
+
 		bridgedText += "\n<i>Shared their live location with you</i>"
 
 		sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
@@ -664,39 +673,9 @@ MEDIATYPESWITCH:
 		}
 		return
 
-	case "url", "":
-		if text == "" {
-			if v.Message.GetImageMessage() != nil {
-				v.Info.MediaType = "image"
-			} else if videoMsg := v.Message.GetVideoMessage(); videoMsg != nil {
-				if videoMsg.GetGifPlayback() {
-					v.Info.MediaType = "gif"
-				} else {
-					v.Info.MediaType = "video"
-				}
-			} else if audioMsg := v.Message.GetAudioMessage(); audioMsg != nil {
-				if audioMsg.GetPtt() {
-					v.Info.MediaType = "ptt"
-				} else {
-					v.Info.MediaType = "audio"
-				}
-			} else if v.Message.GetDocumentMessage() != nil {
-				v.Info.MediaType = "document"
-			} else if v.Message.GetStickerMessage() != nil {
-				v.Info.MediaType = "sticker"
-			} else if v.Message.GetContactMessage() != nil {
-				v.Info.MediaType = "vcard"
-			} else if v.Message.GetContactsArrayMessage() != nil {
-				v.Info.MediaType = "contact_array"
-			} else if v.Message.GetLocationMessage() != nil {
-				v.Info.MediaType = "location"
-			} else if v.Message.GetLiveLocationMessage() != nil {
-				v.Info.MediaType = "livelocation"
-			}
+	} else {
 
-			if v.Info.MediaType != "" {
-				goto MEDIATYPESWITCH
-			}
+		if text == "" {
 			return
 		}
 
@@ -724,20 +703,6 @@ MEDIATYPESWITCH:
 				cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 		}
 		return
-
-	default:
-		bridgedText += "\n<i>It was an unhandled MediaType. Please report to devs.</i>"
-
-		sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
-			ReplyToMessageId: replyToMsgId,
-			MessageThreadId:  threadId,
-		})
-		if sentMsg.MessageId != 0 {
-			database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
-				cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
-		}
-		return
-
 	}
 }
 

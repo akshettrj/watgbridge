@@ -19,6 +19,7 @@ import (
 	"go.mau.fi/whatsmeow"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
 	waTypes "go.mau.fi/whatsmeow/types"
+	"golang.org/x/exp/slices"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -706,6 +707,14 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		if err != nil {
 			return TgReplyWithErrorByContext(b, c, "Failed to add to database", err)
 		}
+
+		{
+			textSplit := strings.Split(strings.ToLower(msgToForward.Text), " \n\t")
+			if slices.Contains(textSplit, "@all") || slices.Contains(textSplit, "@everyone") {
+				WaTagAll(waChatJID, msgToSend, sentMsg.ID, waClient.Store.ID.String(), true)
+			}
+		}
+
 	}
 
 	return nil
