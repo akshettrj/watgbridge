@@ -3,6 +3,7 @@ package telegram
 import (
 	"fmt"
 	"html"
+	"os"
 	"os/exec"
 	"strings"
 	"syscall"
@@ -251,7 +252,7 @@ func UpdateAndRestartHandler(b *gotgbot.Bot, c *ext.Context) error {
 	}
 	utils.TgReplyTextByContext(b, c, "Successfully built the binary, now restarting...")
 
-	err = syscall.Exec("./watgbridge", []string{}, []string{})
+	err = syscall.Exec("./watgbridge", []string{}, os.Environ())
 	if err != nil {
 		return utils.TgReplyWithErrorByContext(b, c, "Failed to run exec syscall to restart the bot", err)
 	}
