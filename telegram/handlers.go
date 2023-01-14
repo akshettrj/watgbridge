@@ -238,14 +238,14 @@ func UpdateAndRestartHandler(b *gotgbot.Bot, c *ext.Context) error {
 		return nil
 	}
 
-	gitPullCmd := exec.Command("git", "pull", "--rebase")
+	gitPullCmd := exec.Command("/usr/bin/git", "pull", "--rebase")
 	err := gitPullCmd.Run()
 	if err != nil {
 		return utils.TgReplyWithErrorByContext(b, c, "Failed to execute 'git pull --rebase' command", err)
 	}
 	utils.TgReplyTextByContext(b, c, "Successfully pulled from GitHub")
 
-	goBuildCmd := exec.Command("go", "build")
+	goBuildCmd := exec.Command("/usr/bin/go", "build")
 	err = goBuildCmd.Run()
 	if err != nil {
 		return utils.TgReplyWithErrorByContext(b, c, "Failed to execute 'go build' command", err)
