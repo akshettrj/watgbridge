@@ -1,8 +1,10 @@
 package main
 
 import (
+	"errors"
 	"log"
 	"os"
+	"os/exec"
 	"time"
 
 	"watgbridge/database"
@@ -39,6 +41,26 @@ func main() {
 
 	if cfg.WhatsApp.SessionName == "" {
 		cfg.WhatsApp.SessionName = "watgbridge"
+	}
+
+	if cfg.GitExecutable == "" || cfg.GoExecutable == "" {
+		gitPath, err := exec.LookPath("git")
+		if err != nil && !errors.Is(err, exec.ErrDot) {
+			log.Fatalln("failed to find path to git executable : " + err.Error())
+		}
+
+		goPath, err := exec.LookPath("go")
+		if err != nil && !errors.Is(err, exec.ErrDot) {
+			log.Fatalln("failed to find path to go executable : " + err.Error())
+		}
+
+		cfg.GitExecutable = gitPath
+		cfg.GoExecutable = goPath
+
+		log.Printf("Using '%s' and '%s' as path to executables for git and go\n",
+			gitPath, goPath)
+
+		cfg.SaveConfig()
 	}
 
 	// Setup database

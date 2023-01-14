@@ -1,6 +1,9 @@
 time_zone: Asia/Kolkata
 time_format: 02 Jan, 2006 - Mon @ 15:04
 
+git_executable: /usr/bin/git
+go_executable: /usr/bin/go
+
 telegram:
   bot_token: 186779
   # api_url: http://localhost:8082        # Uncomment if you have a local bot API server running (for bypassing file size limits)

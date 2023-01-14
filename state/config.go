@@ -9,9 +9,11 @@ import (
 )
 
 type Config struct {
-	Path       string `yaml:"-"`
-	TimeZone   string `yaml:"time_zone"`
-	TimeFormat string `yaml:"time_format"`
+	Path          string `yaml:"-"`
+	TimeZone      string `yaml:"time_zone"`
+	TimeFormat    string `yaml:"time_format"`
+	GitExecutable string `yaml:"git_executable"`
+	GoExecutable  string `yaml:"go_executable"`
 
 	Telegram struct {
 		BotToken      string `yaml:"bot_token"`

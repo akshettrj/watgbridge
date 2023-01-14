@@ -6,6 +6,7 @@ import (
 	"html"
 	"os"
 	"os/exec"
+	"path"
 	"strings"
 	"syscall"
 	"time"
@@ -245,21 +246,23 @@ func UpdateAndRestartHandler(b *gotgbot.Bot, c *ext.Context) error {
 		return nil
 	}
 
-	gitPullCmd := exec.Command("/usr/bin/git", "pull", "--rebase")
+	cfg := state.State.Config
+
+	gitPullCmd := exec.Command(cfg.GitExecutable, "pull", "--rebase")
 	err := gitPullCmd.Run()
 	if err != nil {
 		return utils.TgReplyWithErrorByContext(b, c, "Failed to execute 'git pull --rebase' command", err)
 	}
 	utils.TgReplyTextByContext(b, c, "Successfully pulled from GitHub", nil)
 
-	goBuildCmd := exec.Command("/usr/bin/go", "build")
+	goBuildCmd := exec.Command(cfg.GoExecutable, "build")
 	err = goBuildCmd.Run()
 	if err != nil {
 		return utils.TgReplyWithErrorByContext(b, c, "Failed to execute 'go build' command", err)
 	}
 	utils.TgReplyTextByContext(b, c, "Successfully built the binary, now restarting...", nil)
 
-	err = syscall.Exec("./watgbridge", []string{}, os.Environ())
+	err = syscall.Exec(path.Join(".", "watgbridge"), []string{}, os.Environ())
 	if err != nil {
 		return utils.TgReplyWithErrorByContext(b, c, "Failed to run exec syscall to restart the bot", err)
 	}
