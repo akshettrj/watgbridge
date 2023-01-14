@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"strconv"
 	"time"
 
 	"watgbridge/database"
@@ -13,6 +14,7 @@ import (
 	"watgbridge/utils"
 	"watgbridge/whatsapp"
 
+	"github.com/PaulSonOfLars/gotgbot/v2"
 	"github.com/go-co-op/gocron"
 )
 
@@ -101,6 +103,39 @@ func main() {
 			_ = database.ContactNameBulkAddOrUpdate(contacts)
 		}
 	})
+
+	{
+		isRestarted, found := os.LookupEnv("WATG_IS_RESTARTED")
+		if !found || isRestarted != "1" {
+			goto SKIP_RESTART
+		}
+
+		chatIdString, chatIdFound := os.LookupEnv("WATG_CHAT_ID")
+		msgIdString, msgIdFound := os.LookupEnv("WATG_MESSAGE_ID")
+		threadIdString, threadIdFound := os.LookupEnv("WATG_THREAD_ID")
+		if !chatIdFound || !msgIdFound {
+			goto SKIP_RESTART
+		}
+
+		chatId, chatIdSuccess := strconv.ParseInt(chatIdString, 10, 64)
+		msgId, msgIdSuccess := strconv.ParseInt(msgIdString, 10, 64)
+		if chatIdSuccess != nil || msgIdSuccess != nil {
+			goto SKIP_RESTART
+		}
+
+		opts := gotgbot.SendMessageOpts{
+			ReplyToMessageId: msgId,
+		}
+		if threadIdFound {
+			threadId, threadIdSuccess := strconv.ParseInt(threadIdString, 10, 64)
+			if threadIdSuccess == nil {
+				opts.MessageThreadId = threadId
+			}
+		}
+
+		state.State.TelegramBot.SendMessage(chatId, "Successfully restarted", &opts)
+	}
+SKIP_RESTART:
 
 	state.State.TelegramUpdater.Idle()
 }

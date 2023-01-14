@@ -262,6 +262,13 @@ func UpdateAndRestartHandler(b *gotgbot.Bot, c *ext.Context) error {
 	}
 	utils.TgReplyTextByContext(b, c, "Successfully built the binary, now restarting...", nil)
 
+	os.Setenv("WATG_IS_RESTARTED", "1")
+	os.Setenv("WATG_CHAT_ID", fmt.Sprint(c.EffectiveChat.Id))
+	os.Setenv("WATG_MESSAGE_ID", fmt.Sprint(c.EffectiveMessage.MessageId))
+	if c.EffectiveMessage.IsTopicMessage {
+		os.Setenv("WATG_THREAD_ID", fmt.Sprint(c.EffectiveMessage.MessageThreadId))
+	}
+
 	err = syscall.Exec(path.Join(".", "watgbridge"), []string{}, os.Environ())
 	if err != nil {
 		return utils.TgReplyWithErrorByContext(b, c, "Failed to run exec syscall to restart the bot", err)
