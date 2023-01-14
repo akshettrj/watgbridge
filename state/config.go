@@ -16,11 +16,12 @@ type Config struct {
 	GoExecutable  string `yaml:"go_executable"`
 
 	Telegram struct {
-		BotToken      string `yaml:"bot_token"`
-		APIURL        string `yaml:"api_url"`
-		SelfHostedAPI bool   `yaml:"self_hosted_api"`
-		OwnerID       int64  `yaml:"owner_id"`
-		TargetChatID  int64  `yaml:"target_chat_id"`
+		BotToken      string  `yaml:"bot_token"`
+		APIURL        string  `yaml:"api_url"`
+		SudoUsersID   []int64 `yaml:"sudo_users_id"`
+		OwnerID       int64   `yaml:"owner_id"`
+		TargetChatID  int64   `yaml:"target_chat_id"`
+		SelfHostedAPI bool    `yaml:"self_hosted_api"`
 	} `yaml:"telegram"`
 
 	WhatsApp struct {

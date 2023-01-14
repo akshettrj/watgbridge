@@ -108,12 +108,14 @@ func TgSendTextById(b *gotgbot.Bot, chatId int64, threadId int64, text string) e
 
 func TgUpdateIsAuthorized(b *gotgbot.Bot, c *ext.Context) bool {
 	var (
-		cfg     = state.State.Config
-		sender  = c.EffectiveSender.User
-		ownerID = cfg.Telegram.OwnerID
+		cfg         = state.State.Config
+		sender      = c.EffectiveSender.User
+		ownerID     = cfg.Telegram.OwnerID
+		sudoUsersID = cfg.Telegram.SudoUsersID
 	)
 
-	if sender != nil && sender.Id == ownerID {
+	if sender != nil &&
+		(slices.Contains(sudoUsersID, sender.Id) || sender.Id == ownerID) {
 		return true
 	}
 
@@ -682,7 +684,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 					SenderTimestampMs: proto.Int64(time.Now().UnixMilli()),
 					Key: &waProto.MessageKey{
 						RemoteJid: proto.String(waChatJID.String()),
-						FromMe:    proto.Bool(msgToReplyTo != nil && msgToReplyTo.From.Id == cfg.Telegram.OwnerID),
+						FromMe:    proto.Bool(msgToReplyTo != nil && msgToReplyTo.From.Id != b.Id),
 						Id:        proto.String(stanzaId),
 					},
 				},
