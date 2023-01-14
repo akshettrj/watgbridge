@@ -31,15 +31,12 @@ func NewTelegramClient() error {
 	bot.UseMiddleware(middlewares.SendWithoutReply)
 
 	dispatcher := ext.NewDispatcher(&ext.DispatcherOpts{
-		Error: func(_ *gotgbot.Bot, _ *ext.Context, err error) ext.DispatcherAction {
-			log.Println("[telegram] an error occurred while handling update : " + err.Error())
-			return ext.DispatcherActionNoop
-		},
+		ErrorLog:    log.Default(),
 		MaxRoutines: ext.DefaultMaxRoutines,
 	})
 
 	updater := ext.NewUpdater(&ext.UpdaterOpts{
-		ErrorLog:   nil,
+		ErrorLog:   log.Default(),
 		Dispatcher: dispatcher,
 	})
 

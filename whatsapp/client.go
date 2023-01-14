@@ -19,7 +19,7 @@ import (
 )
 
 func NewWhatsAppClient() error {
-	store.DeviceProps.Os = proto.String("watgbridge")
+	store.DeviceProps.Os = proto.String(state.State.Config.WhatsApp.SessionName)
 	store.DeviceProps.RequireFullSync = proto.Bool(true)
 	store.DeviceProps.PlatformType = waProto.DeviceProps_DESKTOP.Enum()
 	dbLog := waLog.Stdout("WA_Database", "WARN", true)

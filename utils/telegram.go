@@ -86,12 +86,15 @@ func TgDownloadByFilePath(b *gotgbot.Bot, filePath string) ([]byte, error) {
 	return bodyBytes, nil
 }
 
-func TgReplyTextByContext(b *gotgbot.Bot, c *ext.Context, text string) error {
+func TgReplyTextByContext(b *gotgbot.Bot, c *ext.Context, text string, buttons *gotgbot.InlineKeyboardMarkup) error {
 	sendOpts := &gotgbot.SendMessageOpts{
 		ReplyToMessageId: c.EffectiveMessage.MessageId,
 	}
 	if c.EffectiveMessage.IsTopicMessage {
 		sendOpts.MessageThreadId = c.EffectiveMessage.MessageThreadId
+	}
+	if buttons != nil {
+		sendOpts.ReplyMarkup = buttons
 	}
 	_, err := b.SendMessage(c.EffectiveChat.Id, text, sendOpts)
 	return err
@@ -177,7 +180,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		}
 
 		if !cfg.Telegram.SelfHostedAPI && bestPhoto.FileSize > DownloadSizeLimit {
-			return TgReplyTextByContext(b, c, "Unable to send photo as it exceeds Telegram size restriction")
+			return TgReplyTextByContext(b, c, "Unable to send photo as it exceeds Telegram size restriction", nil)
 		}
 
 		imageFile, err := b.GetFile(bestPhoto.FileId, &gotgbot.GetFileOpts{
@@ -227,7 +230,8 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		if err != nil {
 			return TgReplyWithErrorByContext(b, c, "Failed to send image to WhatsApp", err)
 		}
-		TgReplyTextByContext(b, c, "Successfully sent")
+		revokeKeyboard := TgMakeRevokeKeyboard(sentMsg.ID, waChatJID.String(), false)
+		TgReplyTextByContext(b, c, "Successfully sent", revokeKeyboard)
 
 		err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.User, waChatJID.String(),
 			cfg.Telegram.TargetChatID, msgToForward.MessageId, msgToForward.MessageThreadId)
@@ -238,7 +242,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 	} else if msgToForward.Video != nil {
 
 		if !cfg.Telegram.SelfHostedAPI && msgToForward.Video.FileSize > DownloadSizeLimit {
-			return TgReplyTextByContext(b, c, "Unable to send video as it exceeds Telegram size restriction")
+			return TgReplyTextByContext(b, c, "Unable to send video as it exceeds Telegram size restriction", nil)
 		}
 
 		videoFile, err := b.GetFile(msgToForward.Video.FileId, &gotgbot.GetFileOpts{
@@ -289,7 +293,8 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		if err != nil {
 			return TgReplyWithErrorByContext(b, c, "Failed to send video to WhatsApp", err)
 		}
-		TgReplyTextByContext(b, c, "Successfully sent")
+		revokeKeyboard := TgMakeRevokeKeyboard(sentMsg.ID, waChatJID.String(), false)
+		TgReplyTextByContext(b, c, "Successfully sent", revokeKeyboard)
 
 		err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.User, waChatJID.String(),
 			cfg.Telegram.TargetChatID, msgToForward.MessageId, msgToForward.MessageThreadId)
@@ -299,7 +304,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 	} else if msgToForward.VideoNote != nil {
 
 		if !cfg.Telegram.SelfHostedAPI && msgToForward.VideoNote.FileSize > DownloadSizeLimit {
-			return TgReplyTextByContext(b, c, "Unable to send video note as it exceeds Telegram size restriction")
+			return TgReplyTextByContext(b, c, "Unable to send video note as it exceeds Telegram size restriction", nil)
 		}
 
 		videoFile, err := b.GetFile(msgToForward.VideoNote.FileId, &gotgbot.GetFileOpts{
@@ -348,7 +353,8 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		if err != nil {
 			return TgReplyWithErrorByContext(b, c, "Failed to send video note to WhatsApp", err)
 		}
-		TgReplyTextByContext(b, c, "Successfully sent")
+		revokeKeyboard := TgMakeRevokeKeyboard(sentMsg.ID, waChatJID.String(), false)
+		TgReplyTextByContext(b, c, "Successfully sent", revokeKeyboard)
 
 		err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.User, waChatJID.String(),
 			cfg.Telegram.TargetChatID, msgToForward.MessageId, msgToForward.MessageThreadId)
@@ -358,7 +364,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 	} else if msgToForward.Animation != nil {
 
 		if !cfg.Telegram.SelfHostedAPI && msgToForward.Animation.FileSize > DownloadSizeLimit {
-			return TgReplyTextByContext(b, c, "Unable to send animation as it exceeds Telegram size restriction")
+			return TgReplyTextByContext(b, c, "Unable to send animation as it exceeds Telegram size restriction", nil)
 		}
 
 		animationFile, err := b.GetFile(msgToForward.Animation.FileId, &gotgbot.GetFileOpts{
@@ -410,7 +416,8 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		if err != nil {
 			return TgReplyWithErrorByContext(b, c, "Failed to send animation to WhatsApp", err)
 		}
-		TgReplyTextByContext(b, c, "Successfully sent")
+		revokeKeyboard := TgMakeRevokeKeyboard(sentMsg.ID, waChatJID.String(), false)
+		TgReplyTextByContext(b, c, "Successfully sent", revokeKeyboard)
 
 		err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.User, waChatJID.String(),
 			cfg.Telegram.TargetChatID, msgToForward.MessageId, msgToForward.MessageThreadId)
@@ -420,7 +427,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 	} else if msgToForward.Audio != nil {
 
 		if !cfg.Telegram.SelfHostedAPI && msgToForward.Audio.FileSize > DownloadSizeLimit {
-			return TgReplyTextByContext(b, c, "Unable to send audio as it exceeds Telegram size restriction")
+			return TgReplyTextByContext(b, c, "Unable to send audio as it exceeds Telegram size restriction", nil)
 		}
 
 		audioFile, err := b.GetFile(msgToForward.Audio.FileId, &gotgbot.GetFileOpts{
@@ -467,7 +474,8 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		if err != nil {
 			return TgReplyWithErrorByContext(b, c, "Failed to send audio to WhatsApp", err)
 		}
-		TgReplyTextByContext(b, c, "Successfully sent")
+		revokeKeyboard := TgMakeRevokeKeyboard(sentMsg.ID, waChatJID.String(), false)
+		TgReplyTextByContext(b, c, "Successfully sent", revokeKeyboard)
 
 		err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.User, waChatJID.String(),
 			cfg.Telegram.TargetChatID, msgToForward.MessageId, msgToForward.MessageThreadId)
@@ -477,7 +485,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 	} else if msgToForward.Voice != nil {
 
 		if !cfg.Telegram.SelfHostedAPI && msgToForward.Voice.FileSize > DownloadSizeLimit {
-			return TgReplyTextByContext(b, c, "Unable to send voice as it exceeds Telegram size restriction")
+			return TgReplyTextByContext(b, c, "Unable to send voice as it exceeds Telegram size restriction", nil)
 		}
 
 		voiceFile, err := b.GetFile(msgToForward.Voice.FileId, &gotgbot.GetFileOpts{
@@ -524,7 +532,8 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		if err != nil {
 			return TgReplyWithErrorByContext(b, c, "Failed to send voice to WhatsApp", err)
 		}
-		TgReplyTextByContext(b, c, "Successfully sent")
+		revokeKeyboard := TgMakeRevokeKeyboard(sentMsg.ID, waChatJID.String(), false)
+		TgReplyTextByContext(b, c, "Successfully sent", revokeKeyboard)
 
 		err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.User, waChatJID.String(),
 			cfg.Telegram.TargetChatID, msgToForward.MessageId, msgToForward.MessageThreadId)
@@ -534,7 +543,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 	} else if msgToForward.Document != nil {
 
 		if !cfg.Telegram.SelfHostedAPI && msgToForward.Document.FileSize > DownloadSizeLimit {
-			return TgReplyTextByContext(b, c, "Unable to send document as it exceeds Telegram size restriction")
+			return TgReplyTextByContext(b, c, "Unable to send document as it exceeds Telegram size restriction", nil)
 		}
 
 		documentFile, err := b.GetFile(msgToForward.Document.FileId, &gotgbot.GetFileOpts{
@@ -584,7 +593,8 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		if err != nil {
 			return TgReplyWithErrorByContext(b, c, "Failed to send document to WhatsApp", err)
 		}
-		TgReplyTextByContext(b, c, "Successfully sent")
+		revokeKeyboard := TgMakeRevokeKeyboard(sentMsg.ID, waChatJID.String(), false)
+		TgReplyTextByContext(b, c, "Successfully sent", revokeKeyboard)
 
 		err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.User, waChatJID.String(),
 			cfg.Telegram.TargetChatID, msgToForward.MessageId, msgToForward.MessageThreadId)
@@ -594,11 +604,11 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 	} else if msgToForward.Sticker != nil {
 
 		if !cfg.Telegram.SelfHostedAPI && msgToForward.Sticker.FileSize > DownloadSizeLimit {
-			return TgReplyTextByContext(b, c, "Unable to send sticker as it exceeds Telegram size restriction")
+			return TgReplyTextByContext(b, c, "Unable to send sticker as it exceeds Telegram size restriction", nil)
 		}
 
 		if msgToForward.Sticker.IsVideo {
-			return TgReplyTextByContext(b, c, "Unable to send sticker as video stickers are not supported at present")
+			return TgReplyTextByContext(b, c, "Unable to send sticker as video stickers are not supported at present", nil)
 		}
 
 		stickerFile, err := b.GetFile(msgToForward.Sticker.FileId, &gotgbot.GetFileOpts{
@@ -655,7 +665,8 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		if err != nil {
 			return TgReplyWithErrorByContext(b, c, "Failed to send sticker to WhatsApp", err)
 		}
-		TgReplyTextByContext(b, c, "Successfully sent")
+		revokeKeyboard := TgMakeRevokeKeyboard(sentMsg.ID, waChatJID.String(), false)
+		TgReplyTextByContext(b, c, "Successfully sent", revokeKeyboard)
 
 		err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.User, waChatJID.String(),
 			cfg.Telegram.TargetChatID, msgToForward.MessageId, msgToForward.MessageThreadId)
@@ -679,7 +690,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			if err != nil {
 				return TgReplyWithErrorByContext(b, c, "Failed to send reaction to WhatsApp", err)
 			}
-			return TgReplyTextByContext(b, c, "Successfully reacted")
+			return TgReplyTextByContext(b, c, "Successfully reacted", nil)
 		}
 
 		msgToSend := &waProto.Message{
@@ -699,7 +710,8 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		if err != nil {
 			return TgReplyWithErrorByContext(b, c, "Failed to send message to WhatsApp", err)
 		}
-		TgReplyTextByContext(b, c, "Successfully sent")
+		revokeKeyboard := TgMakeRevokeKeyboard(sentMsg.ID, waChatJID.String(), false)
+		TgReplyTextByContext(b, c, "Successfully sent", revokeKeyboard)
 
 		err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.User, waChatJID.String(),
 			cfg.Telegram.TargetChatID, msgToForward.MessageId, msgToForward.MessageThreadId)
@@ -717,4 +729,29 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 	}
 
 	return nil
+}
+
+func TgMakeRevokeKeyboard(msgId, chatId string, confirm bool) *gotgbot.InlineKeyboardMarkup {
+
+	if confirm {
+		return &gotgbot.InlineKeyboardMarkup{
+			InlineKeyboard: [][]gotgbot.InlineKeyboardButton{
+				{{
+					Text:         "No, go back",
+					CallbackData: "revoke_" + msgId + "_" + chatId + "_n",
+				}},
+				{{
+					Text:         "Yes, I am sure",
+					CallbackData: "revoke_" + msgId + "_" + chatId + "_y",
+				}},
+			},
+		}
+	}
+
+	return &gotgbot.InlineKeyboardMarkup{
+		InlineKeyboard: [][]gotgbot.InlineKeyboardButton{{{
+			Text:         "Revoke",
+			CallbackData: "revoke_" + msgId + "_" + chatId,
+		}}},
+	}
 }

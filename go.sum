@@ -6,6 +6,8 @@ github.com/Benau/tgsconverter v0.0.0-20210809170556-99f4a4f6337f h1:aUkwZDEMJIGR
 github.com/Benau/tgsconverter v0.0.0-20210809170556-99f4a4f6337f/go.mod h1:AQiQKKI/YIIctvDt3hI3c1S05/JXMM7v/sQcRd0paVE=
 github.com/PaulSonOfLars/gotgbot/v2 v2.0.0-rc.13 h1:isOSY5xwjmZ4IpUtHkBnJFLeWiZRKOtcx9HNZFEeApY=
 github.com/PaulSonOfLars/gotgbot/v2 v2.0.0-rc.13/go.mod h1:r815fYWTudnU9JhtsJAxUtuV7QrSgKpChJkfTSMFpfg=
+github.com/PaulSonOfLars/gotgbot/v2 v2.0.0-rc.14 h1:1D8iv6zctEkhD1+MtuJ1R4TX71AsgHc56uo1xdv9vlw=
+github.com/PaulSonOfLars/gotgbot/v2 v2.0.0-rc.14/go.mod h1:r815fYWTudnU9JhtsJAxUtuV7QrSgKpChJkfTSMFpfg=
 github.com/av-elier/go-decimal-to-rational v0.0.0-20191127152832-89e6aad02ecf h1:csfEAyvOG4/498Q4SyF48ysFqQC9ESj3o8ppRtg+Rog=
 github.com/av-elier/go-decimal-to-rational v0.0.0-20191127152832-89e6aad02ecf/go.mod h1:POPnOeaYF7U9o3PjLTb9icRfEOxjBNLRXh9BLximJGM=
 github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
@@ -84,6 +86,8 @@ go.mau.fi/libsignal v0.1.0 h1:vAKI/nJ5tMhdzke4cTK1fb0idJzz1JuEIpmjprueC+c=
 go.mau.fi/libsignal v0.1.0/go.mod h1:R8ovrTezxtUNzCQE5PH30StOQWWeBskBsWE55vMfY9I=
 go.mau.fi/whatsmeow v0.0.0-20230104001256-9d98dc9b5702 h1:ZaDXqhk8KODLZCcWza0XLEXavJCZw68YKJ0Rttocrmg=
 go.mau.fi/whatsmeow v0.0.0-20230104001256-9d98dc9b5702/go.mod h1:TrdC8N6SnPFxWo5FiMnDIDFuVyfOLzy5dWDaUPNjcHY=
+go.mau.fi/whatsmeow v0.0.0-20230113234340-b4790c38ebfa h1:3UeCBNxcvwKOVTaNm5pFPkHINOoQ7zVmtjcDF8BU1rg=
+go.mau.fi/whatsmeow v0.0.0-20230113234340-b4790c38ebfa/go.mod h1:TrdC8N6SnPFxWo5FiMnDIDFuVyfOLzy5dWDaUPNjcHY=
 go.uber.org/atomic v1.10.0/go.mod h1:LUxbIzbOniOlMKjJjyPfpl4v+PKK2cNJn91OQbhoJI0=
 golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2/go.mod h1:djNgcEr1/C05ACkg1iLfiJU5Ep61QUkGW8qpdssI0+w=
 golang.org/x/crypto v0.0.0-20210921155107-089bfa567519/go.mod h1:GvvjBRRGRdwPK5ydBHafDWAxML/pGHZbMvKqRZ5+Abc=
@@ -95,6 +99,8 @@ golang.org/x/exp v0.0.0-20230108222341-4b8118a2686a h1:tlXy25amD5A7gOfbXdqCGN5k8
 golang.org/x/exp v0.0.0-20230108222341-4b8118a2686a/go.mod h1:CxIveKay+FTh1D0yPZemJVgC/95VzuuOLq5Qi4xnoYc=
 golang.org/x/exp v0.0.0-20230111222715-75897c7a292a h1:/YWeLOBWYV5WAQORVPkZF3Pq9IppkcT72GKnWjNf5W8=
 golang.org/x/exp v0.0.0-20230111222715-75897c7a292a/go.mod h1:CxIveKay+FTh1D0yPZemJVgC/95VzuuOLq5Qi4xnoYc=
+golang.org/x/exp v0.0.0-20230113213754-f9f960f08ad4 h1:CNkDRtCj8otM5CFz5jYvbr8ioXX8flVsLfDWEj0M5kk=
+golang.org/x/exp v0.0.0-20230113213754-f9f960f08ad4/go.mod h1:CxIveKay+FTh1D0yPZemJVgC/95VzuuOLq5Qi4xnoYc=
 golang.org/x/mod v0.6.0-dev.0.20220419223038-86c51ed26bb4/go.mod h1:jJ57K6gSWd91VN4djpZkiMVwK6gcyfeH4XE8wZrZaV4=
 golang.org/x/net v0.0.0-20190620200207-3b0461eec859/go.mod h1:z5CRVTTTmAJ677TzLLGU+0bjPO0LkuOLi4/5GtJWs/s=
 golang.org/x/net v0.0.0-20210226172049-e18ecbb05110/go.mod h1:m0MpNAwzfU5UDzcl9v0D8zg8gWTRqZa9RBIspLL5mdg=

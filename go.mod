@@ -4,15 +4,15 @@ go 1.19
 
 require (
 	github.com/Benau/tgsconverter v0.0.0-20210809170556-99f4a4f6337f
-	github.com/PaulSonOfLars/gotgbot/v2 v2.0.0-rc.13
+	github.com/PaulSonOfLars/gotgbot/v2 v2.0.0-rc.14
 	github.com/emersion/go-vcard v0.0.0-20220507122617-d4056df0ec4a
 	github.com/forPelevin/gomoji v1.1.8
 	github.com/go-co-op/gocron v1.18.0
 	github.com/lithammer/fuzzysearch v1.1.5
 	github.com/mattn/go-sqlite3 v1.14.16
 	github.com/mdp/qrterminal/v3 v3.0.0
-	go.mau.fi/whatsmeow v0.0.0-20230104001256-9d98dc9b5702
-	golang.org/x/exp v0.0.0-20230111222715-75897c7a292a
+	go.mau.fi/whatsmeow v0.0.0-20230113234340-b4790c38ebfa
+	golang.org/x/exp v0.0.0-20230113213754-f9f960f08ad4
 	google.golang.org/protobuf v1.28.1
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/driver/mysql v1.4.5

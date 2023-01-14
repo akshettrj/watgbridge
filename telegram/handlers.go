@@ -1,6 +1,7 @@
 package telegram
 
 import (
+	"context"
 	"fmt"
 	"html"
 	"os"
@@ -17,6 +18,7 @@ import (
 	"github.com/PaulSonOfLars/gotgbot/v2/ext"
 	"github.com/PaulSonOfLars/gotgbot/v2/ext/handlers"
 	"go.mau.fi/whatsmeow/appstate"
+	waTypes "go.mau.fi/whatsmeow/types"
 )
 
 var commands = []handlers.Command{}
@@ -51,6 +53,11 @@ func AddTelegramHandlers() {
 	for _, command := range commands {
 		dispatcher.AddHandler(command)
 	}
+
+	dispatcher.AddHandlerToGroup(handlers.NewCallback(
+		func(cq *gotgbot.CallbackQuery) bool {
+			return strings.HasPrefix(cq.Data, "revoke")
+		}, RevokeCallbackHandler), DispatcherCallbackHandlerGroup)
 
 	state.State.TelegramCommands = append(state.State.TelegramCommands,
 		gotgbot.BotCommand{
@@ -160,7 +167,7 @@ func StartCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
 				Format(state.State.Config.TimeFormat),
 		),
 		state.WATGBRIDGE_VERSION,
-	))
+	), nil)
 }
 
 func GetWhatsAppGroupsHandler(b *gotgbot.Bot, c *ext.Context) error {
@@ -182,14 +189,14 @@ func GetWhatsAppGroupsHandler(b *gotgbot.Bot, c *ext.Context) error {
 			html.EscapeString(group.JID.String()))
 
 		if len(outputString) >= 1800 {
-			utils.TgReplyTextByContext(b, c, outputString)
+			utils.TgReplyTextByContext(b, c, outputString, nil)
 			time.Sleep(500 * time.Millisecond)
 			outputString = ""
 		}
 	}
 
 	if len(outputString) > 0 {
-		return utils.TgReplyTextByContext(b, c, outputString)
+		return utils.TgReplyTextByContext(b, c, outputString, nil)
 	}
 	return nil
 }
@@ -204,7 +211,7 @@ func FindContactHandler(b *gotgbot.Bot, c *ext.Context) error {
 
 	args := c.Args()
 	if len(args) <= 1 {
-		return utils.TgReplyTextByContext(b, c, usageString)
+		return utils.TgReplyTextByContext(b, c, usageString, nil)
 	}
 	query := args[1]
 
@@ -212,7 +219,7 @@ func FindContactHandler(b *gotgbot.Bot, c *ext.Context) error {
 	if err != nil {
 		return utils.TgReplyWithErrorByContext(b, c, "Encountered error while finding contacts", err)
 	} else if resultsCount == 0 {
-		return utils.TgReplyTextByContext(b, c, "No matching results found :(")
+		return utils.TgReplyTextByContext(b, c, "No matching results found :(", nil)
 	}
 
 	outputString := fmt.Sprintf("Here are the %v matching contacts:\n\n", resultsCount)
@@ -221,14 +228,14 @@ func FindContactHandler(b *gotgbot.Bot, c *ext.Context) error {
 			html.EscapeString(name), html.EscapeString(jid))
 
 		if len(outputString) >= 1800 {
-			utils.TgReplyTextByContext(b, c, outputString)
+			utils.TgReplyTextByContext(b, c, outputString, nil)
 			time.Sleep(500 * time.Millisecond)
 			outputString = ""
 		}
 	}
 
 	if len(outputString) > 0 {
-		return utils.TgReplyTextByContext(b, c, outputString)
+		return utils.TgReplyTextByContext(b, c, outputString, nil)
 	}
 	return nil
 }
@@ -243,14 +250,14 @@ func UpdateAndRestartHandler(b *gotgbot.Bot, c *ext.Context) error {
 	if err != nil {
 		return utils.TgReplyWithErrorByContext(b, c, "Failed to execute 'git pull --rebase' command", err)
 	}
-	utils.TgReplyTextByContext(b, c, "Successfully pulled from GitHub")
+	utils.TgReplyTextByContext(b, c, "Successfully pulled from GitHub", nil)
 
 	goBuildCmd := exec.Command("/usr/bin/go", "build")
 	err = goBuildCmd.Run()
 	if err != nil {
 		return utils.TgReplyWithErrorByContext(b, c, "Failed to execute 'go build' command", err)
 	}
-	utils.TgReplyTextByContext(b, c, "Successfully built the binary, now restarting...")
+	utils.TgReplyTextByContext(b, c, "Successfully built the binary, now restarting...", nil)
 
 	err = syscall.Exec("./watgbridge", []string{}, os.Environ())
 	if err != nil {
@@ -265,7 +272,7 @@ func SyncContactsHandler(b *gotgbot.Bot, c *ext.Context) error {
 		return nil
 	}
 
-	utils.TgReplyTextByContext(b, c, "Starting syncing contacts... may take some time")
+	utils.TgReplyTextByContext(b, c, "Starting syncing contacts... may take some time", nil)
 
 	waClient := state.State.WhatsAppClient
 
@@ -279,7 +286,7 @@ func SyncContactsHandler(b *gotgbot.Bot, c *ext.Context) error {
 		database.ContactNameBulkAddOrUpdate(contacts)
 	}
 
-	return utils.TgReplyTextByContext(b, c, "Successfully synced the contact list")
+	return utils.TgReplyTextByContext(b, c, "Successfully synced the contact list", nil)
 }
 
 func ClearMessageIdPairsHistoryHandler(b *gotgbot.Bot, c *ext.Context) error {
@@ -292,7 +299,7 @@ func ClearMessageIdPairsHistoryHandler(b *gotgbot.Bot, c *ext.Context) error {
 		return utils.TgReplyWithErrorByContext(b, c, "Failed to delete stored pairs", err)
 	}
 
-	return utils.TgReplyTextByContext(b, c, "Successfully deleted all the stored pairs")
+	return utils.TgReplyTextByContext(b, c, "Successfully deleted all the stored pairs", nil)
 }
 
 func RestartWhatsAppConnectionHandler(b *gotgbot.Bot, c *ext.Context) error {
@@ -308,7 +315,7 @@ func RestartWhatsAppConnectionHandler(b *gotgbot.Bot, c *ext.Context) error {
 		return utils.TgReplyWithErrorByContext(b, c, "Failed to reconnect to WA servers", err)
 	}
 
-	return utils.TgReplyTextByContext(b, c, "Successfully restarted the WhatsApp connection")
+	return utils.TgReplyTextByContext(b, c, "Successfully restarted the WhatsApp connection", nil)
 }
 
 func JoinInviteLinkHandler(b *gotgbot.Bot, c *ext.Context) error {
@@ -320,7 +327,7 @@ func JoinInviteLinkHandler(b *gotgbot.Bot, c *ext.Context) error {
 
 	args := c.Args()
 	if len(args) <= 1 {
-		return utils.TgReplyTextByContext(b, c, usageString)
+		return utils.TgReplyTextByContext(b, c, usageString, nil)
 	}
 	inviteLink := args[1]
 
@@ -332,7 +339,7 @@ func JoinInviteLinkHandler(b *gotgbot.Bot, c *ext.Context) error {
 	}
 
 	return utils.TgReplyTextByContext(b, c,
-		fmt.Sprintf("Joined a new group with ID: <code>%s</code>", groupID.String()))
+		fmt.Sprintf("Joined a new group with ID: <code>%s</code>", groupID.String()), nil)
 }
 
 func SetTargetGroupChatHandler(b *gotgbot.Bot, c *ext.Context) error {
@@ -344,11 +351,11 @@ func SetTargetGroupChatHandler(b *gotgbot.Bot, c *ext.Context) error {
 
 	args := c.Args()
 	if len(args) <= 1 {
-		return utils.TgReplyTextByContext(b, c, usageString)
+		return utils.TgReplyTextByContext(b, c, usageString, nil)
 	}
 
 	if !c.EffectiveMessage.IsTopicMessage || c.EffectiveMessage.MessageThreadId == 0 {
-		return utils.TgReplyTextByContext(b, c, "The command should be sent in a topic")
+		return utils.TgReplyTextByContext(b, c, "The command should be sent in a topic", nil)
 	}
 
 	var (
@@ -368,7 +375,7 @@ func SetTargetGroupChatHandler(b *gotgbot.Bot, c *ext.Context) error {
 	if err != nil {
 		return utils.TgReplyWithErrorByContext(b, c, "Failed to check database for existing mapping", err)
 	} else if threadFound {
-		return utils.TgReplyTextByContext(b, c, "A topic already exists in database for the given WhatsApp chat. Aborting...")
+		return utils.TgReplyTextByContext(b, c, "A topic already exists in database for the given WhatsApp chat. Aborting...", nil)
 	}
 
 	err = database.ChatThreadAddNewPair(groupJID.String(), cfg.Telegram.TargetChatID, c.EffectiveMessage.MessageThreadId)
@@ -376,7 +383,7 @@ func SetTargetGroupChatHandler(b *gotgbot.Bot, c *ext.Context) error {
 		return utils.TgReplyWithErrorByContext(b, c, "Failed to add the mapping in database. Unsuccessful", err)
 	}
 
-	return utils.TgReplyTextByContext(b, c, "Successfully mapped")
+	return utils.TgReplyTextByContext(b, c, "Successfully mapped", nil)
 }
 
 func SetTargetPrivateChatHandler(b *gotgbot.Bot, c *ext.Context) error {
@@ -388,11 +395,11 @@ func SetTargetPrivateChatHandler(b *gotgbot.Bot, c *ext.Context) error {
 
 	args := c.Args()
 	if len(args) <= 1 {
-		return utils.TgReplyTextByContext(b, c, usageString)
+		return utils.TgReplyTextByContext(b, c, usageString, nil)
 	}
 
 	if !c.EffectiveMessage.IsTopicMessage || c.EffectiveMessage.MessageThreadId == 0 {
-		return utils.TgReplyTextByContext(b, c, "The command should be sent in a topic")
+		return utils.TgReplyTextByContext(b, c, "The command should be sent in a topic", nil)
 	}
 
 	var (
@@ -406,7 +413,7 @@ func SetTargetPrivateChatHandler(b *gotgbot.Bot, c *ext.Context) error {
 	if err != nil {
 		return utils.TgReplyWithErrorByContext(b, c, "Failed to check database for existing mapping", err)
 	} else if threadFound {
-		return utils.TgReplyTextByContext(b, c, "A topic already exists in database for the given WhatsApp chat. Aborting...")
+		return utils.TgReplyTextByContext(b, c, "A topic already exists in database for the given WhatsApp chat. Aborting...", nil)
 	}
 
 	err = database.ChatThreadAddNewPair(userJID.String(), cfg.Telegram.TargetChatID, c.EffectiveMessage.MessageThreadId)
@@ -414,7 +421,7 @@ func SetTargetPrivateChatHandler(b *gotgbot.Bot, c *ext.Context) error {
 		return utils.TgReplyWithErrorByContext(b, c, "Failed to add the mapping in database. Unsuccessful", err)
 	}
 
-	return utils.TgReplyTextByContext(b, c, "Successfully mapped")
+	return utils.TgReplyTextByContext(b, c, "Successfully mapped", nil)
 }
 
 func HelpCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
@@ -429,7 +436,7 @@ func HelpCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
 			command.Command, html.EscapeString(command.Description))
 	}
 
-	return utils.TgReplyTextByContext(b, c, helpString)
+	return utils.TgReplyTextByContext(b, c, helpString, nil)
 }
 
 func SendToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
@@ -442,7 +449,7 @@ func SendToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 
 	args := c.Args()
 	if len(args) <= 1 || c.EffectiveMessage.ReplyToMessage == nil || c.EffectiveMessage.ReplyToMessage.ForumTopicCreated != nil {
-		return utils.TgReplyTextByContext(b, c, usageString)
+		return utils.TgReplyTextByContext(b, c, usageString, nil)
 	}
 	waChatID := args[1]
 
@@ -455,8 +462,100 @@ func SendToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 
 	waChatJID, ok := utils.WaParseJID(waChatID)
 	if !ok {
-		return utils.TgReplyTextByContext(b, c, "Provided JID is not valid")
+		return utils.TgReplyTextByContext(b, c, "Provided JID is not valid", nil)
 	}
 
 	return utils.TgSendToWhatsApp(b, c, msgToForward, msgToReplyTo, waChatJID, participantID, stanzaID, false)
+}
+
+func RevokeCallbackHandler(b *gotgbot.Bot, c *ext.Context) error {
+	if !utils.TgUpdateIsAuthorized(b, c) {
+		return nil
+	}
+
+	var (
+		waClient = state.State.WhatsAppClient
+		cq       = c.CallbackQuery
+		data     = strings.Split(cq.Data, "_")
+	)
+
+	if len(data) == 3 {
+
+		confirmKeyboard := utils.TgMakeRevokeKeyboard(data[1], data[2], true)
+		_, _, err := b.EditMessageText("Revoke the message ?", &gotgbot.EditMessageTextOpts{
+			ChatId:      c.EffectiveChat.Id,
+			MessageId:   c.EffectiveMessage.MessageId,
+			ReplyMarkup: *confirmKeyboard,
+		})
+		cq.Answer(b, &gotgbot.AnswerCallbackQueryOpts{
+			Text:      "Are you sure ?",
+			ShowAlert: false,
+		})
+		return err
+
+	} else if len(data) == 4 {
+
+		confirmation := data[3]
+		if confirmation == "n" {
+
+			revokeKeyboard := utils.TgMakeRevokeKeyboard(data[1], data[2], false)
+			_, _, err := b.EditMessageText("Successfully sent", &gotgbot.EditMessageTextOpts{
+				ChatId:      c.EffectiveChat.Id,
+				MessageId:   c.EffectiveMessage.MessageId,
+				ReplyMarkup: *revokeKeyboard,
+			})
+			cq.Answer(b, &gotgbot.AnswerCallbackQueryOpts{
+				Text:      "Aborted",
+				ShowAlert: true,
+			})
+			return err
+
+		} else if confirmation == "y" {
+
+			chatJid, _ := utils.WaParseJID(data[2])
+			revokeMesssage := waClient.BuildRevoke(chatJid, waTypes.EmptyJID, data[1])
+			_, err := waClient.SendMessage(context.Background(), chatJid, revokeMesssage)
+			if err != nil {
+				_, err = cq.Answer(b, &gotgbot.AnswerCallbackQueryOpts{
+					Text:      "Failed to send revoke message : " + err.Error(),
+					ShowAlert: true,
+					CacheTime: 60,
+				})
+				return err
+			} else {
+				_, err = cq.Answer(b, &gotgbot.AnswerCallbackQueryOpts{
+					Text:      "Successfully revoked",
+					ShowAlert: true,
+					CacheTime: 60,
+				})
+				b.EditMessageText("<i>Revoked</i>", &gotgbot.EditMessageTextOpts{
+					ChatId:    c.EffectiveChat.Id,
+					MessageId: c.EffectiveMessage.MessageId,
+					ReplyMarkup: gotgbot.InlineKeyboardMarkup{
+						InlineKeyboard: [][]gotgbot.InlineKeyboardButton{},
+					},
+				})
+				database.MsgIdDeletePair(c.EffectiveChat.Id, c.EffectiveMessage.MessageId)
+				return err
+			}
+
+		} else {
+
+			_, err := cq.Answer(b, &gotgbot.AnswerCallbackQueryOpts{
+				Text:      "Invalid callback query",
+				ShowAlert: true,
+				CacheTime: 60,
+			})
+			return err
+		}
+
+	} else {
+
+		_, err := cq.Answer(b, &gotgbot.AnswerCallbackQueryOpts{
+			Text:      "Invalid callback query",
+			ShowAlert: true,
+			CacheTime: 60,
+		})
+		return err
+	}
 }

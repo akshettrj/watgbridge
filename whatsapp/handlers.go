@@ -31,6 +31,12 @@ func WhatsAppEventHandler(evt interface{}) {
 		CallOfferEventHandler(v)
 
 	case *events.Message:
+
+		if v.Info.Timestamp.UTC().Before(state.State.StartTime) {
+			// Old events
+			return
+		}
+
 		text := ""
 		if extendedMessageText := v.Message.GetExtendedTextMessage().GetText(); extendedMessageText != "" {
 			text = extendedMessageText

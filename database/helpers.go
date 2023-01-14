@@ -57,6 +57,14 @@ func MsgIdGetWaFromTg(tgChatId, tgMsgId, tgThreadId int64) (string, string, stri
 	return bridgePair.ID, bridgePair.ParticipantId, bridgePair.WaChatId, res.Error
 }
 
+func MsgIdDeletePair(tgChatId, tgMsgId int64) error {
+
+	db := state.State.Database
+	res := db.Where("tg_chat_id = ? AND tg_msg_id = ?", tgChatId, tgMsgId).Delete(&MsgIdPair{})
+
+	return res.Error
+}
+
 func MsgIdDropAllPairs() error {
 
 	db := state.State.Database

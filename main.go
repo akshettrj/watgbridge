@@ -37,6 +37,10 @@ func main() {
 	}
 	state.State.LocalLocation = locLoc
 
+	if cfg.WhatsApp.SessionName == "" {
+		cfg.WhatsApp.SessionName = "watgbridge"
+	}
+
 	// Setup database
 	db, err := database.Connect()
 	if err != nil {

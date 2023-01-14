@@ -22,6 +22,7 @@ type Config struct {
 	} `yaml:"telegram"`
 
 	WhatsApp struct {
+		SessionName         string   `yaml:"session_name"`
 		TagAllAllowedGroups []string `yaml:"tag_all_allowed_groups"`
 		StatusIgnoredChats  []string `yaml:"status_ignored_chats"`
 	} `yaml:"whatsapp"`

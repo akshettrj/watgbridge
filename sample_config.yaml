@@ -9,6 +9,7 @@ telegram:
   target_chat_id: 704338780               # This is the chat where messages will be forwarded
 
 whatsapp:
+  session_name: watgbridge        # This will appear in your Linked Devices in mobile app
   # All these values can be obtained by running /findcontacts and /getwagroups commands
   # You have to put only the values preceding the @ character
   tag_all_allowed_groups:         # Members of these groups can tag everyone by sending @all or @everyone
