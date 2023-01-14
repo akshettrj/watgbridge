@@ -695,17 +695,18 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			return TgReplyTextByContext(b, c, "Successfully reacted", nil)
 		}
 
-		msgToSend := &waProto.Message{
-			ExtendedTextMessage: &waProto.ExtendedTextMessage{
-				Text: proto.String(msgToForward.Text),
-			},
-		}
+		msgToSend := &waProto.Message{}
 		if isReply {
-			msgToSend.ExtendedTextMessage.ContextInfo = &waProto.ContextInfo{
-				StanzaId:      proto.String(stanzaId),
-				Participant:   proto.String(participant),
-				QuotedMessage: &waProto.Message{Conversation: proto.String("")},
+			msgToSend.ExtendedTextMessage = &waProto.ExtendedTextMessage{
+				Text: proto.String(msgToForward.Text),
+				ContextInfo: &waProto.ContextInfo{
+					StanzaId:      proto.String(stanzaId),
+					Participant:   proto.String(participant),
+					QuotedMessage: &waProto.Message{Conversation: proto.String("")},
+				},
 			}
+		} else {
+			msgToSend.Conversation = proto.String(msgToForward.Text)
 		}
 
 		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, msgToSend)
