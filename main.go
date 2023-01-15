@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"watgbridge/database"
+	"watgbridge/modules"
 	"watgbridge/state"
 	"watgbridge/telegram"
 	"watgbridge/utils"
@@ -82,8 +83,6 @@ func main() {
 	}
 	log.Printf("[telegram] logged in as : %s [ @%s ]\n",
 		state.State.TelegramBot.FirstName, state.State.TelegramBot.Username)
-	telegram.AddTelegramHandlers()
-	utils.TgRegisterBotCommands(state.State.TelegramBot, state.State.TelegramCommands...)
 
 	err = whatsapp.NewWhatsAppClient()
 	if err != nil {
@@ -91,7 +90,6 @@ func main() {
 	}
 	log.Printf("[whatsapp] logged in as : %s [ @%s ]\n",
 		state.State.WhatsAppClient.Store.PushName, state.State.WhatsAppClient.Store.ID.User)
-	state.State.WhatsAppClient.AddEventHandler(whatsapp.WhatsAppEventHandler)
 
 	state.State.StartTime = time.Now().UTC()
 
@@ -136,6 +134,12 @@ func main() {
 		state.State.TelegramBot.SendMessage(chatId, "Successfully restarted", &opts)
 	}
 SKIP_RESTART:
+
+	state.State.WhatsAppClient.AddEventHandler(whatsapp.WhatsAppEventHandler)
+	telegram.AddTelegramHandlers()
+	modules.LoadModuleHandlers()
+
+	utils.TgRegisterBotCommands(state.State.TelegramBot, state.State.TelegramCommands...)
 
 	state.State.TelegramUpdater.Idle()
 }

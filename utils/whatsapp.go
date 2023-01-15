@@ -11,6 +11,7 @@ import (
 	"watgbridge/state"
 
 	"github.com/lithammer/fuzzysearch/fuzzy"
+	"go.mau.fi/whatsmeow"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
 	"go.mau.fi/whatsmeow/types"
 	"google.golang.org/protobuf/proto"
@@ -199,4 +200,24 @@ func WaTagAll(group types.JID, msg *waProto.Message, msgId, msgSender string, ms
 
 		TgSendTextById(tgBot, cfg.Telegram.TargetChatID, tagsThreadId, bridgedText)
 	}
+}
+
+func WaSendText(chat types.JID, text, stanzaId, participantId string, quotedMsg *waProto.Message, isReply bool) (whatsmeow.SendResponse, error) {
+	waClient := state.State.WhatsAppClient
+
+	msgToSend := &waProto.Message{}
+	if isReply {
+		msgToSend.ExtendedTextMessage = &waProto.ExtendedTextMessage{
+			Text: proto.String(text),
+			ContextInfo: &waProto.ContextInfo{
+				StanzaId:      proto.String(stanzaId),
+				Participant:   proto.String(participantId),
+				QuotedMessage: quotedMsg,
+			},
+		}
+	} else {
+		msgToSend.Conversation = proto.String(text)
+	}
+
+	return waClient.SendMessage(context.Background(), chat, msgToSend)
 }

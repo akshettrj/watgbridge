@@ -4,4 +4,5 @@ const (
 	DefaultHandlerGroup int = iota
 	DispatcherForwardHandlerGroup
 	DispatcherCallbackHandlerGroup
+	ModulesStartingHandlerGroup
 )
