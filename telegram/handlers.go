@@ -165,21 +165,22 @@ func StartCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
 		startTime     = state.State.StartTime
 		localLocation = state.State.LocalLocation
 		timeFormat    = state.State.Config.TimeFormat
+		upTime        = time.Now().UTC().Sub(startTime).Round(time.Second)
 	)
 
 	startMessage := "Hi! The bot is up and running\n\n"
-	startMessage += fmt.Sprintf("• Up Since: %s [ %s ]\n",
+	startMessage += fmt.Sprintf("• <b>Up Since</b>: %s [ %s ]\n",
 		startTime.In(localLocation).Format(timeFormat),
-		time.Now().UTC().Sub(startTime),
+		upTime.String(),
 	)
-	startMessage += fmt.Sprintf("• Version: %s\n", state.WATGBRIDGE_VERSION)
+	startMessage += fmt.Sprintf("• <b>Version</b>: <code>%s</code>\n", state.WATGBRIDGE_VERSION)
 	if len(state.State.Modules) > 0 {
-		startMessage += "• Loaded Modules:\n"
+		startMessage += "• <b>Loaded Modules</b>:\n"
 		for _, module := range state.State.Modules {
-			startMessage += fmt.Sprintf("  - %s\n", module)
+			startMessage += fmt.Sprintf("  - <i>%s</i>\n", html.EscapeString(module))
 		}
 	} else {
-		startMessage += "• No Modules Loaded:\n"
+		startMessage += "• No Modules Loaded\n"
 	}
 
 	return utils.TgReplyTextByContext(b, c, startMessage, nil)
