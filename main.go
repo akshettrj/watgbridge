@@ -102,6 +102,12 @@ func main() {
 		}
 	})
 
+	state.State.WhatsAppClient.AddEventHandler(whatsapp.WhatsAppEventHandler)
+	telegram.AddTelegramHandlers()
+	modules.LoadModuleHandlers()
+
+	utils.TgRegisterBotCommands(state.State.TelegramBot, state.State.TelegramCommands...)
+
 	{
 		isRestarted, found := os.LookupEnv("WATG_IS_RESTARTED")
 		if !found || isRestarted != "1" {
@@ -134,12 +140,6 @@ func main() {
 		state.State.TelegramBot.SendMessage(chatId, "Successfully restarted", &opts)
 	}
 SKIP_RESTART:
-
-	state.State.WhatsAppClient.AddEventHandler(whatsapp.WhatsAppEventHandler)
-	telegram.AddTelegramHandlers()
-	modules.LoadModuleHandlers()
-
-	utils.TgRegisterBotCommands(state.State.TelegramBot, state.State.TelegramCommands...)
 
 	state.State.TelegramUpdater.Idle()
 }
