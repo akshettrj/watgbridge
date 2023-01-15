@@ -1,6 +1,7 @@
 package modules
 
 import (
+	"log"
 	"sync"
 
 	"watgbridge/state"
@@ -22,13 +23,10 @@ func GetNewTelegramHandlerGroup() int {
 	lock.Lock()
 	defer lock.Unlock()
 
-	newStartingValue := startingValue + 1
+	returnValue := startingValue
+	startingValue += 1
 
-	defer func(newValue int) {
-		startingValue = newValue
-	}(newStartingValue)
-
-	return startingValue
+	return returnValue
 }
 
 func LoadModuleHandlers() {
@@ -40,6 +38,11 @@ func LoadModuleHandlers() {
 
 	for _, handler := range WhatsAppHandlers {
 		state.State.WhatsAppClient.AddEventHandler(handler)
+	}
+
+	log.Println("Modules loaded:")
+	for _, plugin := range Modules {
+		log.Println(plugin)
 	}
 }
 
