@@ -147,7 +147,30 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 		threadIdFound bool
 	)
 
-	if contextInfo := v.Message.GetExtendedTextMessage().GetContextInfo(); contextInfo != nil {
+	var contextInfo *waProto.ContextInfo = nil
+	if v.Message.GetExtendedTextMessage().GetContextInfo() != nil {
+		contextInfo = v.Message.GetExtendedTextMessage().GetContextInfo()
+	} else if v.Message.GetImageMessage() != nil {
+		contextInfo = v.Message.GetImageMessage().GetContextInfo()
+	} else if v.Message.GetVideoMessage() != nil {
+		contextInfo = v.Message.GetVideoMessage().GetContextInfo()
+	} else if v.Message.GetAudioMessage() != nil {
+		contextInfo = v.Message.GetAudioMessage().GetContextInfo()
+	} else if v.Message.GetDocumentMessage() != nil {
+		contextInfo = v.Message.GetDocumentMessage().GetContextInfo()
+	} else if v.Message.GetStickerMessage() != nil {
+		contextInfo = v.Message.GetStickerMessage().GetContextInfo()
+	} else if v.Message.GetContactMessage() != nil {
+		contextInfo = v.Message.GetContactMessage().GetContextInfo()
+	} else if v.Message.GetContactsArrayMessage() != nil {
+		contextInfo = v.Message.GetContactsArrayMessage().GetContextInfo()
+	} else if v.Message.GetLocationMessage() != nil {
+		contextInfo = v.Message.GetLocationMessage().GetContextInfo()
+	} else if v.Message.GetLiveLocationMessage() != nil {
+		contextInfo = v.Message.GetLiveLocationMessage().GetContextInfo()
+	}
+
+	if contextInfo != nil {
 		stanzaId := contextInfo.GetStanzaId()
 		tgChatId, tgThreadId, tgMsgId, err := database.MsgIdGetTgFromWa(stanzaId, v.Info.Chat.String())
 		if err == nil && tgChatId == cfg.Telegram.TargetChatID {
