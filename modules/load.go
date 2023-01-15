@@ -16,7 +16,6 @@ var (
 	lock             *sync.Mutex
 	TelegramHandlers map[int][]ext.Handler
 	WhatsAppHandlers []whatsmeow.EventHandler
-	Modules          []string
 )
 
 func GetNewTelegramHandlerGroup() int {
@@ -41,7 +40,7 @@ func LoadModuleHandlers() {
 	}
 
 	log.Println("Modules loaded:")
-	for _, plugin := range Modules {
+	for _, plugin := range state.State.Modules {
 		log.Println(plugin)
 	}
 }

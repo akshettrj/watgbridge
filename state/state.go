@@ -22,6 +22,8 @@ type state struct {
 
 	WhatsAppClient *whatsmeow.Client
 
+	Modules []string
+
 	StartTime     time.Time
 	LocalLocation *time.Location
 }

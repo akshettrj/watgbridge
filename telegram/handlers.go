@@ -161,14 +161,28 @@ func StartCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
 		return nil
 	}
 
-	return utils.TgReplyTextByContext(b, c, fmt.Sprintf("Hi! The bot has been up since %s\n\nVersion: v%s",
-		html.EscapeString(
-			state.State.StartTime.
-				In(state.State.LocalLocation).
-				Format(state.State.Config.TimeFormat),
-		),
-		state.WATGBRIDGE_VERSION,
-	), nil)
+	var (
+		startTime     = state.State.StartTime
+		localLocation = state.State.LocalLocation
+		timeFormat    = state.State.Config.TimeFormat
+	)
+
+	startMessage := "Hi! The bot is up and running\n\n"
+	startMessage += fmt.Sprintf("• Up Since: %s [ %s ]\n",
+		startTime.In(localLocation).Format(timeFormat),
+		time.Now().UTC().Sub(startTime),
+	)
+	startMessage += fmt.Sprintf("• Version: %s\n", state.WATGBRIDGE_VERSION)
+	if len(state.State.Modules) > 0 {
+		startMessage += "• Loaded Modules:\n"
+		for _, module := range state.State.Modules {
+			startMessage += fmt.Sprintf("  - %s\n", module)
+		}
+	} else {
+		startMessage += "• No Modules Loaded:\n"
+	}
+
+	return utils.TgReplyTextByContext(b, c, startMessage, nil)
 }
 
 func GetWhatsAppGroupsHandler(b *gotgbot.Bot, c *ext.Context) error {
