@@ -39,9 +39,13 @@ func LoadModuleHandlers() {
 		state.State.WhatsAppClient.AddEventHandler(handler)
 	}
 
-	log.Println("Modules loaded:")
-	for _, plugin := range state.State.Modules {
-		log.Println(plugin)
+	if len(state.State.Modules) > 0 {
+		log.Println("Modules loaded:")
+		for _, plugin := range state.State.Modules {
+			log.Println("- " + plugin)
+		}
+	} else {
+		log.Println("No modules loaded")
 	}
 }
 

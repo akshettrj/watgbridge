@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"unicode"
 
 	"watgbridge/database"
 	"watgbridge/state"
@@ -170,7 +171,30 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 	var (
 		cfg      = state.State.Config
 		waClient = state.State.WhatsAppClient
+		mentions = []string{}
 	)
+
+	var entities []gotgbot.ParsedMessageEntity
+	if len(msgToForward.Entities) > 0 {
+		entities = msgToForward.ParseEntities()
+	} else if len(msgToForward.CaptionEntities) > 0 {
+		entities = msgToForward.ParseCaptionEntities()
+	}
+
+	for _, entity := range entities {
+		if entity.Type == "mention" {
+			username := entity.Text[1:]
+			// Check if its a number
+			for _, c := range username {
+				if !unicode.IsDigit(c) {
+					continue
+				}
+			}
+
+			parsedJID, _ := WaParseJID(username)
+			mentions = append(mentions, parsedJID.String())
+		}
+	}
 
 	if msgToForward.Photo != nil && len(msgToForward.Photo) > 0 {
 
@@ -218,14 +242,16 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 				ViewOnce:          proto.Bool(msgToForward.HasProtectedContent),
 				Height:            proto.Uint32(uint32(bestPhoto.Height)),
 				Width:             proto.Uint32(uint32(bestPhoto.Width)),
+				ContextInfo:       &waProto.ContextInfo{},
 			},
 		}
 		if isReply {
-			msgToSend.ImageMessage.ContextInfo = &waProto.ContextInfo{
-				StanzaId:      proto.String(stanzaId),
-				Participant:   proto.String(participant),
-				QuotedMessage: &waProto.Message{Conversation: proto.String("")},
-			}
+			msgToSend.ImageMessage.ContextInfo.StanzaId = proto.String(stanzaId)
+			msgToSend.ImageMessage.ContextInfo.Participant = proto.String(participant)
+			msgToSend.ImageMessage.ContextInfo.QuotedMessage = &waProto.Message{Conversation: proto.String("")}
+		}
+		if len(mentions) > 0 {
+			msgToSend.ImageMessage.ContextInfo.MentionedJid = mentions
 		}
 
 		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, msgToSend)
@@ -281,14 +307,16 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 				GifPlayback:   proto.Bool(false),
 				Height:        proto.Uint32(uint32(msgToForward.Video.Height)),
 				Width:         proto.Uint32(uint32(msgToForward.Video.Width)),
+				ContextInfo:   &waProto.ContextInfo{},
 			},
 		}
 		if isReply {
-			msgToSend.VideoMessage.ContextInfo = &waProto.ContextInfo{
-				StanzaId:      proto.String(stanzaId),
-				Participant:   proto.String(participant),
-				QuotedMessage: &waProto.Message{Conversation: proto.String("")},
-			}
+			msgToSend.VideoMessage.ContextInfo.StanzaId = proto.String(stanzaId)
+			msgToSend.VideoMessage.ContextInfo.Participant = proto.String(participant)
+			msgToSend.VideoMessage.ContextInfo.QuotedMessage = &waProto.Message{Conversation: proto.String("")}
+		}
+		if len(mentions) > 0 {
+			msgToSend.VideoMessage.ContextInfo.MentionedJid = mentions
 		}
 
 		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, msgToSend)
@@ -341,14 +369,16 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 				ViewOnce:      proto.Bool(msgToForward.HasProtectedContent),
 				Seconds:       proto.Uint32(uint32(msgToForward.VideoNote.Duration)),
 				GifPlayback:   proto.Bool(false),
+				ContextInfo:   &waProto.ContextInfo{},
 			},
 		}
 		if isReply {
-			msgToSend.VideoMessage.ContextInfo = &waProto.ContextInfo{
-				StanzaId:      proto.String(stanzaId),
-				Participant:   proto.String(participant),
-				QuotedMessage: &waProto.Message{Conversation: proto.String("")},
-			}
+			msgToSend.VideoMessage.ContextInfo.StanzaId = proto.String(stanzaId)
+			msgToSend.VideoMessage.ContextInfo.Participant = proto.String(participant)
+			msgToSend.VideoMessage.ContextInfo.QuotedMessage = &waProto.Message{Conversation: proto.String("")}
+		}
+		if len(mentions) > 0 {
+			msgToSend.VideoMessage.ContextInfo.MentionedJid = mentions
 		}
 
 		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, msgToSend)
@@ -404,14 +434,16 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 				Width:          proto.Uint32(uint32(msgToForward.Animation.Width)),
 				Seconds:        proto.Uint32(uint32(msgToForward.Animation.Duration)),
 				GifAttribution: waProto.VideoMessage_GIPHY.Enum(),
+				ContextInfo:    &waProto.ContextInfo{},
 			},
 		}
 		if isReply {
-			msgToSend.VideoMessage.ContextInfo = &waProto.ContextInfo{
-				StanzaId:      proto.String(stanzaId),
-				Participant:   proto.String(participant),
-				QuotedMessage: &waProto.Message{Conversation: proto.String("")},
-			}
+			msgToSend.VideoMessage.ContextInfo.StanzaId = proto.String(stanzaId)
+			msgToSend.VideoMessage.ContextInfo.Participant = proto.String(participant)
+			msgToSend.VideoMessage.ContextInfo.QuotedMessage = &waProto.Message{Conversation: proto.String("")}
+		}
+		if len(mentions) > 0 {
+			msgToSend.VideoMessage.ContextInfo.MentionedJid = mentions
 		}
 
 		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, msgToSend)
@@ -462,14 +494,16 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 				FileLength:    proto.Uint64(uint64(len(audioBytes))),
 				Seconds:       proto.Uint32(uint32(msgToForward.Audio.Duration)),
 				Ptt:           proto.Bool(false),
+				ContextInfo:   &waProto.ContextInfo{},
 			},
 		}
 		if isReply {
-			msgToSend.AudioMessage.ContextInfo = &waProto.ContextInfo{
-				StanzaId:      proto.String(stanzaId),
-				Participant:   proto.String(participant),
-				QuotedMessage: &waProto.Message{Conversation: proto.String("")},
-			}
+			msgToSend.AudioMessage.ContextInfo.StanzaId = proto.String(stanzaId)
+			msgToSend.AudioMessage.ContextInfo.Participant = proto.String(participant)
+			msgToSend.AudioMessage.ContextInfo.QuotedMessage = &waProto.Message{Conversation: proto.String("")}
+		}
+		if len(mentions) > 0 {
+			msgToSend.AudioMessage.ContextInfo.MentionedJid = mentions
 		}
 
 		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, msgToSend)
@@ -520,14 +554,16 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 				FileLength:    proto.Uint64(uint64(len(voiceBytes))),
 				Seconds:       proto.Uint32(uint32(msgToForward.Voice.Duration)),
 				Ptt:           proto.Bool(true),
+				ContextInfo:   &waProto.ContextInfo{},
 			},
 		}
 		if isReply {
-			msgToSend.AudioMessage.ContextInfo = &waProto.ContextInfo{
-				StanzaId:      proto.String(stanzaId),
-				Participant:   proto.String(participant),
-				QuotedMessage: &waProto.Message{Conversation: proto.String("")},
-			}
+			msgToSend.AudioMessage.ContextInfo.StanzaId = proto.String(stanzaId)
+			msgToSend.AudioMessage.ContextInfo.Participant = proto.String(participant)
+			msgToSend.AudioMessage.ContextInfo.QuotedMessage = &waProto.Message{Conversation: proto.String("")}
+		}
+		if len(mentions) > 0 {
+			msgToSend.AudioMessage.ContextInfo.MentionedJid = mentions
 		}
 
 		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, msgToSend)
@@ -581,14 +617,16 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 				FileEncSha256: uploadedDocument.FileEncSHA256,
 				FileSha256:    uploadedDocument.FileSHA256,
 				FileLength:    proto.Uint64(uint64(len(documentBytes))),
+				ContextInfo:   &waProto.ContextInfo{},
 			},
 		}
 		if isReply {
-			msgToSend.DocumentMessage.ContextInfo = &waProto.ContextInfo{
-				StanzaId:      proto.String(stanzaId),
-				Participant:   proto.String(participant),
-				QuotedMessage: &waProto.Message{Conversation: proto.String("")},
-			}
+			msgToSend.DocumentMessage.ContextInfo.StanzaId = proto.String(stanzaId)
+			msgToSend.DocumentMessage.ContextInfo.Participant = proto.String(participant)
+			msgToSend.DocumentMessage.ContextInfo.QuotedMessage = &waProto.Message{Conversation: proto.String("")}
+		}
+		if len(mentions) > 0 {
+			msgToSend.DocumentMessage.ContextInfo.MentionedJid = mentions
 		}
 
 		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, msgToSend)
@@ -696,7 +734,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		}
 
 		msgToSend := &waProto.Message{}
-		if isReply {
+		if isReply || len(mentions) > 0 {
 			msgToSend.ExtendedTextMessage = &waProto.ExtendedTextMessage{
 				Text: proto.String(msgToForward.Text),
 				ContextInfo: &waProto.ContextInfo{
@@ -704,6 +742,9 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 					Participant:   proto.String(participant),
 					QuotedMessage: &waProto.Message{Conversation: proto.String("")},
 				},
+			}
+			if len(mentions) > 0 {
+				msgToSend.ExtendedTextMessage.ContextInfo.MentionedJid = mentions
 			}
 		} else {
 			msgToSend.Conversation = proto.String(msgToForward.Text)

@@ -143,6 +143,8 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 		waChatID, err = database.ChatThreadGetWaFromTg(c.EffectiveChat.Id, c.EffectiveMessage.MessageThreadId)
 		if err != nil {
 			return utils.TgReplyWithErrorByContext(b, c, "Failed to find the chat pairing between this topic and a WhatsApp chat", err)
+		} else if waChatID == "" {
+			return utils.TgReplyTextByContext(b, c, "No mapping found between current topic and a WhatsApp chat", nil)
 		}
 	}
 
