@@ -11,8 +11,8 @@ require (
 	github.com/lithammer/fuzzysearch v1.1.5
 	github.com/mattn/go-sqlite3 v1.14.16
 	github.com/mdp/qrterminal/v3 v3.0.0
-	go.mau.fi/whatsmeow v0.0.0-20230113234340-b4790c38ebfa
-	golang.org/x/exp v0.0.0-20230113213754-f9f960f08ad4
+	go.mau.fi/whatsmeow v0.0.0-20230120142431-cd2d1213eff6
+	golang.org/x/exp v0.0.0-20230118134722-a68e582fa157
 	google.golang.org/protobuf v1.28.1
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/driver/mysql v1.4.5
