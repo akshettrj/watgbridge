@@ -500,6 +500,17 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
 			return
+		} else if cfg.WhatsApp.SkipDocuments {
+			bridgedText += "\n<i>Skipping document because 'skip_documents' set in config file</i>"
+			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+				ReplyToMessageId: replyToMsgId,
+				MessageThreadId:  threadId,
+			})
+			if sentMsg.MessageId != 0 {
+				database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
+					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
+			}
+			return
 		} else {
 			documentBytes, err := waClient.Download(documentMsg)
 			if err != nil {

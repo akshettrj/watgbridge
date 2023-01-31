@@ -25,13 +25,14 @@ type Config struct {
 	} `yaml:"telegram"`
 
 	WhatsApp struct {
-		SessionName         string   `yaml:"session_name"`
-		TagAllAllowedGroups []string `yaml:"tag_all_allowed_groups"`
-		StatusIgnoredChats  []string `yaml:"status_ignored_chats"`
-		LoginDatabase       struct {
+		LoginDatabase struct {
 			Type string `yaml:"type"`
 			URL  string `yaml:"url"`
 		} `yaml:"login_database"`
+		SessionName         string   `yaml:"session_name"`
+		TagAllAllowedGroups []string `yaml:"tag_all_allowed_groups"`
+		StatusIgnoredChats  []string `yaml:"status_ignored_chats"`
+		SkipDocuments       bool     `yaml:"skip_documents"`
 	} `yaml:"whatsapp"`
 
 	Database map[string]string `yaml:"database"`
