@@ -715,7 +715,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		}
 	} else if msgToForward.Text != "" {
 
-		if emojis := gomoji.CollectAll(msgToForward.Text); len(emojis) == 1 && gomoji.RemoveEmojis(msgToForward.Text) == "" {
+		if emojis := gomoji.CollectAll(msgToForward.Text); isReply && len(emojis) == 1 && gomoji.RemoveEmojis(msgToForward.Text) == "" {
 			_, err := waClient.SendMessage(context.Background(), waChatJID, &waProto.Message{
 				ReactionMessage: &waProto.ReactionMessage{
 					Text:              proto.String(msgToForward.Text),
