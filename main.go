@@ -46,6 +46,11 @@ func main() {
 		cfg.WhatsApp.SessionName = "watgbridge"
 	}
 
+	if cfg.WhatsApp.LoginDatabase.Type == "" || cfg.WhatsApp.LoginDatabase.URL == "" {
+		cfg.WhatsApp.LoginDatabase.Type = "sqlite3"
+		cfg.WhatsApp.LoginDatabase.URL = "file:wawebstore.db?foreign_keys=on"
+	}
+
 	if cfg.GitExecutable == "" || cfg.GoExecutable == "" {
 		gitPath, err := exec.LookPath("git")
 		if err != nil && !errors.Is(err, exec.ErrDot) {

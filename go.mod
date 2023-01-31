@@ -8,11 +8,12 @@ require (
 	github.com/emersion/go-vcard v0.0.0-20220507122617-d4056df0ec4a
 	github.com/forPelevin/gomoji v1.1.8
 	github.com/go-co-op/gocron v1.18.0
+	github.com/jackc/pgx/v5 v5.2.0
 	github.com/lithammer/fuzzysearch v1.1.5
 	github.com/mattn/go-sqlite3 v1.14.16
 	github.com/mdp/qrterminal/v3 v3.0.0
-	go.mau.fi/whatsmeow v0.0.0-20230120142431-cd2d1213eff6
-	golang.org/x/exp v0.0.0-20230118134722-a68e582fa157
+	go.mau.fi/whatsmeow v0.0.0-20230128195103-dcbc8dd31a22
+	golang.org/x/exp v0.0.0-20230131120322-dfa7d7a641b0
 	google.golang.org/protobuf v1.28.1
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/driver/mysql v1.4.5
@@ -29,7 +30,6 @@ require (
 	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20221227161230-091c0ba34f0a // indirect
-	github.com/jackc/pgx/v5 v5.2.0 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/kettek/apng v0.0.0-20220823221153-ff692776a607 // indirect

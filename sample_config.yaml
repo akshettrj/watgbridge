@@ -25,6 +25,10 @@ whatsapp:
   status_ignored_chats:           # Statuses of these people WILL NOT BE FORWARDED to Telegram
     - 91xxxxxxxxxx
     - 1xxxxxxxxxx
+  # login_database:               # Uncomment only if you want to use something other than sqlite
+  #   type: sqlite3
+  #   url: file:wawebstore.db?foreign_keys=on
+
 
 # Uncomment any on of these sections
 # Using the sqlite database will be easiest as it does not require any hosted database server and stores data in a single file on your device

@@ -8,6 +8,7 @@ import (
 
 	"watgbridge/state"
 
+	_ "github.com/jackc/pgx/v5"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/mdp/qrterminal/v3"
 	"go.mau.fi/whatsmeow"
@@ -23,7 +24,8 @@ func NewWhatsAppClient() error {
 	store.DeviceProps.RequireFullSync = proto.Bool(true)
 	store.DeviceProps.PlatformType = waProto.DeviceProps_DESKTOP.Enum()
 	dbLog := waLog.Stdout("WA_Database", "WARN", true)
-	container, err := sqlstore.New("sqlite3", "file:wawebstore.db?foreign_keys=on", dbLog)
+	container, err := sqlstore.New(state.State.Config.WhatsApp.LoginDatabase.Type,
+		state.State.Config.WhatsApp.LoginDatabase.URL, dbLog)
 	if err != nil {
 		return fmt.Errorf("could not initialize sqlstore for Whatsapp : %s", err)
 	}
