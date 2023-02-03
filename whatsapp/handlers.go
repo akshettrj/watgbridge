@@ -108,14 +108,28 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 		utils.WaTagAll(v.Info.Chat, v.Message, v.Info.ID, v.Info.MessageSource.Sender.String(), false)
 	}
 
-	bridgedText := fmt.Sprintf("🧑: <b>%s</b>\n", html.EscapeString(utils.WaGetContactName(v.Info.Sender)))
-	if v.Info.IsIncomingBroadcast() {
-		bridgedText += "👥: <b>(Broadcast)</b>\n"
-	} else if v.Info.IsGroup {
-		bridgedText += fmt.Sprintf("👥: <b>%s</b>\n", html.EscapeString(utils.WaGetGroupName(v.Info.Chat)))
+	var bridgedText string
+	if cfg.WhatsApp.SkipChatDetails {
+
+		if v.Info.IsIncomingBroadcast() {
+			bridgedText += "👥: <b>(Broadcast)</b>\n"
+		} else if v.Info.IsGroup {
+			bridgedText += fmt.Sprintf("🧑: <b>%s</b>\n", html.EscapeString(utils.WaGetContactName(v.Info.Sender)))
+		}
+
 	} else {
-		bridgedText += "👥: <b>(PVT)</b>\n"
+
+		bridgedText += fmt.Sprintf("🧑: <b>%s</b>\n", html.EscapeString(utils.WaGetContactName(v.Info.Sender)))
+		if v.Info.IsIncomingBroadcast() {
+			bridgedText += "👥: <b>(Broadcast)</b>\n"
+		} else if v.Info.IsGroup {
+			bridgedText += fmt.Sprintf("👥: <b>%s</b>\n", html.EscapeString(utils.WaGetGroupName(v.Info.Chat)))
+		} else {
+			bridgedText += "👥: <b>(PVT)</b>\n"
+		}
+
 	}
+
 	bridgedText += fmt.Sprintf("🕛: <b>%s</b>\n",
 		html.EscapeString(v.Info.Timestamp.In(state.State.LocalLocation).Format(cfg.TimeFormat)))
 

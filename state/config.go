@@ -33,6 +33,7 @@ type Config struct {
 		TagAllAllowedGroups []string `yaml:"tag_all_allowed_groups"`
 		StatusIgnoredChats  []string `yaml:"status_ignored_chats"`
 		SkipDocuments       bool     `yaml:"skip_documents"`
+		SkipChatDetails     bool     `yaml:"skip_chat_details"`
 	} `yaml:"whatsapp"`
 
 	Database map[string]string `yaml:"database"`

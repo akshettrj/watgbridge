@@ -21,7 +21,7 @@ import (
 
 func NewWhatsAppClient() error {
 	store.DeviceProps.Os = proto.String(state.State.Config.WhatsApp.SessionName)
-	store.DeviceProps.RequireFullSync = proto.Bool(true)
+	store.DeviceProps.RequireFullSync = proto.Bool(false)
 	store.DeviceProps.PlatformType = waProto.DeviceProps_DESKTOP.Enum()
 	dbLog := waLog.Stdout("WA_Database", "WARN", true)
 	container, err := sqlstore.New(state.State.Config.WhatsApp.LoginDatabase.Type,
