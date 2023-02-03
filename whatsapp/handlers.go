@@ -115,7 +115,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 		if v.Info.IsIncomingBroadcast() {
 			bridgedText += "👥: <b>(Broadcast)</b>\n"
 		} else if v.Info.IsGroup {
-			bridgedText += fmt.Sprintf("🧑: <b>%s</b>\n", html.EscapeString(utils.WaGetContactName(v.Info.Sender)))
+			bridgedText += fmt.Sprintf("🧑: <b>%s</b>\n\n", html.EscapeString(utils.WaGetContactName(v.Info.Sender)))
 		}
 
 	} else {
