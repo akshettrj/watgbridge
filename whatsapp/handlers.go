@@ -115,7 +115,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 		if v.Info.IsIncomingBroadcast() {
 			bridgedText += "👥: <b>(Broadcast)</b>\n"
 		} else if v.Info.IsGroup {
-			bridgedText += fmt.Sprintf("🧑: <b>%s</b>\n\n", html.EscapeString(utils.WaGetContactName(v.Info.Sender)))
+			bridgedText += fmt.Sprintf("🧑: <b>%s</b>\n", html.EscapeString(utils.WaGetContactName(v.Info.Sender)))
 		}
 
 	} else {
@@ -135,6 +135,9 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 		bridgedText += fmt.Sprintf("🕛: <b>%s</b>\n",
 			html.EscapeString(v.Info.Timestamp.In(state.State.LocalLocation).Format(cfg.TimeFormat)))
 	}
+
+	// Telegram will automatically trim the string
+	bridgedText += "\n"
 
 	if mentioned := v.Message.GetExtendedTextMessage().GetContextInfo().GetMentionedJid(); v.Info.IsGroup && mentioned != nil {
 		for _, jid := range mentioned {
