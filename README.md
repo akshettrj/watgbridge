@@ -4,6 +4,10 @@ Despite the name, its not exactly a "bridge". It forwards messages from WhatsApp
 from Telegram.
 
 
+# DISCLAIMER !!!
+
+This project is in no way affiliated with WhatsApp or Telegram. Using this can also lead to your account getting banned by WhatsApp so use at your own risk.
+
 - Join this <a href="https://t.me/AkshettProjects">Telegram Channel</a> for updates
 
 ## Sample Screenshots
@@ -37,15 +41,10 @@ PRs are welcome :)
 - Make a supergroup with topics enabled
 - Add your bot in the group, make it an admin with permissions to `Manage topics`
 - Install `git`, `gcc` and `golang` on your system
-- Clone this repository in `$GOPATH/src`
+- Clone this repository in `$GOPATH/src` or just `~/go/src`
 - Navigate into the cloned directory
 - Run `go build`
-- Copy `sample_config.yaml` to `config.yaml` and fill the values:
-    - You can leave `api_url` in `telegram` section empty if you don't have any local Bot API server (recommended to have one for large files)
-    - Uncomment one of the `database` sections according to your preferences
-    - In the `whatsapp` section:
-        - `tag_all_allowed_groups`: these are the groups in which others can use @all/@everyone to tag everyone. The values that you need to fill in this section can be found by sending `/getwagroups` to the bot after running it once. You have to fill in the value before @ character in the JID.
-        - `status_ignored_chats`: these are the contacts (along with the country code) whose statuses will not be bridged to Telegram.
+- Copy `sample_config.yaml` to `config.yaml` and fill the values, there are comments to help you.
 - Execute the binary by running `./watgbridge`
 - On first run, it will show QR code for logging into WhatsApp that can by scanned by the WhatsApp app in `Linked devices`
 - It is recommended to restart the bot after every few hours becuase WhatsApp likes to disconnect a lot. So a Systemd service file has been provided. Edit the `User` and `ExecStart` according to your setup:
