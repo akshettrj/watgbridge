@@ -38,6 +38,12 @@ func WhatsAppEventHandler(evt interface{}) {
 			return
 		}
 
+		if protoMsg := v.Message.GetProtocolMessage(); protoMsg != nil &&
+			protoMsg.GetType() == waProto.ProtocolMessage_REVOKE {
+			RevokedMessageEventHandler(v)
+			return
+		}
+
 		text := ""
 		if extendedMessageText := v.Message.GetExtendedTextMessage().GetText(); extendedMessageText != "" {
 			text = extendedMessageText
@@ -786,4 +792,28 @@ func CallOfferEventHandler(v *events.CallOffer) {
 
 func PushNameEventHandler(v *events.PushName) {
 	database.ContactUpdatePushName(v.JID.User, v.NewPushName)
+}
+
+func RevokedMessageEventHandler(v *events.Message) {
+	var (
+		cfg         = state.State.Config
+		tgBot       = state.State.TelegramBot
+		protocolMsg = v.Message.GetProtocolMessage()
+		waMsgId     = protocolMsg.GetKey().GetId()
+		waChatId    = v.Info.Chat.String()
+	)
+
+	if v.Info.IsFromMe || !cfg.WhatsApp.SendRevokedMessageUpdates {
+		return
+	}
+
+	tgChatId, tgThreadId, tgMsgId, err := database.MsgIdGetTgFromWa(waMsgId, waChatId)
+	if err != nil || tgChatId == 0 || tgThreadId == 0 || tgMsgId == 0 {
+		return
+	}
+
+	tgBot.SendMessage(tgChatId, "<i>This message was revoked</i>", &gotgbot.SendMessageOpts{
+		MessageThreadId:  tgThreadId,
+		ReplyToMessageId: tgMsgId,
+	})
 }

@@ -30,6 +30,7 @@ whatsapp:
     - 1xxxxxxxxxx
   skip_documents: false
   skip_chat_details: true
+  send_revoked_message_updates: false
   # login_database:               # Uncomment only if you want to use something other than sqlite
   #   type: sqlite3
   #   url: file:wawebstore.db?foreign_keys=on
