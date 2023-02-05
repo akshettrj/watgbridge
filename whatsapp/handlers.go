@@ -101,6 +101,8 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 		if v.Info.Chat.String() == "status@broadcast" &&
 			slices.Contains(cfg.WhatsApp.StatusIgnoredChats, v.Info.Sender.User) {
 			return
+		} else if slices.Contains(cfg.WhatsApp.IgnoreChats, v.Info.Chat.User) {
+			return
 		}
 	}
 

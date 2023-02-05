@@ -31,6 +31,7 @@ type Config struct {
 		} `yaml:"login_database"`
 		SessionName         string   `yaml:"session_name"`
 		TagAllAllowedGroups []string `yaml:"tag_all_allowed_groups"`
+		IgnoreChats         []string `yaml:"ignore_chats"`
 		StatusIgnoredChats  []string `yaml:"status_ignored_chats"`
 		SkipDocuments       bool     `yaml:"skip_documents"`
 		SkipChatDetails     bool     `yaml:"skip_chat_details"`

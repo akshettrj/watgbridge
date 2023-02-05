@@ -22,6 +22,9 @@ whatsapp:
     - 91xxxxxxxxxx-xxxxxxxxxx
     - 91xxxxxxxxxx-xxxxxxxxxx
     - 12xxxxxxxxxxxxx669
+  ignore_chats:
+    - 91xxxxxxxxxx
+    - 12xxxxxxxxxxxxx669
   status_ignored_chats:           # Statuses of these people WILL NOT BE FORWARDED to Telegram
     - 91xxxxxxxxxx
     - 1xxxxxxxxxx
