@@ -12,14 +12,14 @@ require (
 	github.com/lithammer/fuzzysearch v1.1.5
 	github.com/mattn/go-sqlite3 v1.14.16
 	github.com/mdp/qrterminal/v3 v3.0.0
-	go.mau.fi/whatsmeow v0.0.0-20230128195103-dcbc8dd31a22
-	golang.org/x/exp v0.0.0-20230131120322-dfa7d7a641b0
+	go.mau.fi/whatsmeow v0.0.0-20230204181151-b1f00ea99464
+	golang.org/x/exp v0.0.0-20230203172020-98cc5a0785f9
 	google.golang.org/protobuf v1.28.1
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/driver/mysql v1.4.5
 	gorm.io/driver/postgres v1.4.6
 	gorm.io/driver/sqlite v1.4.4
-	gorm.io/gorm v1.24.3
+	gorm.io/gorm v1.24.5
 )
 
 require (
