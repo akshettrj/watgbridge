@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"html"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path"
@@ -18,6 +20,7 @@ import (
 	"github.com/PaulSonOfLars/gotgbot/v2"
 	"github.com/PaulSonOfLars/gotgbot/v2/ext"
 	"github.com/PaulSonOfLars/gotgbot/v2/ext/handlers"
+	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/appstate"
 	waTypes "go.mau.fi/whatsmeow/types"
 )
@@ -46,6 +49,7 @@ func AddTelegramHandlers() {
 		handlers.NewCommand("joininvitelink", JoinInviteLinkHandler),
 		handlers.NewCommand("settargetgroupchat", SetTargetGroupChatHandler),
 		handlers.NewCommand("settargetprivatechat", SetTargetPrivateChatHandler),
+		handlers.NewCommand("getprofilepicture", GetProfilePictureHandler),
 		handlers.NewCommand("updateandrestart", UpdateAndRestartHandler),
 		handlers.NewCommand("send", SendToWhatsAppHandler),
 		handlers.NewCommand("help", HelpCommandHandler),
@@ -92,6 +96,10 @@ func AddTelegramHandlers() {
 		gotgbot.BotCommand{
 			Command:     "settargetprivatechat",
 			Description: "Set the target WhatsApp private chat for current thread",
+		},
+		gotgbot.BotCommand{
+			Command:     "getprofilepicture",
+			Description: "Get the profile picture of user or group using its ID",
 		},
 		gotgbot.BotCommand{
 			Command:     "send",
@@ -449,6 +457,56 @@ func SetTargetPrivateChatHandler(b *gotgbot.Bot, c *ext.Context) error {
 	}
 
 	return utils.TgReplyTextByContext(b, c, "Successfully mapped", nil)
+}
+
+func GetProfilePictureHandler(b *gotgbot.Bot, c *ext.Context) error {
+	if !utils.TgUpdateIsAuthorized(b, c) {
+		return nil
+	}
+
+	usageString := "Usage: <code>" + html.EscapeString("/getprofilepicture <user/group_id>") + "</code>"
+	usageString += "\n\nYou need to add <code>@g.us</code> at the end for groups"
+
+	args := c.Args()
+	if len(args) <= 1 {
+		return utils.TgReplyTextByContext(b, c, usageString, nil)
+	}
+
+	var (
+		waClient = state.State.WhatsAppClient
+		userID   = args[1]
+	)
+
+	userJID, _ := utils.WaParseJID(userID)
+
+	ppInfo, err := waClient.GetProfilePictureInfo(userJID, &whatsmeow.GetProfilePictureParams{})
+	if err != nil {
+		return utils.TgReplyWithErrorByContext(b, c, "Failed to fetch profile picture info from WhatsApp", err)
+	}
+
+	res, err := http.DefaultClient.Get(ppInfo.URL)
+	if err != nil {
+		return utils.TgReplyWithErrorByContext(b, c, "Failed to make HTTP GET request to profile picture URL", err)
+	}
+	defer res.Body.Close()
+
+	imgBytes, err := io.ReadAll(res.Body)
+	if err != nil {
+		return utils.TgReplyWithErrorByContext(b, c, "Failed to read HTTP response body", err)
+	}
+
+	opts := &gotgbot.SendPhotoOpts{
+		ReplyToMessageId: c.EffectiveMessage.MessageId,
+	}
+	if c.EffectiveMessage.IsTopicMessage {
+		opts.MessageThreadId = c.EffectiveMessage.MessageThreadId
+	}
+	_, err = b.SendPhoto(c.EffectiveChat.Id, imgBytes, opts)
+	if err != nil {
+		return utils.TgReplyWithErrorByContext(b, c, "Failed to send photo", err)
+	}
+
+	return nil
 }
 
 func HelpCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
