@@ -147,28 +147,6 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 	// Telegram will automatically trim the string
 	bridgedText += "\n"
 
-	if mentioned := v.Message.GetExtendedTextMessage().GetContextInfo().GetMentionedJid(); v.Info.IsGroup && mentioned != nil {
-		for _, jid := range mentioned {
-			parsedJid, _ := utils.WaParseJID(jid)
-			if parsedJid.User == waClient.Store.ID.User {
-
-				tagInfoText := "#mentions\n\n" + bridgedText + fmt.Sprintf("\n<i>You were tagged in %s</i>",
-					html.EscapeString(utils.WaGetGroupName(v.Info.Chat)))
-
-				threadId, err := utils.TgGetOrMakeThreadFromWa("status@broadcast", cfg.Telegram.TargetChatID, "Status/Calls/Tags [ status@broadcast ]")
-				if err != nil {
-					utils.TgSendErrorById(tgBot, cfg.Telegram.TargetChatID, 0, "failed to create/find thread id for 'status@broadcast'", err)
-				} else {
-					tgBot.SendMessage(cfg.Telegram.TargetChatID, tagInfoText, &gotgbot.SendMessageOpts{
-						MessageThreadId: threadId,
-					})
-				}
-
-				break
-			}
-		}
-	}
-
 	var (
 		replyToMsgId  int64
 		threadId      int64
@@ -196,9 +174,35 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 		contextInfo = v.Message.GetLocationMessage().GetContextInfo()
 	} else if v.Message.GetLiveLocationMessage() != nil {
 		contextInfo = v.Message.GetLiveLocationMessage().GetContextInfo()
+	} else if v.Message.GetPollCreationMessage() != nil {
+		contextInfo = v.Message.GetPollCreationMessage().GetContextInfo()
+	} else if v.Message.GetPollCreationMessageV2() != nil {
+		contextInfo = v.Message.GetPollCreationMessageV2().GetContextInfo()
 	}
 
 	if contextInfo != nil {
+		if mentioned := contextInfo.GetMentionedJid(); v.Info.IsGroup && mentioned != nil {
+			for _, jid := range mentioned {
+				parsedJid, _ := utils.WaParseJID(jid)
+				if parsedJid.User == waClient.Store.ID.User {
+
+					tagInfoText := "#mentions\n\n" + bridgedText + fmt.Sprintf("\n<i>You were tagged in %s</i>",
+						html.EscapeString(utils.WaGetGroupName(v.Info.Chat)))
+
+					threadId, err := utils.TgGetOrMakeThreadFromWa("status@broadcast", cfg.Telegram.TargetChatID, "Status/Calls/Tags [ status@broadcast ]")
+					if err != nil {
+						utils.TgSendErrorById(tgBot, cfg.Telegram.TargetChatID, 0, "failed to create/find thread id for 'status@broadcast'", err)
+					} else {
+						tgBot.SendMessage(cfg.Telegram.TargetChatID, tagInfoText, &gotgbot.SendMessageOpts{
+							MessageThreadId: threadId,
+						})
+					}
+
+					break
+				}
+			}
+		}
+
 		stanzaId := contextInfo.GetStanzaId()
 		tgChatId, tgThreadId, tgMsgId, err := database.MsgIdGetTgFromWa(stanzaId, v.Info.Chat.String())
 		if err == nil && tgChatId == cfg.Telegram.TargetChatID {
@@ -726,6 +730,33 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 	} else if v.Message.GetLiveLocationMessage() != nil {
 
 		bridgedText += "\n<i>Shared their live location with you</i>"
+
+		sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+			ReplyToMessageId: replyToMsgId,
+			MessageThreadId:  threadId,
+		})
+		if sentMsg.MessageId != 0 {
+			database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
+				cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
+		}
+		return
+
+	} else if v.Message.GetPollCreationMessage() != nil || v.Message.GetPollCreationMessageV2() != nil {
+
+		pollMsg := v.Message.GetPollCreationMessage()
+		if pollMsg == nil {
+			pollMsg = v.Message.GetPollCreationMessageV2()
+		}
+
+		bridgedText += "\n<i>It was the following poll:</i>\n\n"
+		bridgedText += "<b>" + html.EscapeString(pollMsg.GetName()) + "</b>\n\n"
+		for optionNum, option := range pollMsg.GetOptions() {
+			if len(bridgedText) > 2000 {
+				bridgedText += "\n... <i>Plus some other options</i>"
+				break
+			}
+			bridgedText += fmt.Sprintf("%v. %s\n", optionNum+1, html.EscapeString(option.GetOptionName()))
+		}
 
 		sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
 			ReplyToMessageId: replyToMsgId,
