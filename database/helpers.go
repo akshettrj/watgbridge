@@ -47,7 +47,7 @@ func MsgIdGetTgFromWa(waMsgId, waChatId string) (int64, int64, int64, error) {
 	return bridgePair.TgChatId, bridgePair.TgThreadId, bridgePair.TgMsgId, res.Error
 }
 
-func MsgIdGetWaFromTg(tgChatId, tgMsgId, tgThreadId int64) (string, string, string, error) {
+func MsgIdGetWaFromTg(tgChatId, tgMsgId, tgThreadId int64) (msgId, participantId, chatId string, err error) {
 
 	db := state.State.Database
 

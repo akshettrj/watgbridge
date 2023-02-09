@@ -43,6 +43,7 @@ func AddTelegramHandlers() {
 		handlers.NewCommand("start", StartCommandHandler),
 		handlers.NewCommand("getwagroups", GetWhatsAppGroupsHandler),
 		handlers.NewCommand("findcontact", FindContactHandler),
+		handlers.NewCommand("revoke", RevokeCommandHandler),
 		handlers.NewCommand("synccontacts", SyncContactsHandler),
 		handlers.NewCommand("clearpairhistory", ClearMessageIdPairsHistoryHandler),
 		handlers.NewCommand("restartwa", RestartWhatsAppConnectionHandler),
@@ -72,6 +73,10 @@ func AddTelegramHandlers() {
 		gotgbot.BotCommand{
 			Command:     "findcontact",
 			Description: "Fuzzy find contact JIDs from names in WhatsApp",
+		},
+		gotgbot.BotCommand{
+			Command:     "revoke",
+			Description: "Revoke a message from WhatsApp",
 		},
 		gotgbot.BotCommand{
 			Command:     "synccontacts",
@@ -152,7 +157,8 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 		if err != nil {
 			return utils.TgReplyWithErrorByContext(b, c, "Failed to find the chat pairing between this topic and a WhatsApp chat", err)
 		} else if waChatID == "" {
-			return utils.TgReplyTextByContext(b, c, "No mapping found between current topic and a WhatsApp chat", nil)
+			_, err = utils.TgReplyTextByContext(b, c, "No mapping found between current topic and a WhatsApp chat", nil)
+			return err
 		}
 	}
 
@@ -163,7 +169,7 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 
 	waChatJID, _ := utils.WaParseJID(waChatID)
 
-	return utils.TgSendToWhatsApp(b, c, msgToForward, msgToReplyTo, waChatJID, participantID, stanzaID, msgToReplyTo != nil)
+	return utils.TgSendToWhatsApp(b, c, msgToForward, msgToReplyTo, waChatJID, participantID, stanzaID, msgToReplyTo != nil && msgToReplyTo.ForumTopicClosed == nil)
 }
 
 func StartCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
@@ -193,7 +199,8 @@ func StartCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
 		startMessage += "• No Modules Loaded\n"
 	}
 
-	return utils.TgReplyTextByContext(b, c, startMessage, nil)
+	_, err := utils.TgReplyTextByContext(b, c, startMessage, nil)
+	return err
 }
 
 func GetWhatsAppGroupsHandler(b *gotgbot.Bot, c *ext.Context) error {
@@ -222,7 +229,8 @@ func GetWhatsAppGroupsHandler(b *gotgbot.Bot, c *ext.Context) error {
 	}
 
 	if len(outputString) > 0 {
-		return utils.TgReplyTextByContext(b, c, outputString, nil)
+		_, err = utils.TgReplyTextByContext(b, c, outputString, nil)
+		return err
 	}
 	return nil
 }
@@ -237,7 +245,8 @@ func FindContactHandler(b *gotgbot.Bot, c *ext.Context) error {
 
 	args := c.Args()
 	if len(args) <= 1 {
-		return utils.TgReplyTextByContext(b, c, usageString, nil)
+		_, err := utils.TgReplyTextByContext(b, c, usageString, nil)
+		return err
 	}
 	query := args[1]
 
@@ -245,7 +254,8 @@ func FindContactHandler(b *gotgbot.Bot, c *ext.Context) error {
 	if err != nil {
 		return utils.TgReplyWithErrorByContext(b, c, "Encountered error while finding contacts", err)
 	} else if resultsCount == 0 {
-		return utils.TgReplyTextByContext(b, c, "No matching results found :(", nil)
+		_, err = utils.TgReplyTextByContext(b, c, "No matching results found :(", nil)
+		return err
 	}
 
 	outputString := fmt.Sprintf("Here are the %v matching contacts:\n\n", resultsCount)
@@ -261,7 +271,8 @@ func FindContactHandler(b *gotgbot.Bot, c *ext.Context) error {
 	}
 
 	if len(outputString) > 0 {
-		return utils.TgReplyTextByContext(b, c, outputString, nil)
+		_, err = utils.TgReplyTextByContext(b, c, outputString, nil)
+		return err
 	}
 	return nil
 }
@@ -321,7 +332,8 @@ func SyncContactsHandler(b *gotgbot.Bot, c *ext.Context) error {
 		database.ContactNameBulkAddOrUpdate(contacts)
 	}
 
-	return utils.TgReplyTextByContext(b, c, "Successfully synced the contact list", nil)
+	_, err = utils.TgReplyTextByContext(b, c, "Successfully synced the contact list", nil)
+	return err
 }
 
 func ClearMessageIdPairsHistoryHandler(b *gotgbot.Bot, c *ext.Context) error {
@@ -334,7 +346,8 @@ func ClearMessageIdPairsHistoryHandler(b *gotgbot.Bot, c *ext.Context) error {
 		return utils.TgReplyWithErrorByContext(b, c, "Failed to delete stored pairs", err)
 	}
 
-	return utils.TgReplyTextByContext(b, c, "Successfully deleted all the stored pairs", nil)
+	_, err = utils.TgReplyTextByContext(b, c, "Successfully deleted all the stored pairs", nil)
+	return err
 }
 
 func RestartWhatsAppConnectionHandler(b *gotgbot.Bot, c *ext.Context) error {
@@ -350,7 +363,8 @@ func RestartWhatsAppConnectionHandler(b *gotgbot.Bot, c *ext.Context) error {
 		return utils.TgReplyWithErrorByContext(b, c, "Failed to reconnect to WA servers", err)
 	}
 
-	return utils.TgReplyTextByContext(b, c, "Successfully restarted the WhatsApp connection", nil)
+	_, err = utils.TgReplyTextByContext(b, c, "Successfully restarted the WhatsApp connection", nil)
+	return err
 }
 
 func JoinInviteLinkHandler(b *gotgbot.Bot, c *ext.Context) error {
@@ -362,7 +376,8 @@ func JoinInviteLinkHandler(b *gotgbot.Bot, c *ext.Context) error {
 
 	args := c.Args()
 	if len(args) <= 1 {
-		return utils.TgReplyTextByContext(b, c, usageString, nil)
+		_, err := utils.TgReplyTextByContext(b, c, usageString, nil)
+		return err
 	}
 	inviteLink := args[1]
 
@@ -373,8 +388,9 @@ func JoinInviteLinkHandler(b *gotgbot.Bot, c *ext.Context) error {
 		return utils.TgReplyWithErrorByContext(b, c, "Failed to join", err)
 	}
 
-	return utils.TgReplyTextByContext(b, c,
+	_, err = utils.TgReplyTextByContext(b, c,
 		fmt.Sprintf("Joined a new group with ID: <code>%s</code>", groupID.String()), nil)
+	return err
 }
 
 func SetTargetGroupChatHandler(b *gotgbot.Bot, c *ext.Context) error {
@@ -386,11 +402,13 @@ func SetTargetGroupChatHandler(b *gotgbot.Bot, c *ext.Context) error {
 
 	args := c.Args()
 	if len(args) <= 1 {
-		return utils.TgReplyTextByContext(b, c, usageString, nil)
+		_, err := utils.TgReplyTextByContext(b, c, usageString, nil)
+		return err
 	}
 
 	if !c.EffectiveMessage.IsTopicMessage || c.EffectiveMessage.MessageThreadId == 0 {
-		return utils.TgReplyTextByContext(b, c, "The command should be sent in a topic", nil)
+		_, err := utils.TgReplyTextByContext(b, c, "The command should be sent in a topic", nil)
+		return err
 	}
 
 	var (
@@ -410,7 +428,8 @@ func SetTargetGroupChatHandler(b *gotgbot.Bot, c *ext.Context) error {
 	if err != nil {
 		return utils.TgReplyWithErrorByContext(b, c, "Failed to check database for existing mapping", err)
 	} else if threadFound {
-		return utils.TgReplyTextByContext(b, c, "A topic already exists in database for the given WhatsApp chat. Aborting...", nil)
+		_, err = utils.TgReplyTextByContext(b, c, "A topic already exists in database for the given WhatsApp chat. Aborting...", nil)
+		return err
 	}
 
 	err = database.ChatThreadAddNewPair(groupJID.String(), cfg.Telegram.TargetChatID, c.EffectiveMessage.MessageThreadId)
@@ -418,7 +437,8 @@ func SetTargetGroupChatHandler(b *gotgbot.Bot, c *ext.Context) error {
 		return utils.TgReplyWithErrorByContext(b, c, "Failed to add the mapping in database. Unsuccessful", err)
 	}
 
-	return utils.TgReplyTextByContext(b, c, "Successfully mapped", nil)
+	_, err = utils.TgReplyTextByContext(b, c, "Successfully mapped", nil)
+	return err
 }
 
 func SetTargetPrivateChatHandler(b *gotgbot.Bot, c *ext.Context) error {
@@ -430,11 +450,13 @@ func SetTargetPrivateChatHandler(b *gotgbot.Bot, c *ext.Context) error {
 
 	args := c.Args()
 	if len(args) <= 1 {
-		return utils.TgReplyTextByContext(b, c, usageString, nil)
+		_, err := utils.TgReplyTextByContext(b, c, usageString, nil)
+		return err
 	}
 
 	if !c.EffectiveMessage.IsTopicMessage || c.EffectiveMessage.MessageThreadId == 0 {
-		return utils.TgReplyTextByContext(b, c, "The command should be sent in a topic", nil)
+		_, err := utils.TgReplyTextByContext(b, c, "The command should be sent in a topic", nil)
+		return err
 	}
 
 	var (
@@ -448,7 +470,8 @@ func SetTargetPrivateChatHandler(b *gotgbot.Bot, c *ext.Context) error {
 	if err != nil {
 		return utils.TgReplyWithErrorByContext(b, c, "Failed to check database for existing mapping", err)
 	} else if threadFound {
-		return utils.TgReplyTextByContext(b, c, "A topic already exists in database for the given WhatsApp chat. Aborting...", nil)
+		_, err = utils.TgReplyTextByContext(b, c, "A topic already exists in database for the given WhatsApp chat. Aborting...", nil)
+		return err
 	}
 
 	err = database.ChatThreadAddNewPair(userJID.String(), cfg.Telegram.TargetChatID, c.EffectiveMessage.MessageThreadId)
@@ -456,7 +479,8 @@ func SetTargetPrivateChatHandler(b *gotgbot.Bot, c *ext.Context) error {
 		return utils.TgReplyWithErrorByContext(b, c, "Failed to add the mapping in database. Unsuccessful", err)
 	}
 
-	return utils.TgReplyTextByContext(b, c, "Successfully mapped", nil)
+	_, err = utils.TgReplyTextByContext(b, c, "Successfully mapped", nil)
+	return err
 }
 
 func GetProfilePictureHandler(b *gotgbot.Bot, c *ext.Context) error {
@@ -469,7 +493,8 @@ func GetProfilePictureHandler(b *gotgbot.Bot, c *ext.Context) error {
 
 	args := c.Args()
 	if len(args) <= 1 {
-		return utils.TgReplyTextByContext(b, c, usageString, nil)
+		_, err := utils.TgReplyTextByContext(b, c, usageString, nil)
+		return err
 	}
 
 	var (
@@ -521,7 +546,8 @@ func HelpCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
 			command.Command, html.EscapeString(command.Description))
 	}
 
-	return utils.TgReplyTextByContext(b, c, helpString, nil)
+	_, err := utils.TgReplyTextByContext(b, c, helpString, nil)
+	return err
 }
 
 func SendToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
@@ -534,7 +560,8 @@ func SendToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 
 	args := c.Args()
 	if len(args) <= 1 || c.EffectiveMessage.ReplyToMessage == nil || c.EffectiveMessage.ReplyToMessage.ForumTopicCreated != nil {
-		return utils.TgReplyTextByContext(b, c, usageString, nil)
+		_, err := utils.TgReplyTextByContext(b, c, usageString, nil)
+		return err
 	}
 	waChatID := args[1]
 
@@ -547,10 +574,45 @@ func SendToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 
 	waChatJID, ok := utils.WaParseJID(waChatID)
 	if !ok {
-		return utils.TgReplyTextByContext(b, c, "Provided JID is not valid", nil)
+		_, err := utils.TgReplyTextByContext(b, c, "Provided JID is not valid", nil)
+		return err
 	}
 
 	return utils.TgSendToWhatsApp(b, c, msgToForward, msgToReplyTo, waChatJID, participantID, stanzaID, false)
+}
+
+func RevokeCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
+	if !utils.TgUpdateIsAuthorized(b, c) {
+		return nil
+	}
+
+	usageString := "Usage : Reply to a message, <code>/revoke</code>"
+
+	if c.EffectiveMessage.ReplyToMessage == nil || c.EffectiveMessage.ReplyToMessage.ForumTopicClosed != nil {
+		_, err := utils.TgReplyTextByContext(b, c, usageString, nil)
+		return err
+	}
+
+	var (
+		waClient    = state.State.WhatsAppClient
+		msgToRevoke = c.EffectiveMessage.ReplyToMessage
+		chatId      = c.EffectiveChat.Id
+	)
+
+	waMsgId, _, waChatId, err := database.MsgIdGetWaFromTg(chatId, msgToRevoke.MessageId, msgToRevoke.MessageThreadId)
+	if err != nil {
+		return utils.TgReplyWithErrorByContext(b, c, "failed to retrieve WhatsApp side IDs", err)
+	}
+
+	chatJid, _ := utils.WaParseJID(waChatId)
+	revokeMessage := waClient.BuildRevoke(chatJid, waTypes.EmptyJID, waMsgId)
+	_, err = waClient.SendMessage(context.Background(), chatJid, revokeMessage)
+	if err != nil {
+		return utils.TgReplyWithErrorByContext(b, c, "failed to revoke message", err)
+	}
+
+	_, err = utils.TgReplyTextByContext(b, c, "<i>Successfully revoked</i>", nil)
+	return err
 }
 
 func RevokeCallbackHandler(b *gotgbot.Bot, c *ext.Context) error {
