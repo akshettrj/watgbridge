@@ -263,7 +263,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		msg, err := TgReplyTextByContext(b, c, "Successfully sent", revokeKeyboard)
 		if err == nil {
 			go func(_b *gotgbot.Bot, _m *gotgbot.Message) {
-				time.Sleep(1 * time.Minute)
+				time.Sleep(15 * time.Second)
 				_b.DeleteMessage(_m.Chat.Id, _m.MessageId, &gotgbot.DeleteMessageOpts{})
 			}(b, msg)
 		}
@@ -335,7 +335,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		msg, err := TgReplyTextByContext(b, c, "Successfully sent", revokeKeyboard)
 		if err == nil {
 			go func(_b *gotgbot.Bot, _m *gotgbot.Message) {
-				time.Sleep(1 * time.Minute)
+				time.Sleep(15 * time.Second)
 				_b.DeleteMessage(_m.Chat.Id, _m.MessageId, &gotgbot.DeleteMessageOpts{})
 			}(b, msg)
 		}
@@ -404,7 +404,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		msg, err := TgReplyTextByContext(b, c, "Successfully sent", revokeKeyboard)
 		if err == nil {
 			go func(_b *gotgbot.Bot, _m *gotgbot.Message) {
-				time.Sleep(1 * time.Minute)
+				time.Sleep(15 * time.Second)
 				_b.DeleteMessage(_m.Chat.Id, _m.MessageId, &gotgbot.DeleteMessageOpts{})
 			}(b, msg)
 		}
@@ -476,7 +476,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		msg, err := TgReplyTextByContext(b, c, "Successfully sent", revokeKeyboard)
 		if err == nil {
 			go func(_b *gotgbot.Bot, _m *gotgbot.Message) {
-				time.Sleep(1 * time.Minute)
+				time.Sleep(15 * time.Second)
 				_b.DeleteMessage(_m.Chat.Id, _m.MessageId, &gotgbot.DeleteMessageOpts{})
 			}(b, msg)
 		}
@@ -543,7 +543,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		msg, err := TgReplyTextByContext(b, c, "Successfully sent", revokeKeyboard)
 		if err == nil {
 			go func(_b *gotgbot.Bot, _m *gotgbot.Message) {
-				time.Sleep(1 * time.Minute)
+				time.Sleep(15 * time.Second)
 				_b.DeleteMessage(_m.Chat.Id, _m.MessageId, &gotgbot.DeleteMessageOpts{})
 			}(b, msg)
 		}
@@ -610,7 +610,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		msg, err := TgReplyTextByContext(b, c, "Successfully sent", revokeKeyboard)
 		if err == nil {
 			go func(_b *gotgbot.Bot, _m *gotgbot.Message) {
-				time.Sleep(1 * time.Minute)
+				time.Sleep(15 * time.Second)
 				_b.DeleteMessage(_m.Chat.Id, _m.MessageId, &gotgbot.DeleteMessageOpts{})
 			}(b, msg)
 		}
@@ -680,7 +680,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		msg, err := TgReplyTextByContext(b, c, "Successfully sent", revokeKeyboard)
 		if err == nil {
 			go func(_b *gotgbot.Bot, _m *gotgbot.Message) {
-				time.Sleep(1 * time.Minute)
+				time.Sleep(15 * time.Second)
 				_b.DeleteMessage(_m.Chat.Id, _m.MessageId, &gotgbot.DeleteMessageOpts{})
 			}(b, msg)
 		}
@@ -760,7 +760,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		msg, err := TgReplyTextByContext(b, c, "Successfully sent", revokeKeyboard)
 		if err == nil {
 			go func(_b *gotgbot.Bot, _m *gotgbot.Message) {
-				time.Sleep(1 * time.Minute)
+				time.Sleep(15 * time.Second)
 				_b.DeleteMessage(_m.Chat.Id, _m.MessageId, &gotgbot.DeleteMessageOpts{})
 			}(b, msg)
 		}
@@ -787,7 +787,13 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			if err != nil {
 				return TgReplyWithErrorByContext(b, c, "Failed to send reaction to WhatsApp", err)
 			}
-			_, err = TgReplyTextByContext(b, c, "Successfully reacted", nil)
+			msg, err := TgReplyTextByContext(b, c, "Successfully reacted", nil)
+			if err == nil {
+				go func(_b *gotgbot.Bot, _m *gotgbot.Message) {
+					time.Sleep(15 * time.Second)
+					_b.DeleteMessage(_m.Chat.Id, _m.MessageId, &gotgbot.DeleteMessageOpts{})
+				}(b, msg)
+			}
 			return err
 		}
 
@@ -816,7 +822,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		msg, err := TgReplyTextByContext(b, c, "Successfully sent", revokeKeyboard)
 		if err == nil {
 			go func(_b *gotgbot.Bot, _m *gotgbot.Message) {
-				time.Sleep(1 * time.Minute)
+				time.Sleep(15 * time.Second)
 				_b.DeleteMessage(_m.Chat.Id, _m.MessageId, &gotgbot.DeleteMessageOpts{})
 			}(b, msg)
 		}

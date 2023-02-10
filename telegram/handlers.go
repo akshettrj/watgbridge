@@ -169,7 +169,7 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 
 	waChatJID, _ := utils.WaParseJID(waChatID)
 
-	return utils.TgSendToWhatsApp(b, c, msgToForward, msgToReplyTo, waChatJID, participantID, stanzaID, msgToReplyTo != nil && msgToReplyTo.ForumTopicClosed == nil)
+	return utils.TgSendToWhatsApp(b, c, msgToForward, msgToReplyTo, waChatJID, participantID, stanzaID, msgToReplyTo != nil && msgToReplyTo.ForumTopicCreated == nil)
 }
 
 func StartCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
