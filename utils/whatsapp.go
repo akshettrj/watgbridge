@@ -103,7 +103,7 @@ func WaGetGroupName(jid types.JID) string {
 	if err != nil {
 		return jid.User
 	}
-	return groupInfo.Name + " [ " + jid.User + " ]"
+	return groupInfo.Name
 }
 
 func WaGetContactName(jid types.JID) string {
@@ -114,11 +114,11 @@ func WaGetContactName(jid types.JID) string {
 		if fullName != "" {
 			name = fullName
 		} else if businessName != "" {
-			name = businessName
+			name = businessName + " [ " + jid.User + " ]"
 		} else if pushName != "" {
-			name = pushName
+			name = pushName + " [ " + jid.User + " ]"
 		} else if firstName != "" {
-			name = firstName
+			name = firstName + " [ " + jid.User + " ]"
 		}
 	} else {
 		waClient := state.State.WhatsAppClient
@@ -127,19 +127,17 @@ func WaGetContactName(jid types.JID) string {
 			if contact.FullName != "" {
 				name = contact.FullName
 			} else if contact.BusinessName != "" {
-				name = contact.BusinessName
+				name = contact.BusinessName + " [ " + jid.User + " ]"
 			} else if contact.PushName != "" {
-				name = contact.PushName
+				name = contact.PushName + " [ " + jid.User + " ]"
 			} else if contact.FirstName != "" {
-				name = contact.FirstName
+				name = contact.FirstName + " [ " + jid.User + " ]"
 			}
 		}
 	}
 
 	if name == "" {
 		name = jid.User
-	} else {
-		name += " [ " + jid.User + " ]"
 	}
 
 	return name

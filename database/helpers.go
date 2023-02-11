@@ -120,6 +120,16 @@ func ChatThreadGetWaFromTg(tgChatId, tgThreadId int64) (string, error) {
 	return chatPair.ID, res.Error
 }
 
+func ChatThreadGetAllPairs(tgChatId int64) ([]ChatThreadPair, error) {
+
+	db := state.State.Database
+
+	var chatPairs []ChatThreadPair
+	res := db.Where("tg_chat_id = ?", tgChatId).Find(&chatPairs)
+
+	return chatPairs, res.Error
+}
+
 func ChatThreadDropAllPairs() error {
 
 	db := state.State.Database

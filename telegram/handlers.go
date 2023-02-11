@@ -52,6 +52,7 @@ func AddTelegramHandlers() {
 		handlers.NewCommand("settargetprivatechat", SetTargetPrivateChatHandler),
 		handlers.NewCommand("getprofilepicture", GetProfilePictureHandler),
 		handlers.NewCommand("updateandrestart", UpdateAndRestartHandler),
+		handlers.NewCommand("synctopicnames", SyncTopicNamesHandler),
 		handlers.NewCommand("send", SendToWhatsAppHandler),
 		handlers.NewCommand("help", HelpCommandHandler),
 	)
@@ -105,6 +106,10 @@ func AddTelegramHandlers() {
 		gotgbot.BotCommand{
 			Command:     "getprofilepicture",
 			Description: "Get the profile picture of user or group using its ID",
+		},
+		gotgbot.BotCommand{
+			Command:     "synctopicnames",
+			Description: "Update the names of the topics created",
 		},
 		gotgbot.BotCommand{
 			Command:     "send",
@@ -529,6 +534,44 @@ func GetProfilePictureHandler(b *gotgbot.Bot, c *ext.Context) error {
 	_, err = b.SendPhoto(c.EffectiveChat.Id, imgBytes, opts)
 	if err != nil {
 		return utils.TgReplyWithErrorByContext(b, c, "Failed to send photo", err)
+	}
+
+	return nil
+}
+
+func SyncTopicNamesHandler(b *gotgbot.Bot, c *ext.Context) error {
+	if !utils.TgUpdateIsAuthorized(b, c) {
+		return nil
+	}
+
+	chatThreadPairs, err := database.ChatThreadGetAllPairs(c.EffectiveChat.Id)
+	if err != nil {
+		return utils.TgReplyWithErrorByContext(b, c, "failed to retreive chat thread pairs from database", err)
+	}
+
+	for _, pair := range chatThreadPairs {
+		var (
+			waChatId   = pair.ID
+			tgThreadId = pair.TgThreadId
+		)
+
+		if waChatId == "status@broadcast" {
+			continue
+		}
+		waChatJid, _ := utils.WaParseJID(waChatId)
+
+		var newName string
+		if waChatJid.Server == waTypes.GroupServer {
+			newName = utils.WaGetGroupName(waChatJid)
+		} else {
+			newName = utils.WaGetContactName(waChatJid)
+		}
+
+		b.EditForumTopic(c.EffectiveChat.Id, tgThreadId, &gotgbot.EditForumTopicOpts{
+			Name:              newName,
+			IconCustomEmojiId: nil,
+		})
+		time.Sleep(500 * time.Millisecond)
 	}
 
 	return nil
