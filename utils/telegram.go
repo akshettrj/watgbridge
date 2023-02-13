@@ -455,7 +455,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 				Height:         proto.Uint32(uint32(msgToForward.Animation.Height)),
 				Width:          proto.Uint32(uint32(msgToForward.Animation.Width)),
 				Seconds:        proto.Uint32(uint32(msgToForward.Animation.Duration)),
-				GifAttribution: waProto.VideoMessage_GIPHY.Enum(),
+				GifAttribution: waProto.VideoMessage_TENOR.Enum(),
 				ContextInfo:    &waProto.ContextInfo{},
 			},
 		}
@@ -697,10 +697,10 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			return err
 		}
 
-		if msgToForward.Sticker.IsVideo {
-			_, err := TgReplyTextByContext(b, c, "Unable to send sticker as video stickers are not supported at present", nil)
-			return err
-		}
+		// if msgToForward.Sticker.IsVideo {
+		// 	_, err := TgReplyTextByContext(b, c, "Unable to send sticker as video stickers are not supported at present", nil)
+		// 	return err
+		// }
 
 		stickerFile, err := b.GetFile(msgToForward.Sticker.FileId, &gotgbot.GetFileOpts{
 			RequestOpts: &gotgbot.RequestOpts{
@@ -721,6 +721,61 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			if err != nil {
 				return TgReplyWithErrorByContext(b, c, "Failed to convert TGS sticker to WebP", err)
 			}
+		} else if msgToForward.Sticker.IsVideo {
+			gifBytes, err := WebmConvertToGif(stickerBytes)
+			if err != nil {
+				return TgReplyWithErrorByContext(b, c, "Failed to convert WEBM sticker to GIF", err)
+			}
+
+			uploadedAnimation, err := waClient.Upload(context.Background(), gifBytes, whatsmeow.MediaVideo)
+			if err != nil {
+				return TgReplyWithErrorByContext(b, c, "Failed to upload animation to WhatsApp", err)
+			}
+
+			msgToSend := &waProto.Message{
+				VideoMessage: &waProto.VideoMessage{
+					Url:            proto.String(uploadedAnimation.URL),
+					DirectPath:     proto.String(uploadedAnimation.DirectPath),
+					MediaKey:       uploadedAnimation.MediaKey,
+					Mimetype:       proto.String("image/gif"),
+					GifPlayback:    proto.Bool(true),
+					FileEncSha256:  uploadedAnimation.FileEncSHA256,
+					FileSha256:     uploadedAnimation.FileSHA256,
+					FileLength:     proto.Uint64(uint64(len(gifBytes))),
+					ViewOnce:       proto.Bool(msgToForward.HasProtectedContent),
+					GifAttribution: waProto.VideoMessage_TENOR.Enum(),
+					ContextInfo:    &waProto.ContextInfo{},
+				},
+			}
+			if isReply {
+				msgToSend.VideoMessage.ContextInfo.StanzaId = proto.String(stanzaId)
+				msgToSend.VideoMessage.ContextInfo.Participant = proto.String(participant)
+				msgToSend.VideoMessage.ContextInfo.QuotedMessage = &waProto.Message{Conversation: proto.String("")}
+			}
+			if len(mentions) > 0 {
+				msgToSend.VideoMessage.ContextInfo.MentionedJid = mentions
+			}
+
+			sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, msgToSend)
+			if err != nil {
+				return TgReplyWithErrorByContext(b, c, "Failed to send animation to WhatsApp", err)
+			}
+			revokeKeyboard := TgMakeRevokeKeyboard(sentMsg.ID, waChatJID.String(), false)
+			msg, err := TgReplyTextByContext(b, c, "Successfully sent", revokeKeyboard)
+			if err == nil {
+				go func(_b *gotgbot.Bot, _m *gotgbot.Message) {
+					time.Sleep(15 * time.Second)
+					_b.DeleteMessage(_m.Chat.Id, _m.MessageId, &gotgbot.DeleteMessageOpts{})
+				}(b, msg)
+			}
+
+			err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.User, waChatJID.String(),
+				cfg.Telegram.TargetChatID, msgToForward.MessageId, msgToForward.MessageThreadId)
+			if err != nil {
+				return TgReplyWithErrorByContext(b, c, "Failed to add to database", err)
+			}
+
+			return nil
 		}
 
 		uploadedSticker, err := waClient.Upload(context.Background(), stickerBytes, whatsmeow.MediaImage)

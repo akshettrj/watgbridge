@@ -51,7 +51,7 @@ func main() {
 		cfg.WhatsApp.LoginDatabase.URL = "file:wawebstore.db?foreign_keys=on"
 	}
 
-	if cfg.GitExecutable == "" || cfg.GoExecutable == "" {
+	if cfg.GitExecutable == "" || cfg.GoExecutable == "" || cfg.FfmpegExecutable == "" {
 		gitPath, err := exec.LookPath("git")
 		if err != nil && !errors.Is(err, exec.ErrDot) {
 			log.Fatalln("failed to find path to git executable : " + err.Error())
@@ -62,11 +62,17 @@ func main() {
 			log.Fatalln("failed to find path to go executable : " + err.Error())
 		}
 
+		ffmpegPath, err := exec.LookPath("ffmpeg")
+		if err != nil && !errors.Is(err, exec.ErrDot) {
+			log.Fatalln("failed to find path to ffmpeg executable : " + err.Error())
+		}
+
 		cfg.GitExecutable = gitPath
 		cfg.GoExecutable = goPath
+		cfg.FfmpegExecutable = ffmpegPath
 
-		log.Printf("Using '%s' and '%s' as path to executables for git and go\n",
-			gitPath, goPath)
+		log.Printf("Using '%s', '%s' and '%s' as path to executables for git, go and ffmpeg\n",
+			gitPath, goPath, ffmpegPath)
 
 		cfg.SaveConfig()
 	}
