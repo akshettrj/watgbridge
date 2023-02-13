@@ -17,12 +17,13 @@ type Config struct {
 	FfmpegExecutable string `yaml:"ffmpeg_executable"`
 
 	Telegram struct {
-		BotToken      string  `yaml:"bot_token"`
-		APIURL        string  `yaml:"api_url"`
-		SudoUsersID   []int64 `yaml:"sudo_users_id"`
-		OwnerID       int64   `yaml:"owner_id"`
-		TargetChatID  int64   `yaml:"target_chat_id"`
-		SelfHostedAPI bool    `yaml:"self_hosted_api"`
+		BotToken          string  `yaml:"bot_token"`
+		APIURL            string  `yaml:"api_url"`
+		SudoUsersID       []int64 `yaml:"sudo_users_id"`
+		OwnerID           int64   `yaml:"owner_id"`
+		TargetChatID      int64   `yaml:"target_chat_id"`
+		SelfHostedAPI     bool    `yaml:"self_hosted_api"`
+		SkipVideoStickers bool    `yaml:"skip_video_stickers"`
 	} `yaml:"telegram"`
 
 	WhatsApp struct {

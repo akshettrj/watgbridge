@@ -697,11 +697,6 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			return err
 		}
 
-		// if msgToForward.Sticker.IsVideo {
-		// 	_, err := TgReplyTextByContext(b, c, "Unable to send sticker as video stickers are not supported at present", nil)
-		// 	return err
-		// }
-
 		stickerFile, err := b.GetFile(msgToForward.Sticker.FileId, &gotgbot.GetFileOpts{
 			RequestOpts: &gotgbot.RequestOpts{
 				Timeout: -1,
@@ -721,7 +716,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			if err != nil {
 				return TgReplyWithErrorByContext(b, c, "Failed to convert TGS sticker to WebP", err)
 			}
-		} else if msgToForward.Sticker.IsVideo {
+		} else if msgToForward.Sticker.IsVideo && !cfg.Telegram.SkipVideoStickers {
 			gifBytes, err := WebmConvertToGif(stickerBytes)
 			if err != nil {
 				return TgReplyWithErrorByContext(b, c, "Failed to convert WEBM sticker to GIF", err)
