@@ -1,7 +1,6 @@
 package utils
 
 import (
-	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
@@ -48,7 +47,7 @@ func WebmConvertToGif(webmStickerData []byte) ([]byte, error) {
 	os.MkdirAll(currPath, os.ModePerm)
 	defer os.RemoveAll(currPath)
 
-	os.WriteFile(inputPath, bytes.Clone(webmStickerData), os.ModePerm)
+	os.WriteFile(inputPath, webmStickerData, os.ModePerm)
 
 	cmd := exec.Command(state.State.Config.FfmpegExecutable,
 		"-i", inputPath,
