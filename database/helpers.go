@@ -168,47 +168,24 @@ func ContactNameAddNew(waUserId, firstName, fullName, pushName, businessName str
 
 func ContactNameBulkAddOrUpdate(contacts map[types.JID]types.ContactInfo) error {
 
-	db := state.State.Database
-
 	var (
-		contactNamesMap = make(map[string]*ContactName)
-		contactNames    []ContactName
-		toAdd           []ContactName
-		toUpdate        []ContactName
+		db           = state.State.Database
+		contactNames []ContactName
 	)
 
-	res := db.Limit(-1).Find(&contactNames)
+	for k, v := range contacts {
+		contactNames = append(contactNames, ContactName{
+			ID:           k.User,
+			FirstName:    v.FirstName,
+			PushName:     v.PushName,
+			BusinessName: v.BusinessName,
+			FullName:     v.FullName,
+		})
+	}
+
+	res := db.Save(&contactNames)
 	if res.Error != nil {
 		return res.Error
-	}
-
-	for i := 0; i < len(contactNames); i++ {
-		contactNamesMap[contactNames[i].ID] = &contactNames[i]
-	}
-
-	for jid, contact := range contacts {
-		if c := contactNamesMap[jid.User]; c != nil {
-			c.FirstName = contact.FirstName
-			c.PushName = contact.PushName
-			c.BusinessName = contact.BusinessName
-			c.FullName = contact.FullName
-			toUpdate = append(toUpdate, *c)
-		} else {
-			toAdd = append(toAdd, ContactName{
-				ID:           jid.User,
-				FirstName:    contact.FirstName,
-				PushName:     contact.PushName,
-				BusinessName: contact.BusinessName,
-				FullName:     contact.FullName,
-			})
-		}
-	}
-
-	if len(toAdd) > 0 {
-		db.Create(&toAdd)
-	}
-	if len(toUpdate) > 0 {
-		db.Save(&toUpdate)
 	}
 
 	return nil
