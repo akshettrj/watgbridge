@@ -4,7 +4,7 @@ go 1.19
 
 require (
 	github.com/Benau/tgsconverter v0.0.0-20210809170556-99f4a4f6337f
-	github.com/PaulSonOfLars/gotgbot/v2 v2.0.0-rc.14
+	github.com/PaulSonOfLars/gotgbot/v2 v2.0.0-rc.15
 	github.com/emersion/go-vcard v0.0.0-20220507122617-d4056df0ec4a
 	github.com/forPelevin/gomoji v1.1.8
 	github.com/go-co-op/gocron v1.18.0
