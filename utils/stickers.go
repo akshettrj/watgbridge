@@ -1,10 +1,15 @@
 package utils
 
 import (
-	"bufio"
 	"bytes"
 	"fmt"
+	"os"
 	"os/exec"
+	"path"
+	"strconv"
+	"time"
+
+	"watgbridge/state"
 
 	"github.com/Benau/tgsconverter/libtgsconverter"
 )
@@ -33,40 +38,31 @@ func TGSConvertToWebp(tgsStickerData []byte) ([]byte, error) {
 
 func WebmConvertToGif(webmStickerData []byte) ([]byte, error) {
 
-	cmd := exec.Command("ffmpeg",
-		"-f", "webm",
-		"-i", "-",
-		"-vf", "scale=w=480:-1:force_original_aspect_ratio=increase",
-		"-pix_fmt", "rgb24",
-		"-r", "10",
-		"-f", "gif",
-		"-",
+	var (
+		currTime   = strconv.FormatInt(time.Now().Unix(), 10)
+		currPath   = path.Join("downloads", currTime)
+		inputPath  = path.Join(currPath, "input.webm")
+		outputPath = path.Join(currPath, "output.gif")
 	)
 
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get ffmpeg's stdin pipe: %s", err)
+	os.MkdirAll(currPath, os.ModePerm)
+	defer os.RemoveAll(currPath)
+
+	os.WriteFile(inputPath, bytes.Clone(webmStickerData), os.ModePerm)
+
+	cmd := exec.Command(state.State.Config.FfmpegExecutable,
+		"-i", inputPath,
+		"-fs", "512000",
+		"-vf", "scale=w=480:-1:force_original_aspect_ratio=increase",
+		"-q:v", "55",
+		"-pix_fmt", "rgb24",
+		"-r", "30",
+		outputPath,
+	)
+
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("failed to execute ffmpeg command: %s", err)
 	}
 
-	var stdout bytes.Buffer
-	cmd.Stdout = &stdout
-
-	if err = cmd.Start(); err != nil {
-		return nil, fmt.Errorf("failed to start ffmpeg command: %s", err)
-	}
-
-	writer := bufio.NewWriter(stdin)
-	_, err = writer.Write(webmStickerData)
-	if err != nil {
-		return nil, fmt.Errorf("failed to write to stdin: %s", err)
-	}
-
-	writer.Flush()
-	stdin.Close()
-
-	if err := cmd.Wait(); err != nil {
-		return nil, fmt.Errorf("failed waiting for the command to finish: %s", err)
-	}
-
-	return stdout.Bytes(), nil
+	return os.ReadFile(outputPath)
 }
