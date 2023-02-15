@@ -127,7 +127,9 @@ func main() {
 	telegram.AddTelegramHandlers()
 	modules.LoadModuleHandlers()
 
-	utils.TgRegisterBotCommands(state.State.TelegramBot, state.State.TelegramCommands...)
+	if !cfg.Telegram.SkipSettingCommands {
+		utils.TgRegisterBotCommands(state.State.TelegramBot, state.State.TelegramCommands...)
+	}
 
 	{
 		isRestarted, found := os.LookupEnv("WATG_IS_RESTARTED")

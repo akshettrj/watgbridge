@@ -17,13 +17,14 @@ type Config struct {
 	FfmpegExecutable string `yaml:"ffmpeg_executable"`
 
 	Telegram struct {
-		BotToken          string  `yaml:"bot_token"`
-		APIURL            string  `yaml:"api_url"`
-		SudoUsersID       []int64 `yaml:"sudo_users_id"`
-		OwnerID           int64   `yaml:"owner_id"`
-		TargetChatID      int64   `yaml:"target_chat_id"`
-		SelfHostedAPI     bool    `yaml:"self_hosted_api"`
-		SkipVideoStickers bool    `yaml:"skip_video_stickers"`
+		BotToken            string  `yaml:"bot_token"`
+		APIURL              string  `yaml:"api_url"`
+		SudoUsersID         []int64 `yaml:"sudo_users_id"`
+		OwnerID             int64   `yaml:"owner_id"`
+		TargetChatID        int64   `yaml:"target_chat_id"`
+		SelfHostedAPI       bool    `yaml:"self_hosted_api"`
+		SkipVideoStickers   bool    `yaml:"skip_video_stickers"`
+		SkipSettingCommands bool    `yaml:"skip_setting_commands"`
 	} `yaml:"telegram"`
 
 	WhatsApp struct {
@@ -36,6 +37,14 @@ type Config struct {
 		IgnoreChats               []string `yaml:"ignore_chats"`
 		StatusIgnoredChats        []string `yaml:"status_ignored_chats"`
 		SkipDocuments             bool     `yaml:"skip_documents"`
+		SkipImages                bool     `yaml:"skip_images"`
+		SkipGIFs                  bool     `yaml:"skip_gifs"`
+		SkipVideos                bool     `yaml:"skip_videos"`
+		SkipVoiceNotes            bool     `yaml:"skip_voice_notes"`
+		SkipAudios                bool     `yaml:"skip_audios"`
+		SkipStickers              bool     `yaml:"skip_stickers"`
+		SkipContacts              bool     `yaml:"skip_contacts"`
+		SkipLocations             bool     `yaml:"skip_locations"`
 		SkipChatDetails           bool     `yaml:"skip_chat_details"`
 		SendRevokedMessageUpdates bool     `yaml:"send_revoked_message_updates"`
 	} `yaml:"whatsapp"`

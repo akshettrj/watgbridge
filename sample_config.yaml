@@ -3,6 +3,7 @@ time_format: 02 Jan, 2006 - Mon @ 15:04
 
 git_executable: /usr/bin/git
 go_executable: /usr/bin/go
+ffmpeg_executable: /usr/bin/ffmpeg
 
 telegram:
   bot_token: 186779
@@ -11,7 +12,9 @@ telegram:
   owner_id: 704338780
   sudo_users_id:
     - 704338780
-  target_chat_id: 704338780               # This is the chat where messages will be forwarded
+  target_chat_id: -100423424              # This is the chat where messages will be forwarded
+  skip_video_stickers: false              # Setting this as true will stop trying to convert telegram video stickers to webp and sending them
+  skip_setting_commands: false            # This will not show you list of commands when you start typing / in telegram
 
 whatsapp:
   session_name: watgbridge        # This will appear in your Linked Devices in mobile app
@@ -29,6 +32,15 @@ whatsapp:
     - 91xxxxxxxxxx
     - 1xxxxxxxxxx
   skip_documents: false
+  skip_images: false
+  skip_images: false
+  skip_gifs: false
+  skip_videos: false
+  skip_voice_notes: false
+  skip_audios: false
+  skip_stickers: false
+  skip_contacts: false
+  skip_locations: false
   skip_chat_details: true
   send_revoked_message_updates: false
   # login_database:               # Uncomment only if you want to use something other than sqlite
