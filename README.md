@@ -1,14 +1,18 @@
-# wa-tg-bridge
+# WhatsApp-Telegram-Bridge
 
 Despite the name, its not exactly a "bridge". It forwards messages from WhatsApp to Telegram and you can reply to them
 from Telegram.
 
+<a href="https://t.me/AkshettProjects">
+  <img src="https://img.shields.io/badge/Telegram-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white"></img>
+</a>&nbsp; &nbsp; 
+<a href="https://youtu.be/xc75XLoTmA4">
+  <img src="https://img.shields.io/badge/YouTube-FF0000?style=for-the-badge&logo=youtube&logoColor=white"</img>
+</a>
 
 # DISCLAIMER !!!
 
 This project is in no way affiliated with WhatsApp or Telegram. Using this can also lead to your account getting banned by WhatsApp so use at your own risk.
-
-- Join this <a href="https://t.me/AkshettProjects">Telegram Channel</a> for updates
 
 ## Sample Screenshots
 
@@ -50,6 +54,3 @@ PRs are welcome :)
 - It is recommended to restart the bot after every few hours becuase WhatsApp likes to disconnect a lot. So a Systemd service file has been provided. Edit the `User` and `ExecStart` according to your setup:
     - If you do not have local bot API server, remove `tgbotapi.service` from the `After` key in `Unit` section.
     - This service file will restart the bot every 24 hours
-
-
-- A small guide can also be found in <a href="https://youtu.be/xc75XLoTmA4">this YouTube video</a>
