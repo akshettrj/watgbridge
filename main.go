@@ -51,28 +51,38 @@ func main() {
 		cfg.WhatsApp.LoginDatabase.URL = "file:wawebstore.db?foreign_keys=on"
 	}
 
-	if cfg.GitExecutable == "" || cfg.GoExecutable == "" || cfg.FfmpegExecutable == "" {
+	if cfg.GitExecutable == "" {
 		gitPath, err := exec.LookPath("git")
 		if err != nil && !errors.Is(err, exec.ErrDot) {
 			log.Fatalln("failed to find path to git executable : " + err.Error())
 		}
 
+		cfg.GitExecutable = gitPath
+		log.Printf("Using '%s' as path to git", gitPath)
+
+		cfg.SaveConfig()
+	}
+
+	if cfg.GoExecutable == "" {
 		goPath, err := exec.LookPath("go")
 		if err != nil && !errors.Is(err, exec.ErrDot) {
 			log.Fatalln("failed to find path to go executable : " + err.Error())
 		}
 
+		cfg.GoExecutable = goPath
+		log.Printf("Using '%s' as path to go", goPath)
+
+		cfg.SaveConfig()
+	}
+
+	if cfg.FfmpegExecutable == "" && !cfg.Telegram.SkipVideoStickers {
 		ffmpegPath, err := exec.LookPath("ffmpeg")
 		if err != nil && !errors.Is(err, exec.ErrDot) {
 			log.Fatalln("failed to find path to ffmpeg executable : " + err.Error())
 		}
 
-		cfg.GitExecutable = gitPath
-		cfg.GoExecutable = goPath
 		cfg.FfmpegExecutable = ffmpegPath
-
-		log.Printf("Using '%s', '%s' and '%s' as path to executables for git, go and ffmpeg\n",
-			gitPath, goPath, ffmpegPath)
+		log.Printf("Using '%s' as path to ffmpeg", ffmpegPath)
 
 		cfg.SaveConfig()
 	}

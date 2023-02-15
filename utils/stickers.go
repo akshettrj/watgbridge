@@ -35,13 +35,13 @@ func TGSConvertToWebp(tgsStickerData []byte) ([]byte, error) {
 	return nil, fmt.Errorf("sticker has a lot of data which cannot be handled by WhatsApp")
 }
 
-func WebmConvertToGif(webmStickerData []byte) ([]byte, error) {
+func WebmConvertToWebp(webmStickerData []byte) ([]byte, error) {
 
 	var (
 		currTime   = strconv.FormatInt(time.Now().Unix(), 10)
 		currPath   = path.Join("downloads", currTime)
 		inputPath  = path.Join(currPath, "input.webm")
-		outputPath = path.Join(currPath, "output.gif")
+		outputPath = path.Join(currPath, "output.webp")
 	)
 
 	os.MkdirAll(currPath, os.ModePerm)
@@ -51,11 +51,8 @@ func WebmConvertToGif(webmStickerData []byte) ([]byte, error) {
 
 	cmd := exec.Command(state.State.Config.FfmpegExecutable,
 		"-i", inputPath,
-		"-fs", "512000",
-		"-vf", "scale=w=480:-1:force_original_aspect_ratio=increase",
-		"-q:v", "55",
-		"-pix_fmt", "rgb24",
-		"-r", "30",
+		"-fs", "800000",
+		"-vf", "fps=15,scale=512:512",
 		outputPath,
 	)
 
