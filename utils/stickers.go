@@ -35,7 +35,7 @@ func TGSConvertToWebp(tgsStickerData []byte) ([]byte, error) {
 	return nil, fmt.Errorf("sticker has a lot of data which cannot be handled by WhatsApp")
 }
 
-func WebmConvertToWebp(webmStickerData []byte) ([]byte, error) {
+func WebmConvertToWebp(webmStickerData []byte, scale, pad string) ([]byte, error) {
 
 	var (
 		currTime   = strconv.FormatInt(time.Now().Unix(), 10)
@@ -52,7 +52,7 @@ func WebmConvertToWebp(webmStickerData []byte) ([]byte, error) {
 	cmd := exec.Command(state.State.Config.FfmpegExecutable,
 		"-i", inputPath,
 		"-fs", "800000",
-		"-vf", "fps=15,scale=512:512",
+		"-vf", fmt.Sprintf("fps=15,scale=%s,pad=%s", scale, pad),
 		outputPath,
 	)
 

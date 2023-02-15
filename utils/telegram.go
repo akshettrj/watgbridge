@@ -717,7 +717,21 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 				return TgReplyWithErrorByContext(b, c, "Failed to convert TGS sticker to WebP", err)
 			}
 		} else if msgToForward.Sticker.IsVideo && !cfg.Telegram.SkipVideoStickers {
-			stickerBytes, err = WebmConvertToWebp(stickerBytes)
+
+			var scale, pad string
+
+			if msgToForward.Sticker.Height == 512 && msgToForward.Sticker.Width == 512 {
+				scale = "512:512"
+				pad = "0:0:0:0"
+			} else if msgToForward.Sticker.Height == 512 {
+				scale = "-1:512"
+				pad = fmt.Sprintf("512:512:%v:0", 512-msgToForward.Sticker.Width/2)
+			} else {
+				scale = "512:-1"
+				pad = fmt.Sprintf("512:512:0:%v", 512-msgToForward.Sticker.Height/2)
+			}
+
+			stickerBytes, err = WebmConvertToWebp(stickerBytes, scale, pad)
 			if err != nil {
 				return TgReplyWithErrorByContext(b, c, "Failed to convert WEBM sticker to GIF", err)
 			}
