@@ -1,7 +1,11 @@
 package utils
 
 import (
+	"bytes"
 	"fmt"
+	"image"
+	"image/color"
+	"image/draw"
 	"os"
 	"os/exec"
 	"path"
@@ -11,6 +15,9 @@ import (
 	"watgbridge/state"
 
 	"github.com/Benau/tgsconverter/libtgsconverter"
+	"github.com/kolesa-team/go-webp/decoder"
+	"github.com/kolesa-team/go-webp/encoder"
+	"github.com/kolesa-team/go-webp/webp"
 )
 
 func TGSConvertToWebp(tgsStickerData []byte) ([]byte, error) {
@@ -61,4 +68,40 @@ func WebmConvertToWebp(webmStickerData []byte, scale, pad string) ([]byte, error
 	}
 
 	return os.ReadFile(outputPath)
+}
+
+func WebpImagePad(inputData []byte, wPad, hPad int) ([]byte, error) {
+	webpDecoder, err := decoder.NewDecoder(bytes.NewBuffer(inputData), &decoder.Options{NoFancyUpsampling: true})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create a webp decoder: %s", err)
+	}
+
+	inputImage, err := webpDecoder.Decode()
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode webp image: %s", err)
+	}
+
+	var (
+		wOffset = wPad / 2
+		hOffset = hPad / 2
+	)
+
+	outputWidth := inputImage.Bounds().Dx() + wPad
+	outputHeight := inputImage.Bounds().Dy() + hPad
+
+	outputImage := image.NewRGBA(image.Rect(0, 0, outputWidth, outputHeight))
+	draw.Draw(outputImage, outputImage.Bounds(), &image.Uniform{color.Black}, image.Point{}, draw.Src)
+	draw.Draw(outputImage, image.Rect(wOffset, hOffset, outputWidth-wOffset, outputHeight-hOffset), inputImage, image.Point{}, draw.Src)
+
+	encoderOptions, err := encoder.NewLossyEncoderOptions(encoder.PresetDefault, 100)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize encoder options: %s", err)
+	}
+
+	var outputBuffer bytes.Buffer
+	if err = webp.Encode(&outputBuffer, outputImage, encoderOptions); err != nil {
+		return nil, fmt.Errorf("failed to encode into webp: %s", err)
+	}
+
+	return outputBuffer.Bytes(), nil
 }

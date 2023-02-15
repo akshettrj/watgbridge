@@ -9,6 +9,7 @@ require (
 	github.com/forPelevin/gomoji v1.1.8
 	github.com/go-co-op/gocron v1.18.0
 	github.com/jackc/pgx/v5 v5.3.0
+	github.com/kolesa-team/go-webp v1.0.2
 	github.com/lithammer/fuzzysearch v1.1.5
 	github.com/mattn/go-sqlite3 v1.14.16
 	github.com/mdp/qrterminal/v3 v3.0.0
