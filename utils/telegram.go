@@ -731,7 +731,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 				pad = fmt.Sprintf("512:512:0:%v", (512-msgToForward.Sticker.Height)/2)
 			}
 
-			stickerBytes, err = WebmConvertToWebp(stickerBytes, scale, pad)
+			stickerBytes, err = WebmConvertToWebp(stickerBytes, scale, pad, c.UpdateId)
 			if err != nil {
 				return TgReplyWithErrorByContext(b, c, "Failed to convert WEBM sticker to GIF", err)
 			}

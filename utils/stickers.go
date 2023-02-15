@@ -10,7 +10,6 @@ import (
 	"os/exec"
 	"path"
 	"strconv"
-	"time"
 
 	"watgbridge/state"
 
@@ -42,10 +41,10 @@ func TGSConvertToWebp(tgsStickerData []byte) ([]byte, error) {
 	return nil, fmt.Errorf("sticker has a lot of data which cannot be handled by WhatsApp")
 }
 
-func WebmConvertToWebp(webmStickerData []byte, scale, pad string) ([]byte, error) {
+func WebmConvertToWebp(webmStickerData []byte, scale, pad string, updateId int64) ([]byte, error) {
 
 	var (
-		currTime   = strconv.FormatInt(time.Now().Unix(), 10)
+		currTime   = strconv.FormatInt(updateId, 10)
 		currPath   = path.Join("downloads", currTime)
 		inputPath  = path.Join(currPath, "input.webm")
 		outputPath = path.Join(currPath, "output.webp")
