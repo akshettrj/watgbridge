@@ -33,7 +33,6 @@ whatsapp:
     - 1xxxxxxxxxx
   skip_documents: false
   skip_images: false
-  skip_images: false
   skip_gifs: false
   skip_videos: false
   skip_voice_notes: false
