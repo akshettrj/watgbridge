@@ -23,6 +23,8 @@ import (
 )
 
 func TGSConvertToWebp(tgsStickerData []byte, updateId int64) ([]byte, error) {
+	logger := state.State.Logger
+	defer logger.Sync()
 	opt := libtgsconverter.NewConverterOptions()
 	opt.SetExtension("webp")
 	var (
@@ -30,13 +32,18 @@ func TGSConvertToWebp(tgsStickerData []byte, updateId int64) ([]byte, error) {
 		fps     uint    = 30
 	)
 	for quality > 2 && fps > 5 {
+		logger.Debug("trying to convert tgs to webp",
+			zap.Int64("updateId", updateId),
+			zap.Float32("quality", quality),
+			zap.Uint("fps", fps),
+		)
 		opt.SetFPS(fps)
 		opt.SetWebpQuality(quality)
 		webpStickerData, err := libtgsconverter.ImportFromData(tgsStickerData, opt)
 		if err != nil {
 			return nil, err
 		} else if len(webpStickerData) < 1024*1024 {
-			if outputDataWithExif, err := TryWriteExifData(webpStickerData, updateId); err == nil {
+			if outputDataWithExif, err := WebpWriteExifData(webpStickerData, updateId); err == nil {
 				return outputDataWithExif, nil
 			}
 			return webpStickerData, nil
@@ -81,7 +88,7 @@ func WebmConvertToWebp(webmStickerData []byte, scale, pad string, updateId int64
 		return nil, err
 	}
 
-	if outputDataWithExif, err := TryWriteExifData(outputData, updateId); err == nil {
+	if outputDataWithExif, err := WebpWriteExifData(outputData, updateId); err == nil {
 		return outputDataWithExif, nil
 	}
 
@@ -120,14 +127,50 @@ func WebpImagePad(inputData []byte, wPad, hPad int, updateId int64) ([]byte, err
 		return nil, fmt.Errorf("failed to encode into webp: %s", err)
 	}
 
-	if outputData, err := TryWriteExifData(outputBuffer.Bytes(), updateId); err == nil {
+	if outputData, err := WebpWriteExifData(outputBuffer.Bytes(), updateId); err == nil {
 		return outputData, nil
 	}
 
 	return outputBuffer.Bytes(), nil
 }
 
-func TryWriteExifData(inputData []byte, updateId int64) ([]byte, error) {
+func AnimatedWebpConvertToGif(inputData []byte, updateId string) ([]byte, error) {
+	var (
+		logger = state.State.Logger
+
+		currPath   = path.Join("downloads", updateId)
+		inputPath  = path.Join(currPath, "input.webp")
+		outputPath = path.Join(currPath, "output.gif")
+	)
+	defer logger.Sync()
+
+	if err := os.MkdirAll(currPath, os.ModePerm); err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(currPath)
+
+	if err := os.WriteFile(inputPath, inputData, os.ModePerm); err != nil {
+		return nil, err
+	}
+
+	cmd := exec.Command("convert",
+		inputPath,
+		"-loop", "0",
+		"-dispose", "previous",
+		outputPath,
+	)
+
+	if err := cmd.Run(); err != nil {
+		logger.Debug("failed to run convert command",
+			zap.Error(err),
+		)
+		return nil, err
+	}
+
+	return os.ReadFile(outputPath)
+}
+
+func WebpWriteExifData(inputData []byte, updateId int64) ([]byte, error) {
 	var (
 		cfg           = state.State.Config
 		logger        = state.State.Logger

@@ -803,11 +803,35 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 				return
 			}
 
-			if stickerMsg.GetIsAnimated() {
-				bridgedText += "\n<i>It was an animated sticker, here is the first frame</i>"
+			if stickerMsg.GetIsAnimated() || stickerMsg.GetIsAvatar() {
+				gifBytes, err := utils.AnimatedWebpConvertToGif(stickerBytes, v.Info.ID)
+				if err != nil {
+					bridgedText += "\n<i>It was an animated sticker, here is the first frame</i>"
+					goto WEBP_TO_GIF_FAILED
+				}
+				bridgedText += "<i>It was an animated sticker, here it is converted to GIF</i>"
+
+				fileToSend := gotgbot.NamedFile{
+					FileName: "animation.gif",
+					File:     bytes.NewReader(gifBytes),
+				}
+
+				sentMsg, _ := tgBot.SendAnimation(cfg.Telegram.TargetChatID, fileToSend, &gotgbot.SendAnimationOpts{
+					Caption:          bridgedText,
+					ReplyToMessageId: replyToMsgId,
+					MessageThreadId:  threadId,
+				})
+				if sentMsg.MessageId != 0 {
+					database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
+						cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
+				}
+				return
+
 			} else {
 				bridgedText += "\n<i>It was the following sticker</i>"
 			}
+
+		WEBP_TO_GIF_FAILED:
 			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
 				ReplyToMessageId: replyToMsgId,
 				MessageThreadId:  threadId,
