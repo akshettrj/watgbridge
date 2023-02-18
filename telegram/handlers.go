@@ -162,8 +162,11 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 		if err != nil {
 			return utils.TgReplyWithErrorByContext(b, c, "Failed to find the chat pairing between this topic and a WhatsApp chat", err)
 		} else if waChatID == "" {
-			_, err = utils.TgReplyTextByContext(b, c, "No mapping found between current topic and a WhatsApp chat", nil)
-			return err
+			if c.EffectiveMessage.MessageThreadId != 0 {
+				_, err = utils.TgReplyTextByContext(b, c, "No mapping found between current topic and a WhatsApp chat", nil)
+				return err
+			}
+			return nil
 		}
 	}
 
@@ -571,10 +574,11 @@ func SyncTopicNamesHandler(b *gotgbot.Bot, c *ext.Context) error {
 			Name:              newName,
 			IconCustomEmojiId: nil,
 		})
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(5 * time.Second)
 	}
 
-	return nil
+	_, err = c.EffectiveMessage.Reply(b, "Successfully synced topic names", nil)
+	return err
 }
 
 func HelpCommandHandler(b *gotgbot.Bot, c *ext.Context) error {

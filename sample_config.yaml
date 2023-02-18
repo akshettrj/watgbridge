@@ -4,6 +4,7 @@ time_format: 02 Jan, 2006 - Mon @ 15:04
 git_executable: /usr/bin/git
 go_executable: /usr/bin/go
 ffmpeg_executable: /usr/bin/ffmpeg
+debug_mode: false
 
 telegram:
   bot_token: 186779
@@ -42,9 +43,13 @@ whatsapp:
   skip_locations: false
   skip_chat_details: true
   send_revoked_message_updates: false
+  whatsmeow_debug_mode: false
   # login_database:               # Uncomment only if you want to use something other than sqlite
   #   type: sqlite3
   #   url: file:wawebstore.db?foreign_keys=on
+  sticker_metadata:               # This will work only if you have webpmux installed on your system
+    pack_name: WaTgBridge
+    author_name: WaTgBridge
 
 
 # Uncomment any on of these sections

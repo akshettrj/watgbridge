@@ -26,3 +26,4 @@ watgbridge-build/
 /modules/.*/
 downloads/
 imports.go
+*.log

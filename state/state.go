@@ -6,6 +6,7 @@ import (
 	"github.com/PaulSonOfLars/gotgbot/v2"
 	"github.com/PaulSonOfLars/gotgbot/v2/ext"
 	"go.mau.fi/whatsmeow"
+	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
 
@@ -14,6 +15,7 @@ const WATGBRIDGE_VERSION = "1.0.18"
 type state struct {
 	Config   *Config
 	Database *gorm.DB
+	Logger   *zap.Logger
 
 	TelegramBot        *gotgbot.Bot
 	TelegramDispatcher *ext.Dispatcher
@@ -31,5 +33,5 @@ type state struct {
 var State state
 
 func init() {
-	State.Config = &Config{}
+	State.Config = &Config{Path: "config.yaml"}
 }

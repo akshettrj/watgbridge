@@ -2,7 +2,7 @@ package main
 
 import (
 	"errors"
-	"log"
+	"fmt"
 	"os"
 	"os/exec"
 	"strconv"
@@ -17,20 +17,46 @@ import (
 
 	"github.com/PaulSonOfLars/gotgbot/v2"
 	"github.com/go-co-op/gocron"
+	"go.uber.org/zap"
 )
 
 func main() {
 	// Load configuration file
 	cfg := state.State.Config
+	cfg.SetDefaults()
+
 	if len(os.Args) > 1 {
 		cfg.Path = os.Args[1]
-	} else {
-		cfg.Path = "config.yaml"
 	}
+
 	err := cfg.LoadConfig()
 	if err != nil {
-		log.Fatalln(err)
+		panic(fmt.Errorf("failed to load config file: %s", err))
 	}
+
+	if cfg.DebugMode {
+		developmentConfig := zap.NewDevelopmentConfig()
+		developmentConfig.OutputPaths = append(developmentConfig.OutputPaths, "debug.log")
+		state.State.Logger, err = developmentConfig.Build()
+		if err != nil {
+			panic(fmt.Errorf("failed to initialize development logger: %s", err))
+		}
+		state.State.Logger = state.State.Logger.Named("WaTgBridge_Dev")
+	} else {
+		productionConfig := zap.NewProductionConfig()
+		state.State.Logger, err = productionConfig.Build()
+		if err != nil {
+			panic(fmt.Errorf("failed to initialize production logger: %s", err))
+		}
+		state.State.Logger = state.State.Logger.Named("WaTgBridge")
+	}
+	logger := state.State.Logger
+
+	logger.Debug("loaded config file and started logger",
+		zap.String("config_path", cfg.Path),
+		zap.Bool("development_mode", cfg.DebugMode),
+	)
+	_ = logger.Sync()
 
 	// Create local location for time
 	if cfg.TimeZone == "" {
@@ -38,7 +64,10 @@ func main() {
 	}
 	locLoc, err := time.LoadLocation(cfg.TimeZone)
 	if err != nil {
-		log.Fatalln("could not set timezone to '" + cfg.TimeZone + "': " + err.Error())
+		logger.Fatal("failed to set time zone",
+			zap.String("time_zone", cfg.TimeZone),
+			zap.Error(err),
+		)
 	}
 	state.State.LocalLocation = locLoc
 
@@ -49,68 +78,101 @@ func main() {
 	if cfg.WhatsApp.LoginDatabase.Type == "" || cfg.WhatsApp.LoginDatabase.URL == "" {
 		cfg.WhatsApp.LoginDatabase.Type = "sqlite3"
 		cfg.WhatsApp.LoginDatabase.URL = "file:wawebstore.db?foreign_keys=on"
+		logger.Debug("using sqlite3 as WhatsApp login database")
+		_ = logger.Sync()
 	}
 
 	if cfg.GitExecutable == "" {
 		gitPath, err := exec.LookPath("git")
 		if err != nil && !errors.Is(err, exec.ErrDot) {
-			log.Fatalln("failed to find path to git executable : " + err.Error())
+			logger.Fatal("failed to set git executable path",
+				zap.Error(err),
+			)
 		}
 
 		cfg.GitExecutable = gitPath
-		log.Printf("Using '%s' as path to git", gitPath)
+		logger.Info("setting path to git executable",
+			zap.String("path", gitPath),
+		)
+		_ = logger.Sync()
 
-		cfg.SaveConfig()
+		if err = cfg.SaveConfig(); err != nil {
+			logger.Fatal("failed to save config file",
+				zap.Error(err),
+			)
+		}
 	}
 
 	if cfg.GoExecutable == "" {
 		goPath, err := exec.LookPath("go")
 		if err != nil && !errors.Is(err, exec.ErrDot) {
-			log.Fatalln("failed to find path to go executable : " + err.Error())
+			logger.Fatal("failed to set go executable path",
+				zap.Error(err),
+			)
 		}
 
 		cfg.GoExecutable = goPath
-		log.Printf("Using '%s' as path to go", goPath)
+		logger.Info("setting path to go executable",
+			zap.String("path", goPath),
+		)
+		_ = logger.Sync()
 
-		cfg.SaveConfig()
+		if err = cfg.SaveConfig(); err != nil {
+			logger.Fatal("failed to save config file",
+				zap.Error(err),
+			)
+		}
 	}
 
 	if cfg.FfmpegExecutable == "" && !cfg.Telegram.SkipVideoStickers {
 		ffmpegPath, err := exec.LookPath("ffmpeg")
 		if err != nil && !errors.Is(err, exec.ErrDot) {
-			log.Fatalln("failed to find path to ffmpeg executable : " + err.Error())
+			logger.Fatal("failed to set ffmpeg executable path",
+				zap.Error(err),
+			)
 		}
 
 		cfg.FfmpegExecutable = ffmpegPath
-		log.Printf("Using '%s' as path to ffmpeg", ffmpegPath)
+		logger.Info("setting path to ffmpeg executable",
+			zap.String("path", ffmpegPath),
+		)
+		_ = logger.Sync()
 
-		cfg.SaveConfig()
+		if err = cfg.SaveConfig(); err != nil {
+			logger.Fatal("failed to save config file",
+				zap.Error(err),
+			)
+		}
 	}
 
 	// Setup database
 	db, err := database.Connect()
 	if err != nil {
-		log.Fatalln("could not connect to database : " + err.Error())
+		logger.Fatal("could not connect to database",
+			zap.Error(err),
+		)
 	}
 	state.State.Database = db
 	err = database.AutoMigrate()
 	if err != nil {
-		log.Fatalln("could not migrate database tables : " + err.Error())
+		logger.Fatal("could not migrate database tabels",
+			zap.Error(err),
+		)
 	}
 
 	err = telegram.NewTelegramClient()
 	if err != nil {
-		panic(err)
+		logger.Fatal("failed to initialize telegram client",
+			zap.Error(err),
+		)
 	}
-	log.Printf("[telegram] logged in as : %s [ @%s ]\n",
-		state.State.TelegramBot.FirstName, state.State.TelegramBot.Username)
+	_ = logger.Sync()
 
 	err = whatsapp.NewWhatsAppClient()
 	if err != nil {
 		panic(err)
 	}
-	log.Printf("[whatsapp] logged in as : %s [ @%s ]\n",
-		state.State.WhatsAppClient.Store.PushName, state.State.WhatsAppClient.Store.ID.User)
+	_ = logger.Sync()
 
 	state.State.StartTime = time.Now().UTC()
 
@@ -128,8 +190,21 @@ func main() {
 	modules.LoadModuleHandlers()
 
 	if !cfg.Telegram.SkipSettingCommands {
-		utils.TgRegisterBotCommands(state.State.TelegramBot, state.State.TelegramCommands...)
+		err = utils.TgRegisterBotCommands(state.State.TelegramBot, state.State.TelegramCommands...)
+		if err != nil {
+			logger.Error("failed to set my commands",
+				zap.Error(err),
+			)
+		}
+	} else {
+		err = utils.TgRegisterBotCommands(state.State.TelegramBot)
+		if err != nil {
+			logger.Error("failed to set my commands to empty",
+				zap.Error(err),
+			)
+		}
 	}
+	_ = logger.Sync()
 
 	{
 		isRestarted, found := os.LookupEnv("WATG_IS_RESTARTED")

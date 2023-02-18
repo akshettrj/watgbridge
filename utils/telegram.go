@@ -712,7 +712,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		}
 
 		if msgToForward.Sticker.IsAnimated {
-			stickerBytes, err = TGSConvertToWebp(stickerBytes)
+			stickerBytes, err = TGSConvertToWebp(stickerBytes, c.UpdateId)
 			if err != nil {
 				return TgReplyWithErrorByContext(b, c, "Failed to convert TGS sticker to WebP", err)
 			}
@@ -746,7 +746,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 				wPad = int(512 - msgToForward.Sticker.Width)
 			}
 
-			stickerBytes, err = WebpImagePad(stickerBytes, wPad, hPad)
+			stickerBytes, err = WebpImagePad(stickerBytes, wPad, hPad, c.UpdateId)
 			if err != nil {
 				return TgReplyWithErrorByContext(b, c, "Failed to pad WEBP sticker to 512x512", err)
 			}
@@ -863,7 +863,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		}
 
 		{
-			textSplit := strings.Split(strings.ToLower(msgToForward.Text), " \n\t")
+			textSplit := strings.Fields(strings.ToLower(msgToForward.Text))
 			if slices.Contains(textSplit, "@all") || slices.Contains(textSplit, "@everyone") {
 				WaTagAll(waChatJID, msgToSend, sentMsg.ID, waClient.Store.ID.String(), true)
 			}

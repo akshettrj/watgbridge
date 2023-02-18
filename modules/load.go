@@ -1,7 +1,6 @@
 package modules
 
 import (
-	"log"
 	"sync"
 
 	"watgbridge/state"
@@ -9,6 +8,7 @@ import (
 
 	"github.com/PaulSonOfLars/gotgbot/v2/ext"
 	"go.mau.fi/whatsmeow"
+	"go.uber.org/zap"
 )
 
 var (
@@ -29,6 +29,9 @@ func GetNewTelegramHandlerGroup() int {
 }
 
 func LoadModuleHandlers() {
+	logger := state.State.Logger
+	defer logger.Sync()
+
 	for handlerGroup, handlers := range TelegramHandlers {
 		for _, handler := range handlers {
 			state.State.TelegramDispatcher.AddHandlerToGroup(handler, handlerGroup)
@@ -40,12 +43,12 @@ func LoadModuleHandlers() {
 	}
 
 	if len(state.State.Modules) > 0 {
-		log.Println("Modules loaded:")
-		for _, plugin := range state.State.Modules {
-			log.Println("- " + plugin)
-		}
+		logger.Info("loaded some modules",
+			zap.Int("count", len(state.State.Modules)),
+			zap.Any("modules", state.State.Modules),
+		)
 	} else {
-		log.Println("No modules loaded")
+		logger.Info("no modules loaded")
 	}
 }
 

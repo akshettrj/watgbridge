@@ -3,7 +3,6 @@ package middlewares
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 
 	"github.com/PaulSonOfLars/gotgbot/v2"
@@ -22,11 +21,7 @@ func (b *sendWithoutReplyBotClient) RequestWithContext(ctx context.Context,
 		params["allow_sending_without_reply"] = "true"
 	}
 
-	val, err := b.BotClient.RequestWithContext(ctx, method, params, data, opts)
-	if err != nil {
-		fmt.Println("warning, middleware 'send_without_reply' got an error :", err)
-	}
-	return val, err
+	return b.BotClient.RequestWithContext(ctx, method, params, data, opts)
 }
 
 func SendWithoutReply(b gotgbot.BotClient) gotgbot.BotClient {

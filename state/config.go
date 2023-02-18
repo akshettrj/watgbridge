@@ -15,6 +15,7 @@ type Config struct {
 	GitExecutable    string `yaml:"git_executable"`
 	GoExecutable     string `yaml:"go_executable"`
 	FfmpegExecutable string `yaml:"ffmpeg_executable"`
+	DebugMode        bool   `yaml:"debug_mode"`
 
 	Telegram struct {
 		BotToken            string  `yaml:"bot_token"`
@@ -32,6 +33,10 @@ type Config struct {
 			Type string `yaml:"type"`
 			URL  string `yaml:"url"`
 		} `yaml:"login_database"`
+		StickerMetadata struct {
+			PackName   string `yaml:"pack_name"`
+			AuthorName string `yaml:"author_name"`
+		} `yaml:"sticker_metadata"`
 		SessionName               string   `yaml:"session_name"`
 		TagAllAllowedGroups       []string `yaml:"tag_all_allowed_groups"`
 		IgnoreChats               []string `yaml:"ignore_chats"`
@@ -47,6 +52,7 @@ type Config struct {
 		SkipLocations             bool     `yaml:"skip_locations"`
 		SkipChatDetails           bool     `yaml:"skip_chat_details"`
 		SendRevokedMessageUpdates bool     `yaml:"send_revoked_message_updates"`
+		WhatsmeowDebugMode        bool     `yaml:"whatsmeow_debug_mode"`
 	} `yaml:"whatsapp"`
 
 	Database map[string]string `yaml:"database"`
@@ -98,4 +104,13 @@ func (cfg *Config) SaveConfig() error {
 	}
 
 	return nil
+}
+
+func (cfg *Config) SetDefaults() {
+	cfg.TimeZone = "UTC"
+	cfg.WhatsApp.SessionName = "watgbridge"
+	cfg.WhatsApp.LoginDatabase.Type = "sqlite3"
+	cfg.WhatsApp.LoginDatabase.URL = "file:wawebstore.db?foreign_keys=on"
+	cfg.WhatsApp.StickerMetadata.PackName = "WaTgBridge"
+	cfg.WhatsApp.StickerMetadata.AuthorName = "WaTgBridge"
 }

@@ -2,7 +2,6 @@ package telegram
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 	"time"
 
@@ -11,10 +10,15 @@ import (
 
 	"github.com/PaulSonOfLars/gotgbot/v2"
 	"github.com/PaulSonOfLars/gotgbot/v2/ext"
+	"go.uber.org/zap"
 )
 
 func NewTelegramClient() error {
-	cfg := state.State.Config
+	var (
+		cfg    = state.State.Config
+		logger = state.State.Logger
+	)
+	defer logger.Sync()
 
 	bot, err := gotgbot.NewBot(cfg.Telegram.BotToken, &gotgbot.BotOpts{
 		Client: http.Client{},
@@ -31,12 +35,20 @@ func NewTelegramClient() error {
 	bot.UseMiddleware(middlewares.SendWithoutReply)
 
 	dispatcher := ext.NewDispatcher(&ext.DispatcherOpts{
-		ErrorLog:    log.Default(),
+		UnhandledErrFunc: func(err error) {
+			logger.Error("telegram dispatcher received error",
+				zap.Error(err),
+			)
+		},
 		MaxRoutines: ext.DefaultMaxRoutines,
 	})
 
 	updater := ext.NewUpdater(&ext.UpdaterOpts{
-		ErrorLog:   log.Default(),
+		UnhandledErrFunc: func(err error) {
+			logger.Error("telegram updater received error",
+				zap.Error(err),
+			)
+		},
 		Dispatcher: dispatcher,
 	})
 
@@ -53,8 +65,15 @@ func NewTelegramClient() error {
 		},
 	})
 	if err != nil {
-		return fmt.Errorf("[telegram] failed to start polling : %s", err)
+		return fmt.Errorf("telegram failed to start polling : %s", err)
 	}
+
+	logger.Info("successfully logged into telegram",
+		zap.Int64("id", bot.Id),
+		zap.String("name", bot.FirstName),
+		zap.String("username", "@"+bot.Username),
+		zap.String("api_url", bot.GetAPIURL()),
+	)
 
 	return nil
 }

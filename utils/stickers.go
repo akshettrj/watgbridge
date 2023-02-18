@@ -2,9 +2,11 @@ package utils
 
 import (
 	"bytes"
+	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"image"
-	"image/color"
+	// "image/color"
 	"image/draw"
 	"os"
 	"os/exec"
@@ -17,9 +19,10 @@ import (
 	"github.com/kolesa-team/go-webp/decoder"
 	"github.com/kolesa-team/go-webp/encoder"
 	"github.com/kolesa-team/go-webp/webp"
+	"go.uber.org/zap"
 )
 
-func TGSConvertToWebp(tgsStickerData []byte) ([]byte, error) {
+func TGSConvertToWebp(tgsStickerData []byte, updateId int64) ([]byte, error) {
 	opt := libtgsconverter.NewConverterOptions()
 	opt.SetExtension("webp")
 	var (
@@ -33,6 +36,9 @@ func TGSConvertToWebp(tgsStickerData []byte) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		} else if len(webpStickerData) < 1024*1024 {
+			if outputDataWithExif, err := TryWriteExifData(webpStickerData, updateId); err == nil {
+				return outputDataWithExif, nil
+			}
 			return webpStickerData, nil
 		}
 		quality /= 2
@@ -50,15 +56,19 @@ func WebmConvertToWebp(webmStickerData []byte, scale, pad string, updateId int64
 		outputPath = path.Join(currPath, "output.webp")
 	)
 
-	os.MkdirAll(currPath, os.ModePerm)
+	if err := os.MkdirAll(currPath, os.ModePerm); err != nil {
+		return nil, err
+	}
 	defer os.RemoveAll(currPath)
 
-	os.WriteFile(inputPath, webmStickerData, os.ModePerm)
+	if err := os.WriteFile(inputPath, webmStickerData, os.ModePerm); err != nil {
+		return nil, err
+	}
 
 	cmd := exec.Command(state.State.Config.FfmpegExecutable,
 		"-i", inputPath,
 		"-fs", "800000",
-		"-vf", fmt.Sprintf("fps=15,scale=%s,pad=%s", scale, pad),
+		"-vf", fmt.Sprintf("fps=15,scale=%s,format=rgba,pad=%s:color=#00000000", scale, pad),
 		outputPath,
 	)
 
@@ -66,10 +76,19 @@ func WebmConvertToWebp(webmStickerData []byte, scale, pad string, updateId int64
 		return nil, fmt.Errorf("failed to execute ffmpeg command: %s", err)
 	}
 
-	return os.ReadFile(outputPath)
+	outputData, err := os.ReadFile(outputPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if outputDataWithExif, err := TryWriteExifData(outputData, updateId); err == nil {
+		return outputDataWithExif, nil
+	}
+
+	return outputData, nil
 }
 
-func WebpImagePad(inputData []byte, wPad, hPad int) ([]byte, error) {
+func WebpImagePad(inputData []byte, wPad, hPad int, updateId int64) ([]byte, error) {
 	webpDecoder, err := decoder.NewDecoder(bytes.NewBuffer(inputData), &decoder.Options{NoFancyUpsampling: true})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create a webp decoder: %s", err)
@@ -89,7 +108,6 @@ func WebpImagePad(inputData []byte, wPad, hPad int) ([]byte, error) {
 	outputHeight := inputImage.Bounds().Dy() + hPad
 
 	outputImage := image.NewRGBA(image.Rect(0, 0, outputWidth, outputHeight))
-	draw.Draw(outputImage, outputImage.Bounds(), &image.Uniform{color.Black}, image.Point{}, draw.Src)
 	draw.Draw(outputImage, image.Rect(wOffset, hOffset, outputWidth-wOffset, outputHeight-hOffset), inputImage, image.Point{}, draw.Src)
 
 	encoderOptions, err := encoder.NewLossyEncoderOptions(encoder.PresetDefault, 100)
@@ -102,5 +120,82 @@ func WebpImagePad(inputData []byte, wPad, hPad int) ([]byte, error) {
 		return nil, fmt.Errorf("failed to encode into webp: %s", err)
 	}
 
+	if outputData, err := TryWriteExifData(outputBuffer.Bytes(), updateId); err == nil {
+		return outputData, nil
+	}
+
 	return outputBuffer.Bytes(), nil
+}
+
+func TryWriteExifData(inputData []byte, updateId int64) ([]byte, error) {
+	var (
+		cfg           = state.State.Config
+		logger        = state.State.Logger
+		startingBytes = []byte{0x49, 0x49, 0x2A, 0x00, 0x08, 0x00, 0x00, 0x00, 0x01, 0x00, 0x41, 0x57, 0x07, 0x00}
+		endingBytes   = []byte{0x16, 0x00, 0x00, 0x00}
+		b             bytes.Buffer
+
+		currUpdateId = strconv.FormatInt(updateId, 10)
+		currPath     = path.Join("downloads", currUpdateId)
+		inputPath    = path.Join(currPath, "input_exif.webm")
+		outputPath   = path.Join(currPath, "output_exif.webp")
+		exifDataPath = path.Join(currPath, "raw.exif")
+	)
+	defer logger.Sync()
+
+	if _, err := b.Write(startingBytes); err != nil {
+		return nil, err
+	}
+
+	jsonData := map[string]interface{}{
+		"sticker-pack-id":        "watgbridge.akshettrj.com.github.",
+		"sticker-pack-name":      cfg.WhatsApp.StickerMetadata.PackName,
+		"sticker-pack-publisher": cfg.WhatsApp.StickerMetadata.AuthorName,
+		"emojis":                 []string{"😀"},
+	}
+	jsonBytes, err := json.Marshal(jsonData)
+	if err != nil {
+		return nil, err
+	}
+
+	jsonLength := (uint32)(len(jsonBytes))
+	lenBuffer := make([]byte, 4)
+	binary.LittleEndian.PutUint32(lenBuffer, jsonLength)
+
+	if _, err := b.Write(lenBuffer); err != nil {
+		return nil, err
+	}
+	if _, err := b.Write(endingBytes); err != nil {
+		return nil, err
+	}
+	if _, err := b.Write(jsonBytes); err != nil {
+		return nil, err
+	}
+
+	if err := os.MkdirAll(currPath, os.ModePerm); err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(currPath)
+
+	if err := os.WriteFile(inputPath, inputData, os.ModePerm); err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(exifDataPath, b.Bytes(), os.ModePerm); err != nil {
+		return nil, err
+	}
+
+	cmd := exec.Command("webpmux",
+		"-set", "exif",
+		exifDataPath, inputPath,
+		"-o", outputPath,
+	)
+
+	if err := cmd.Run(); err != nil {
+		logger.Debug("failed to run webpmux command",
+			zap.Error(err),
+		)
+		return nil, err
+	}
+
+	return os.ReadFile(outputPath)
 }
