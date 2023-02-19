@@ -219,9 +219,6 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 			html.EscapeString(v.Info.Timestamp.In(state.State.LocalLocation).Format(cfg.TimeFormat)))
 	}
 
-	// Telegram will automatically trim the string
-	bridgedText += "\n"
-
 	var (
 		replyToMsgId  int64
 		threadId      int64
@@ -299,6 +296,14 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 	}
 
 	if contextInfo != nil {
+
+		if contextInfo.GetIsForwarded() {
+			bridgedText += fmt.Sprintf("⏩: Forwarded %v times\n", contextInfo.GetForwardingScore())
+		}
+
+		// Telegram will automatically trim the string
+		bridgedText += "\n"
+
 		logger.Debug("checking if your account is mentioned in the message",
 			zap.String("event_id", v.Info.ID),
 		)
@@ -334,6 +339,9 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 			threadId = tgThreadId
 			threadIdFound = true
 		}
+	} else {
+		// Telegram will automatically trim the string
+		bridgedText += "\n"
 	}
 	if !threadIdFound {
 		var err error
