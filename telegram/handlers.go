@@ -173,6 +173,9 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 	// Status Update
 	if strings.HasSuffix(waChatID, "@broadcast") {
 		waChatID = participantID
+	} else if participantID != "" {
+		participant, _ := utils.WaParseJID(participantID)
+		participantID = participant.ToNonAD().String()
 	}
 
 	waChatJID, _ := utils.WaParseJID(waChatID)

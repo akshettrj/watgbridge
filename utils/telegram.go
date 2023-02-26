@@ -268,7 +268,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			}(b, msg)
 		}
 
-		err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.User, waChatJID.String(),
+		err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.String(), waChatJID.String(),
 			cfg.Telegram.TargetChatID, msgToForward.MessageId, msgToForward.MessageThreadId)
 		if err != nil {
 			return TgReplyWithErrorByContext(b, c, "Failed to add to database", err)
@@ -340,7 +340,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			}(b, msg)
 		}
 
-		err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.User, waChatJID.String(),
+		err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.String(), waChatJID.String(),
 			cfg.Telegram.TargetChatID, msgToForward.MessageId, msgToForward.MessageThreadId)
 		if err != nil {
 			return TgReplyWithErrorByContext(b, c, "Failed to add to database", err)
@@ -409,7 +409,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			}(b, msg)
 		}
 
-		err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.User, waChatJID.String(),
+		err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.String(), waChatJID.String(),
 			cfg.Telegram.TargetChatID, msgToForward.MessageId, msgToForward.MessageThreadId)
 		if err != nil {
 			return TgReplyWithErrorByContext(b, c, "Failed to add to database", err)
@@ -481,7 +481,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			}(b, msg)
 		}
 
-		err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.User, waChatJID.String(),
+		err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.String(), waChatJID.String(),
 			cfg.Telegram.TargetChatID, msgToForward.MessageId, msgToForward.MessageThreadId)
 		if err != nil {
 			return TgReplyWithErrorByContext(b, c, "Failed to add to database", err)
@@ -548,7 +548,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			}(b, msg)
 		}
 
-		err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.User, waChatJID.String(),
+		err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.String(), waChatJID.String(),
 			cfg.Telegram.TargetChatID, msgToForward.MessageId, msgToForward.MessageThreadId)
 		if err != nil {
 			return TgReplyWithErrorByContext(b, c, "Failed to add to database", err)
@@ -615,7 +615,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			}(b, msg)
 		}
 
-		err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.User, waChatJID.String(),
+		err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.String(), waChatJID.String(),
 			cfg.Telegram.TargetChatID, msgToForward.MessageId, msgToForward.MessageThreadId)
 		if err != nil {
 			return TgReplyWithErrorByContext(b, c, "Failed to add to database", err)
@@ -685,7 +685,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			}(b, msg)
 		}
 
-		err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.User, waChatJID.String(),
+		err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.String(), waChatJID.String(),
 			cfg.Telegram.TargetChatID, msgToForward.MessageId, msgToForward.MessageThreadId)
 		if err != nil {
 			return TgReplyWithErrorByContext(b, c, "Failed to add to database", err)
@@ -794,7 +794,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			}(b, msg)
 		}
 
-		err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.User, waChatJID.String(),
+		err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.String(), waChatJID.String(),
 			cfg.Telegram.TargetChatID, msgToForward.MessageId, msgToForward.MessageThreadId)
 		if err != nil {
 			return TgReplyWithErrorByContext(b, c, "Failed to add to database", err)
@@ -856,7 +856,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			}(b, msg)
 		}
 
-		err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.User, waChatJID.String(),
+		err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.String(), waChatJID.String(),
 			cfg.Telegram.TargetChatID, msgToForward.MessageId, msgToForward.MessageThreadId)
 		if err != nil {
 			return TgReplyWithErrorByContext(b, c, "Failed to add to database", err)
