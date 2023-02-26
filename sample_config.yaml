@@ -8,7 +8,7 @@ debug_mode: false
 
 telegram:
   bot_token: 186779
-  # api_url: http://localhost:8082        # Uncomment if you have a local bot API server running (for bypassing file size limits)
+  #api_url: http://localhost:8082        # Uncomment if you have a local bot API server running (for bypassing file size limits)
   self_hosted_api: false
   owner_id: 704338780
   sudo_users_id:
@@ -44,34 +44,34 @@ whatsapp:
   skip_chat_details: true
   send_revoked_message_updates: false
   whatsmeow_debug_mode: false
-  # login_database:               # Uncomment only if you want to use something other than sqlite
-  #   type: sqlite3
-  #   url: file:wawebstore.db?foreign_keys=on
+  #login_database:               # Uncomment only if you want to use something other than sqlite
+  #  type: sqlite3
+  #  url: file:wawebstore.db?foreign_keys=on
   sticker_metadata:               # This will work only if you have webpmux installed on your system
     pack_name: WaTgBridge
     author_name: WaTgBridge
 
 
-# Uncomment any on of these sections
-# Using the sqlite database will be easiest as it does not require any hosted database server and stores data in a single file on your device
+#Uncomment any on of these sections
+#Using the sqlite database will be easiest as it does not require any hosted database server and stores data in a single file on your device
 
-# database:
-#   type: postgres
-#   host: localhost
-#   user: admin
-#   password: password
-#   dbname: gobot
-#   port: 5432
-#   time_zone: Asia/Kolkata
+#database:
+#  type: postgres
+#  host: localhost
+#  user: admin
+#  password: password
+#  dbname: gobot
+#  port: 5432
+#  time_zone: Asia/Kolkata
 
-# database:
-#   type: sqlite
-#   path: ./gobot.sqlite.db
+#database:
+#  type: sqlite
+#  path: ./gobot.sqlite.db
 
-# database:
-#   type: mysql
-#   host: localhost
-#   port: 3306
-#   user: admin
-#   password: password
-#   dbname: gobot
+#database:
+#  type: mysql
+#  host: localhost
+#  port: 3306
+#  user: admin
+#  password: password
+#  dbname: gobot
