@@ -7,6 +7,7 @@ import (
 
 	"watgbridge/state"
 
+	"github.com/PaulSonOfLars/gotgbot/v2"
 	_ "github.com/jackc/pgx/v5"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/mdp/qrterminal/v3"
@@ -97,6 +98,13 @@ func NewWhatsAppClient() error {
 		}
 		for evt := range qrChan {
 			if evt.Event == "code" {
+				if state.State.TelegramBot != nil {
+					state.State.TelegramBot.SendMessage(
+						state.State.Config.Telegram.OwnerID,
+						"Please check your terminal and scan the QR code to login to WhatsApp.",
+						&gotgbot.SendMessageOpts{},
+					)
+				}
 				qrterminal.Generate(evt.Code, qrterminal.L, os.Stdout)
 			} else {
 				logger.Info("received WhatsApp login event",
