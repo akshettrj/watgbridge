@@ -4,24 +4,24 @@ go 1.19
 
 require (
 	github.com/Benau/tgsconverter v0.0.0-20210809170556-99f4a4f6337f
-	github.com/PaulSonOfLars/gotgbot/v2 v2.0.0-rc.15
-	github.com/emersion/go-vcard v0.0.0-20220507122617-d4056df0ec4a
+	github.com/PaulSonOfLars/gotgbot/v2 v2.0.0-rc.16
+	github.com/emersion/go-vcard v0.0.0-20230331202150-f3d26859ccd3
 	github.com/forPelevin/gomoji v1.1.8
-	github.com/go-co-op/gocron v1.18.0
-	github.com/jackc/pgx/v5 v5.3.0
-	github.com/kolesa-team/go-webp v1.0.2
+	github.com/go-co-op/gocron v1.22.4
+	github.com/jackc/pgx/v5 v5.3.1
+	github.com/kolesa-team/go-webp v1.0.4
 	github.com/lithammer/fuzzysearch v1.1.5
 	github.com/mattn/go-sqlite3 v1.14.16
 	github.com/mdp/qrterminal/v3 v3.0.0
-	go.mau.fi/whatsmeow v0.0.0-20230213175431-ec411f5b9afe
+	go.mau.fi/whatsmeow v0.0.0-20230421200254-eb71a6b59083
 	go.uber.org/zap v1.24.0
-	golang.org/x/exp v0.0.0-20230213192124-5e25df0256eb
-	google.golang.org/protobuf v1.28.1
+	golang.org/x/exp v0.0.0-20230420155640-133eef4313cb
+	google.golang.org/protobuf v1.30.0
 	gopkg.in/yaml.v3 v3.0.1
-	gorm.io/driver/mysql v1.4.6
-	gorm.io/driver/postgres v1.4.7
-	gorm.io/driver/sqlite v1.4.4
-	gorm.io/gorm v1.24.5
+	gorm.io/driver/mysql v1.5.0
+	gorm.io/driver/postgres v1.5.0
+	gorm.io/driver/sqlite v1.5.0
+	gorm.io/gorm v1.25.0
 )
 
 require (
@@ -35,14 +35,14 @@ require (
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/kettek/apng v0.0.0-20220823221153-ff692776a607 // indirect
-	github.com/rivo/uniseg v0.4.3 // indirect
+	github.com/rivo/uniseg v0.4.4 // indirect
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/sizeofint/webpanimation v0.0.0-20210809145948-1d2b32119882 // indirect
 	go.mau.fi/libsignal v0.1.0 // indirect
 	go.uber.org/atomic v1.10.0 // indirect
-	go.uber.org/multierr v1.6.0 // indirect
-	golang.org/x/crypto v0.6.0 // indirect
+	go.uber.org/multierr v1.11.0 // indirect
+	golang.org/x/crypto v0.8.0 // indirect
 	golang.org/x/sync v0.1.0 // indirect
-	golang.org/x/text v0.7.0 // indirect
+	golang.org/x/text v0.9.0 // indirect
 	rsc.io/qr v0.2.0 // indirect
 )
