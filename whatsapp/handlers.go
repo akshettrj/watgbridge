@@ -16,6 +16,7 @@ import (
 	"github.com/PaulSonOfLars/gotgbot/v2"
 	goVCard "github.com/emersion/go-vcard"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
+	waTypes "go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	"go.uber.org/zap"
 	"golang.org/x/exp/slices"
@@ -141,6 +142,10 @@ func MessageFromMeEventHandler(text string, v *events.Message) {
 		)
 		utils.WaTagAll(v.Info.Chat, v.Message, v.Info.ID, v.Info.MessageSource.Sender.String(), true)
 	}
+
+	if state.State.Config.WhatsApp.SendMyMessagesFromOtherDevices {
+		MessageFromOthersEventHandler(text, v)
+	}
 }
 
 func MessageFromOthersEventHandler(text string, v *events.Message) {
@@ -164,7 +169,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 		}
 	}
 
-	{
+	if !v.Info.IsFromMe {
 		// Return if status is from ignored chat
 		if v.Info.Chat.String() == "status@broadcast" && slices.Contains(cfg.WhatsApp.StatusIgnoredChats, v.Info.MessageSource.Sender.User) {
 			logger.Debug("returning because status from a ignored chat",
@@ -181,7 +186,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 		}
 	}
 
-	if lowercaseText := strings.ToLower(text); v.Info.IsGroup && slices.Contains(cfg.WhatsApp.TagAllAllowedGroups, v.Info.Chat.User) &&
+	if lowercaseText := strings.ToLower(text); !v.Info.IsFromMe && v.Info.IsGroup && slices.Contains(cfg.WhatsApp.TagAllAllowedGroups, v.Info.Chat.User) &&
 		(strings.Contains(lowercaseText, "@all") || strings.Contains(lowercaseText, "@everyone")) {
 		logger.Debug("usage of @all/@everyone command from your account",
 			zap.String("event_id", v.Info.ID),
@@ -198,12 +203,22 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 		if v.Info.IsIncomingBroadcast() {
 			bridgedText += "👥: <b>(Broadcast)</b>\n"
 		} else if v.Info.IsGroup {
-			bridgedText += fmt.Sprintf("🧑: <b>%s</b>\n", html.EscapeString(utils.WaGetContactName(v.Info.MessageSource.Sender)))
+			if v.Info.IsFromMe {
+				bridgedText += fmt.Sprintf("🧑: <b>You [other device]</b>\n")
+			} else {
+				bridgedText += fmt.Sprintf("🧑: <b>%s</b>\n", html.EscapeString(utils.WaGetContactName(v.Info.MessageSource.Sender)))
+			}
+		} else if v.Info.IsFromMe {
+			bridgedText += fmt.Sprintf("🧑: <b>You [other device]</b>\n")
 		}
 
 	} else {
 
-		bridgedText += fmt.Sprintf("🧑: <b>%s</b>\n", html.EscapeString(utils.WaGetContactName(v.Info.MessageSource.Sender)))
+		if v.Info.IsFromMe {
+			bridgedText += fmt.Sprintf("🧑: <b>You [other device]</b>\n")
+		} else {
+			bridgedText += fmt.Sprintf("🧑: <b>%s</b>\n", html.EscapeString(utils.WaGetContactName(v.Info.MessageSource.Sender)))
+		}
 		if v.Info.IsIncomingBroadcast() {
 			bridgedText += "👥: <b>(Broadcast)</b>\n"
 		} else if v.Info.IsGroup {
@@ -362,11 +377,18 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 				return
 			}
 		} else {
-			threadId, err = utils.TgGetOrMakeThreadFromWa(v.Info.MessageSource.Sender.ToNonAD().String(), cfg.Telegram.TargetChatID,
-				utils.WaGetContactName(v.Info.MessageSource.Sender))
+			var target_chat_jid waTypes.JID
+			if v.Info.IsFromMe {
+				target_chat_jid = v.Info.Chat
+			} else {
+				target_chat_jid = v.Info.Chat
+			}
+
+			threadId, err = utils.TgGetOrMakeThreadFromWa(target_chat_jid.ToNonAD().String(), cfg.Telegram.TargetChatID,
+				utils.WaGetContactName(target_chat_jid))
 			if err != nil {
 				utils.TgSendErrorById(tgBot, cfg.Telegram.TargetChatID, 0, fmt.Sprintf("failed to create/find thread id for '%s'",
-					v.Info.MessageSource.Sender.ToNonAD().String()), err)
+					target_chat_jid.ToNonAD().String()), err)
 				return
 			}
 		}

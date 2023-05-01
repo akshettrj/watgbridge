@@ -37,22 +37,23 @@ type Config struct {
 			PackName   string `yaml:"pack_name"`
 			AuthorName string `yaml:"author_name"`
 		} `yaml:"sticker_metadata"`
-		SessionName               string   `yaml:"session_name"`
-		TagAllAllowedGroups       []string `yaml:"tag_all_allowed_groups"`
-		IgnoreChats               []string `yaml:"ignore_chats"`
-		StatusIgnoredChats        []string `yaml:"status_ignored_chats"`
-		SkipDocuments             bool     `yaml:"skip_documents"`
-		SkipImages                bool     `yaml:"skip_images"`
-		SkipGIFs                  bool     `yaml:"skip_gifs"`
-		SkipVideos                bool     `yaml:"skip_videos"`
-		SkipVoiceNotes            bool     `yaml:"skip_voice_notes"`
-		SkipAudios                bool     `yaml:"skip_audios"`
-		SkipStickers              bool     `yaml:"skip_stickers"`
-		SkipContacts              bool     `yaml:"skip_contacts"`
-		SkipLocations             bool     `yaml:"skip_locations"`
-		SkipChatDetails           bool     `yaml:"skip_chat_details"`
-		SendRevokedMessageUpdates bool     `yaml:"send_revoked_message_updates"`
-		WhatsmeowDebugMode        bool     `yaml:"whatsmeow_debug_mode"`
+		SessionName                    string   `yaml:"session_name"`
+		TagAllAllowedGroups            []string `yaml:"tag_all_allowed_groups"`
+		IgnoreChats                    []string `yaml:"ignore_chats"`
+		StatusIgnoredChats             []string `yaml:"status_ignored_chats"`
+		SkipDocuments                  bool     `yaml:"skip_documents"`
+		SkipImages                     bool     `yaml:"skip_images"`
+		SkipGIFs                       bool     `yaml:"skip_gifs"`
+		SkipVideos                     bool     `yaml:"skip_videos"`
+		SkipVoiceNotes                 bool     `yaml:"skip_voice_notes"`
+		SkipAudios                     bool     `yaml:"skip_audios"`
+		SkipStickers                   bool     `yaml:"skip_stickers"`
+		SkipContacts                   bool     `yaml:"skip_contacts"`
+		SkipLocations                  bool     `yaml:"skip_locations"`
+		SkipChatDetails                bool     `yaml:"skip_chat_details"`
+		SendRevokedMessageUpdates      bool     `yaml:"send_revoked_message_updates"`
+		WhatsmeowDebugMode             bool     `yaml:"whatsmeow_debug_mode"`
+		SendMyMessagesFromOtherDevices bool     `yaml:"send_my_messages_from_other_devices"`
 	} `yaml:"whatsapp"`
 
 	Database map[string]string `yaml:"database"`
