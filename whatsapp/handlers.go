@@ -1054,7 +1054,8 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 		}
 
 		bridgedText += "\n<i>It was the following poll:</i>\n\n"
-		bridgedText += "<b>" + html.EscapeString(pollMsg.GetName()) + "</b>\n\n"
+		bridgedText += fmt.Sprintf("<b>%s</b>: (%v options selectable)\n\n",
+			html.EscapeString(pollMsg.GetName()), pollMsg.GetSelectableOptionsCount())
 		for optionNum, option := range pollMsg.GetOptions() {
 			if len(bridgedText) > 2000 {
 				bridgedText += "\n... <i>Plus some other options</i>"
