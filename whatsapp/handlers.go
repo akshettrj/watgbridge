@@ -304,6 +304,11 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 			zap.String("event_id", v.Info.ID),
 		)
 		contextInfo = v.Message.GetPollCreationMessageV2().GetContextInfo()
+	} else if v.Message.GetPollCreationMessageV3() != nil {
+		logger.Debug("taking context info from PollCreationMessageV3",
+			zap.String("event_id", v.Info.ID),
+		)
+		contextInfo = v.Message.GetPollCreationMessageV3().GetContextInfo()
 	} else {
 		logger.Debug("no context info found in any kind of messages",
 			zap.String("event_id", v.Info.ID),
@@ -1037,11 +1042,15 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 		}
 		return
 
-	} else if v.Message.GetPollCreationMessage() != nil || v.Message.GetPollCreationMessageV2() != nil {
+	} else if v.Message.GetPollCreationMessage() != nil || v.Message.GetPollCreationMessageV2() != nil || v.Message.GetPollCreationMessageV3() != nil {
 
-		pollMsg := v.Message.GetPollCreationMessage()
-		if pollMsg == nil {
-			pollMsg = v.Message.GetPollCreationMessageV2()
+		var pollMsg *waProto.PollCreationMessage
+		if i := v.Message.GetPollCreationMessage(); i != nil {
+			pollMsg = i
+		} else if i := v.Message.GetPollCreationMessageV2(); i != nil {
+			pollMsg = i
+		} else if i := v.Message.GetPollCreationMessageV3(); i != nil {
+			pollMsg = i
 		}
 
 		bridgedText += "\n<i>It was the following poll:</i>\n\n"
