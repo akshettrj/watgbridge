@@ -43,7 +43,7 @@ func (b *autoHandleRateLimitBotClient) RequestWithContext(ctx context.Context,
 			continue
 		}
 
-		return response, nil
+		return response, err
 	}
 }
 
