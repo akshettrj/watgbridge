@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"fmt"
+	"math"
 	"net/http"
 	"time"
 
@@ -23,7 +24,8 @@ func NewTelegramClient() error {
 	bot, err := gotgbot.NewBot(cfg.Telegram.BotToken, &gotgbot.BotOpts{
 		Client: http.Client{},
 		DefaultRequestOpts: &gotgbot.RequestOpts{
-			APIURL: cfg.Telegram.APIURL,
+			APIURL:  cfg.Telegram.APIURL,
+			Timeout: time.Duration(math.MaxInt64),
 		},
 	})
 	if err != nil {
@@ -31,6 +33,7 @@ func NewTelegramClient() error {
 	}
 	state.State.TelegramBot = bot
 
+	bot.UseMiddleware(middlewares.AutoHandleRateLimit)
 	bot.UseMiddleware(middlewares.ParseAsHTML)
 	bot.UseMiddleware(middlewares.SendWithoutReply)
 
