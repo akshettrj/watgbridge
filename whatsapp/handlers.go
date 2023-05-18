@@ -444,8 +444,8 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 			}
 
 			if caption := imageMsg.GetCaption(); caption != "" {
-				if len(caption) > 500 {
-					bridgedText += html.EscapeString(utils.SubString(caption, 0, 500)) + "..."
+				if len(caption) > 1020 {
+					bridgedText += html.EscapeString(utils.SubString(caption, 0, 1020)) + "..."
 				} else {
 					bridgedText += html.EscapeString(caption)
 				}
@@ -508,8 +508,8 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 			}
 
 			if caption := gifMsg.GetCaption(); caption != "" {
-				if len(caption) > 500 {
-					bridgedText += html.EscapeString(utils.SubString(caption, 0, 500)) + "..."
+				if len(caption) > 1020 {
+					bridgedText += html.EscapeString(utils.SubString(caption, 0, 1020)) + "..."
 				} else {
 					bridgedText += html.EscapeString(caption)
 				}
@@ -577,8 +577,8 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 			}
 
 			if caption := videoMsg.GetCaption(); caption != "" {
-				if len(caption) > 500 {
-					bridgedText += html.EscapeString(utils.SubString(caption, 0, 500)) + "..."
+				if len(caption) > 1020 {
+					bridgedText += html.EscapeString(utils.SubString(caption, 0, 1020)) + "..."
 				} else {
 					bridgedText += html.EscapeString(caption)
 				}
@@ -770,8 +770,8 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 			}
 
 			if caption := documentMsg.GetCaption(); caption != "" {
-				if len(caption) > 500 {
-					bridgedText += html.EscapeString(utils.SubString(caption, 0, 500)) + "..."
+				if len(caption) > 1020 {
+					bridgedText += html.EscapeString(utils.SubString(caption, 0, 1020)) + "..."
 				} else {
 					bridgedText += html.EscapeString(caption)
 				}
@@ -1057,7 +1057,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 		bridgedText += fmt.Sprintf("<b>%s</b>: (%v options selectable)\n\n",
 			html.EscapeString(pollMsg.GetName()), pollMsg.GetSelectableOptionsCount())
 		for optionNum, option := range pollMsg.GetOptions() {
-			if len(bridgedText) > 2000 {
+			if len(bridgedText) > 4000 {
 				bridgedText += "\n... <i>Plus some other options</i>"
 				break
 			}
@@ -1088,8 +1088,8 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 			}
 		}
 
-		if len(text) > 2000 {
-			bridgedText += html.EscapeString(utils.SubString(text, 0, 2000)) + "..."
+		if len(text) > 4000 {
+			bridgedText += html.EscapeString(utils.SubString(text, 0, 4000)) + "..."
 		} else {
 			bridgedText += html.EscapeString(text)
 		}
