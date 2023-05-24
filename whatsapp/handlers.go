@@ -1149,8 +1149,17 @@ func RevokedMessageEventHandler(v *events.Message) {
 		waChatId    = v.Info.Chat.String()
 	)
 
-	if v.Info.IsFromMe || !cfg.WhatsApp.SendRevokedMessageUpdates {
+	if !cfg.WhatsApp.SendRevokedMessageUpdates {
 		return
+	}
+
+	deleter := v.Info.MessageSource.Sender
+
+	var deleterName string
+	if v.Info.IsFromMe {
+		deleterName = "you"
+	} else {
+		deleterName = utils.WaGetContactName(deleter)
 	}
 
 	tgChatId, tgThreadId, tgMsgId, err := database.MsgIdGetTgFromWa(waMsgId, waChatId)
@@ -1158,7 +1167,10 @@ func RevokedMessageEventHandler(v *events.Message) {
 		return
 	}
 
-	tgBot.SendMessage(tgChatId, "<i>This message was revoked</i>", &gotgbot.SendMessageOpts{
+	tgBot.SendMessage(tgChatId, fmt.Sprintf(
+		"<i>This message was revoked by %s</i>",
+		html.EscapeString(deleterName),
+	), &gotgbot.SendMessageOpts{
 		MessageThreadId:  tgThreadId,
 		ReplyToMessageId: tgMsgId,
 	})
