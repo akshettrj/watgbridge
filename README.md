@@ -44,7 +44,7 @@ PRs are welcome :)
 
 - Make a supergroup with topics enabled
 - Add your bot in the group, make it an admin with permissions to `Manage topics`
-- Install `git`, `gcc` and `golang` on your system
+- Install `git`, `gcc` and `golang`, `ffmpeg` , `imagemagick` (optional), `libwebp` (latest) on your system
 - Clone this repository in `$GOPATH/src` or just `~/go/src`
 - Navigate into the cloned directory
 - Run `go build`
