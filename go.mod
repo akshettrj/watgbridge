@@ -7,21 +7,21 @@ require (
 	github.com/PaulSonOfLars/gotgbot/v2 v2.0.0-rc.20
 	github.com/emersion/go-vcard v0.0.0-20230331202150-f3d26859ccd3
 	github.com/forPelevin/gomoji v1.1.8
-	github.com/go-co-op/gocron v1.28.0
+	github.com/go-co-op/gocron v1.28.2
 	github.com/jackc/pgx/v5 v5.3.1
 	github.com/kolesa-team/go-webp v1.0.4
 	github.com/lithammer/fuzzysearch v1.1.8
-	github.com/mattn/go-sqlite3 v1.14.16
-	github.com/mdp/qrterminal/v3 v3.0.0
-	go.mau.fi/whatsmeow v0.0.0-20230522083828-ba5da011ba6d
+	github.com/mattn/go-sqlite3 v1.14.17
+	github.com/mdp/qrterminal/v3 v3.1.1
+	go.mau.fi/whatsmeow v0.0.0-20230608204524-7aedaa1de108
 	go.uber.org/zap v1.24.0
 	golang.org/x/exp v0.0.0-20230522175609-2e198f4a06a1
 	google.golang.org/protobuf v1.30.0
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/driver/mysql v1.5.1
 	gorm.io/driver/postgres v1.5.2
-	gorm.io/driver/sqlite v1.5.1
-	gorm.io/gorm v1.25.1
+	gorm.io/driver/sqlite v1.5.2
+	gorm.io/gorm v1.25.2-0.20230530020048-26663ab9bf55
 )
 
 require (
