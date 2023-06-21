@@ -35,6 +35,7 @@ func NewTelegramClient() error {
 
 	bot.UseMiddleware(middlewares.AutoHandleRateLimit)
 	bot.UseMiddleware(middlewares.ParseAsHTML)
+	bot.UseMiddleware(middlewares.DisableWebPagePreview)
 	bot.UseMiddleware(middlewares.SendWithoutReply)
 
 	dispatcher := ext.NewDispatcher(&ext.DispatcherOpts{

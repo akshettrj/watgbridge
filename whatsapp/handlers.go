@@ -1080,18 +1080,25 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 			return
 		}
 
-		if mentioned := v.Message.GetExtendedTextMessage().GetContextInfo().GetMentionedJid(); mentioned != nil {
-			for _, jid := range mentioned {
-				parsedJid, _ := utils.WaParseJID(jid)
-				name := utils.WaGetContactName(parsedJid)
-				text = strings.ReplaceAll(text, "@"+parsedJid.User, "@("+html.EscapeString(name)+")")
-			}
-		}
-
 		if len(text) > 4000 {
 			bridgedText += html.EscapeString(utils.SubString(text, 0, 4000)) + "..."
 		} else {
 			bridgedText += html.EscapeString(text)
+		}
+
+		if mentioned := v.Message.GetExtendedTextMessage().GetContextInfo().GetMentionedJid(); mentioned != nil {
+			for _, jid := range mentioned {
+				parsedJid, _ := utils.WaParseJID(jid)
+				name := utils.WaGetContactName(parsedJid)
+				// text = strings.ReplaceAll(text, "@"+parsedJid.User, "@("+html.EscapeString(name)+")")
+				bridgedText = strings.ReplaceAll(
+					bridgedText, "@"+parsedJid.User,
+					fmt.Sprintf(
+						"<a href=\"https://wa.me/%s?chat_id=%s\">@%s</a>",
+						parsedJid.User, v.Info.Chat.String(), html.EscapeString(name),
+					),
+				)
+			}
 		}
 
 		sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
