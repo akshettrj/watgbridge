@@ -898,3 +898,12 @@ func TgMakeRevokeKeyboard(msgId, chatId string, confirm bool) *gotgbot.InlineKey
 		}}},
 	}
 }
+
+func TgBuildUrlButton(text, url string) gotgbot.InlineKeyboardMarkup {
+	return gotgbot.InlineKeyboardMarkup{
+		InlineKeyboard: [][]gotgbot.InlineKeyboardButton{{{
+			Text: text,
+			Url:  url,
+		}}},
+	}
+}
