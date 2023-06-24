@@ -185,7 +185,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 			return
 		}
 	}
-
+	replymarkup := utils.TgBuildUrlButton(utils.WaGetContactName(v.Info.Sender), fmt.Sprintf("https://wa.me/%s", v.Info.MessageSource.Sender.ToNonAD().User))
 	if lowercaseText := strings.ToLower(text); !v.Info.IsFromMe && v.Info.IsGroup && slices.Contains(cfg.WhatsApp.TagAllAllowedGroups, v.Info.Chat.User) &&
 		(strings.Contains(lowercaseText, "@all") || strings.Contains(lowercaseText, "@everyone")) {
 		logger.Debug("usage of @all/@everyone command from your account",
@@ -204,25 +204,23 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 			bridgedText += "👥: <b>(Broadcast)</b>\n"
 		} else if v.Info.IsGroup {
 			if v.Info.IsFromMe {
-				bridgedText += fmt.Sprintf("🧑: <b>You [other device]</b>\n")
+				bridgedText += "🧑: <b>You [other device]</b>\n"
 			} else {
 				bridgedText += fmt.Sprintf("🧑: <b>%s</b>\n", html.EscapeString(utils.WaGetContactName(v.Info.MessageSource.Sender)))
 			}
 		} else if v.Info.IsFromMe {
-			bridgedText += fmt.Sprintf("🧑: <b>You [other device]</b>\n")
+			bridgedText += "🧑: <b>You [other device]</b>\n"
 		}
 
 	} else {
 
 		if v.Info.IsFromMe {
-			bridgedText += fmt.Sprintf("🧑: <b>You [other device]</b>\n")
+			bridgedText += "🧑: <b>You [other device]</b>\n"
 		} else {
 			bridgedText += fmt.Sprintf("🧑: <b>%s</b>\n", html.EscapeString(utils.WaGetContactName(v.Info.MessageSource.Sender)))
 		}
 		if v.Info.IsIncomingBroadcast() {
 			bridgedText += "👥: <b>(Broadcast)</b>\n"
-		} else if v.Info.IsGroup {
-			bridgedText += fmt.Sprintf("👥: <b>%s</b>\n", html.EscapeString(utils.WaGetGroupName(v.Info.Chat)))
 		} else {
 			bridgedText += "👥: <b>(PVT)</b>\n"
 		}
@@ -244,6 +242,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 		zap.String("event_id", v.Info.ID),
 	)
 	var contextInfo *waProto.ContextInfo = nil
+
 	if v.Message.GetExtendedTextMessage().GetContextInfo() != nil {
 		logger.Debug("taking context info from ExtendedTextMessage",
 			zap.String("event_id", v.Info.ID),
@@ -314,7 +313,8 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 			zap.String("event_id", v.Info.ID),
 		)
 	}
-
+	
+	
 	if contextInfo != nil {
 
 		if contextInfo.GetIsForwarded() {
@@ -341,6 +341,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 					} else {
 						tgBot.SendMessage(cfg.Telegram.TargetChatID, tagInfoText, &gotgbot.SendMessageOpts{
 							MessageThreadId: threadId,
+							ReplyMarkup:     replymarkup,
 						})
 					}
 
@@ -389,8 +390,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 				target_chat_jid = v.Info.Chat
 			}
 
-			threadId, err = utils.TgGetOrMakeThreadFromWa(target_chat_jid.ToNonAD().String(), cfg.Telegram.TargetChatID,
-				utils.WaGetContactName(target_chat_jid))
+			threadId, err = utils.TgGetOrMakeThreadFromWa(target_chat_jid.ToNonAD().String(), cfg.Telegram.TargetChatID, utils.WaGetContactName(target_chat_jid))
 			if err != nil {
 				utils.TgSendErrorById(tgBot, cfg.Telegram.TargetChatID, 0, fmt.Sprintf("failed to create/find thread id for '%s'",
 					target_chat_jid.ToNonAD().String()), err)
@@ -455,6 +455,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 				Caption:          bridgedText,
 				ReplyToMessageId: replyToMsgId,
 				MessageThreadId:  threadId,
+				ReplyMarkup:      replymarkup,
 			})
 			if sentMsg.MessageId != 0 {
 				database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
@@ -524,6 +525,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 				Caption:          bridgedText,
 				ReplyToMessageId: replyToMsgId,
 				MessageThreadId:  threadId,
+				ReplyMarkup:      replymarkup,
 			})
 			if sentMsg.MessageId != 0 {
 				database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
@@ -593,6 +595,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 				Caption:          bridgedText,
 				ReplyToMessageId: replyToMsgId,
 				MessageThreadId:  threadId,
+				ReplyMarkup:      replymarkup,
 			})
 			if sentMsg.MessageId != 0 {
 				database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
@@ -655,6 +658,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 				Duration:         int64(audioMsg.GetSeconds()),
 				ReplyToMessageId: replyToMsgId,
 				MessageThreadId:  threadId,
+				ReplyMarkup:      replymarkup,
 			})
 			if sentMsg.MessageId != 0 {
 				database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
@@ -717,6 +721,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 				Duration:         int64(audioMsg.GetSeconds()),
 				ReplyToMessageId: replyToMsgId,
 				MessageThreadId:  threadId,
+				ReplyMarkup:      replymarkup,
 			})
 			if sentMsg.MessageId != 0 {
 				database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
@@ -786,6 +791,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 				Caption:          bridgedText,
 				ReplyToMessageId: replyToMsgId,
 				MessageThreadId:  threadId,
+				ReplyMarkup:      replymarkup,
 			})
 			if sentMsg.MessageId != 0 {
 				database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
@@ -837,14 +843,11 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 				}
 				return
 			}
-
 			if stickerMsg.GetIsAnimated() || stickerMsg.GetIsAvatar() {
 				gifBytes, err := utils.AnimatedWebpConvertToGif(stickerBytes, v.Info.ID)
 				if err != nil {
-					bridgedText += "\n<i>It was an animated sticker, here is the first frame</i>"
 					goto WEBP_TO_GIF_FAILED
 				}
-				bridgedText += "<i>It was an animated sticker, here it is converted to GIF</i>"
 
 				fileToSend := gotgbot.NamedFile{
 					FileName: "animation.gif",
@@ -855,6 +858,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 					Caption:          bridgedText,
 					ReplyToMessageId: replyToMsgId,
 					MessageThreadId:  threadId,
+					ReplyMarkup:      replymarkup,
 				})
 				if sentMsg.MessageId != 0 {
 					database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
@@ -862,27 +866,20 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 				}
 				return
 
-			} else {
-				bridgedText += "\n<i>It was the following sticker</i>"
 			}
-
 		WEBP_TO_GIF_FAILED:
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+			sentMsg, _ := tgBot.SendSticker(cfg.Telegram.TargetChatID, stickerBytes, &gotgbot.SendStickerOpts{
 				ReplyToMessageId: replyToMsgId,
 				MessageThreadId:  threadId,
+				ReplyMarkup:      replymarkup,
 			})
 			if sentMsg.MessageId != 0 {
 				database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
-			tgBot.SendSticker(cfg.Telegram.TargetChatID, stickerBytes, &gotgbot.SendStickerOpts{
-				ReplyToMessageId: sentMsg.MessageId,
-				MessageThreadId:  threadId,
-			})
 		}
 
 	} else if v.Message.GetContactMessage() != nil {
-
 		contactMsg := v.Message.GetContactMessage()
 
 		if cfg.WhatsApp.SkipContacts {
@@ -913,21 +910,17 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 			return
 		}
 
-		bridgedText += "\n<i>It was the following vCard</i>"
-		sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
-			ReplyToMessageId: replyToMsgId,
-			MessageThreadId:  threadId,
-		})
+		sentMsg, _ := tgBot.SendContact(cfg.Telegram.TargetChatID, card.PreferredValue(goVCard.FieldTelephone), contactMsg.GetDisplayName(),
+			&gotgbot.SendContactOpts{
+				Vcard:            contactMsg.GetVcard(),
+				ReplyToMessageId: replyToMsgId,
+				MessageThreadId:  threadId,
+				ReplyMarkup:      replymarkup,
+			})
 		if sentMsg.MessageId != 0 {
 			database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 				cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 		}
-		tgBot.SendContact(cfg.Telegram.TargetChatID, card.PreferredValue(goVCard.FieldTelephone), contactMsg.GetDisplayName(),
-			&gotgbot.SendContactOpts{
-				Vcard:            contactMsg.GetVcard(),
-				ReplyToMessageId: sentMsg.MessageId,
-				MessageThreadId:  threadId,
-			})
 		return
 
 	} else if v.Message.GetContactsArrayMessage() != nil {
@@ -946,18 +939,6 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 			}
 			return
 		}
-
-		bridgedText += "\n<i>It was the following vCards</i>"
-
-		sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
-			ReplyToMessageId: replyToMsgId,
-			MessageThreadId:  threadId,
-		})
-		if sentMsg.MessageId != 0 {
-			database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
-				cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
-		}
-
 		for _, contactMsg := range contactsMsg.Contacts {
 			decoder := goVCard.NewDecoder(bytes.NewReader([]byte(contactMsg.GetVcard())))
 			card, err := decoder.Decode()
@@ -970,12 +951,17 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 				continue
 			}
 
-			tgBot.SendContact(cfg.Telegram.TargetChatID, card.PreferredValue(goVCard.FieldTelephone), contactMsg.GetDisplayName(),
+			sentMsg, _ := tgBot.SendContact(cfg.Telegram.TargetChatID, card.PreferredValue(goVCard.FieldTelephone), contactMsg.GetDisplayName(),
 				&gotgbot.SendContactOpts{
 					Vcard:            contactMsg.GetVcard(),
-					ReplyToMessageId: sentMsg.MessageId,
+					ReplyToMessageId: replyToMsgId,
 					MessageThreadId:  threadId,
+					ReplyMarkup:      replymarkup,
 				})
+			if sentMsg.MessageId != 0 {
+				database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
+					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
+			}
 		}
 		return
 
@@ -995,24 +981,17 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 			}
 			return
 		}
-
-		bridgedText += "\n<i>It was the following location</i>"
-
-		sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
-			ReplyToMessageId: replyToMsgId,
-			MessageThreadId:  threadId,
-		})
+		sentMsg, _ := tgBot.SendLocation(cfg.Telegram.TargetChatID, locationMsg.GetDegreesLatitude(), locationMsg.GetDegreesLongitude(),
+			&gotgbot.SendLocationOpts{
+				HorizontalAccuracy: float64(locationMsg.GetAccuracyInMeters()),
+				ReplyToMessageId:   replyToMsgId,
+				MessageThreadId:    threadId,
+			})
 		if sentMsg.MessageId != 0 {
 			database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 				cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 		}
 
-		tgBot.SendLocation(cfg.Telegram.TargetChatID, locationMsg.GetDegreesLatitude(), locationMsg.GetDegreesLongitude(),
-			&gotgbot.SendLocationOpts{
-				HorizontalAccuracy: float64(locationMsg.GetAccuracyInMeters()),
-				ReplyToMessageId:   sentMsg.MessageId,
-				MessageThreadId:    threadId,
-			})
 		return
 
 	} else if v.Message.GetLiveLocationMessage() != nil {
@@ -1035,6 +1014,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 		sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
 			ReplyToMessageId: replyToMsgId,
 			MessageThreadId:  threadId,
+			ReplyMarkup: replymarkup,
 		})
 		if sentMsg.MessageId != 0 {
 			database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
@@ -1075,7 +1055,6 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 		return
 
 	} else {
-
 		if text == "" {
 			return
 		}
@@ -1094,16 +1073,16 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 				bridgedText = strings.ReplaceAll(
 					bridgedText, "@"+parsedJid.User,
 					fmt.Sprintf(
-						"<a href=\"https://wa.me/%s?chat_id=%s\">@%s</a>",
-						parsedJid.User, v.Info.Chat.String(), html.EscapeString(name),
+						"<a href=\"https://wa.me/%s\">@%s</a>",
+						parsedJid.User, html.EscapeString(name),
 					),
 				)
 			}
 		}
-
 		sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
 			ReplyToMessageId: replyToMsgId,
 			MessageThreadId:  threadId,
+			ReplyMarkup: 	replymarkup,
 		})
 		if sentMsg.MessageId != 0 {
 			database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
