@@ -202,14 +202,10 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 		)
 		if v.Info.IsIncomingBroadcast() {
 			bridgedText += "👥: <b>(Broadcast)</b>\n"
-		} else if v.Info.IsGroup {
-			if v.Info.IsFromMe {
-				bridgedText += "🧑: <b>You [other device]</b>\n"
-			} else {
-				bridgedText += fmt.Sprintf("🧑: <b>%s</b>\n", html.EscapeString(utils.WaGetContactName(v.Info.MessageSource.Sender)))
-			}
 		} else if v.Info.IsFromMe {
 			bridgedText += "🧑: <b>You [other device]</b>\n"
+		} else if v.Info.IsGroup {
+			bridgedText += fmt.Sprintf("🧑: <b>%s</b>\n", html.EscapeString(utils.WaGetContactName(v.Info.MessageSource.Sender)))
 		}
 
 	} else {
@@ -221,6 +217,8 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 		}
 		if v.Info.IsIncomingBroadcast() {
 			bridgedText += "👥: <b>(Broadcast)</b>\n"
+		} else if v.Info.IsGroup {
+			bridgedText += fmt.Sprintf("👥: <b>%s</b>\n", html.EscapeString(utils.WaGetGroupName(v.Info.Chat)))
 		} else {
 			bridgedText += "👥: <b>(PVT)</b>\n"
 		}
@@ -313,8 +311,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 			zap.String("event_id", v.Info.ID),
 		)
 	}
-	
-	
+
 	if contextInfo != nil {
 
 		if contextInfo.GetIsForwarded() {
@@ -455,7 +452,6 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 				Caption:          bridgedText,
 				ReplyToMessageId: replyToMsgId,
 				MessageThreadId:  threadId,
-				ReplyMarkup:      replymarkup,
 			})
 			if sentMsg.MessageId != 0 {
 				database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
@@ -525,7 +521,6 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 				Caption:          bridgedText,
 				ReplyToMessageId: replyToMsgId,
 				MessageThreadId:  threadId,
-				ReplyMarkup:      replymarkup,
 			})
 			if sentMsg.MessageId != 0 {
 				database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
@@ -595,7 +590,6 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 				Caption:          bridgedText,
 				ReplyToMessageId: replyToMsgId,
 				MessageThreadId:  threadId,
-				ReplyMarkup:      replymarkup,
 			})
 			if sentMsg.MessageId != 0 {
 				database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
@@ -658,7 +652,6 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 				Duration:         int64(audioMsg.GetSeconds()),
 				ReplyToMessageId: replyToMsgId,
 				MessageThreadId:  threadId,
-				ReplyMarkup:      replymarkup,
 			})
 			if sentMsg.MessageId != 0 {
 				database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
@@ -721,7 +714,6 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 				Duration:         int64(audioMsg.GetSeconds()),
 				ReplyToMessageId: replyToMsgId,
 				MessageThreadId:  threadId,
-				ReplyMarkup:      replymarkup,
 			})
 			if sentMsg.MessageId != 0 {
 				database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
@@ -791,7 +783,6 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 				Caption:          bridgedText,
 				ReplyToMessageId: replyToMsgId,
 				MessageThreadId:  threadId,
-				ReplyMarkup:      replymarkup,
 			})
 			if sentMsg.MessageId != 0 {
 				database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
@@ -1014,7 +1005,6 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 		sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
 			ReplyToMessageId: replyToMsgId,
 			MessageThreadId:  threadId,
-			ReplyMarkup: replymarkup,
 		})
 		if sentMsg.MessageId != 0 {
 			database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
@@ -1082,7 +1072,6 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 		sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
 			ReplyToMessageId: replyToMsgId,
 			MessageThreadId:  threadId,
-			ReplyMarkup: 	replymarkup,
 		})
 		if sentMsg.MessageId != 0 {
 			database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
