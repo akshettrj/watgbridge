@@ -47,6 +47,7 @@ type Config struct {
 		SkipVideos                     bool     `yaml:"skip_videos"`
 		SkipVoiceNotes                 bool     `yaml:"skip_voice_notes"`
 		SkipAudios                     bool     `yaml:"skip_audios"`
+		SkipStatus                     bool     `yaml:"skip_status"`
 		SkipStickers                   bool     `yaml:"skip_stickers"`
 		SkipContacts                   bool     `yaml:"skip_contacts"`
 		SkipLocations                  bool     `yaml:"skip_locations"`

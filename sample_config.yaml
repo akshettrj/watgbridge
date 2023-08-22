@@ -39,6 +39,7 @@ whatsapp:
   skip_voice_notes: false
   skip_audios: false
   skip_stickers: false
+  skip_status: false
   skip_contacts: false
   skip_locations: false
   skip_chat_details: true

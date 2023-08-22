@@ -171,7 +171,9 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 
 	if !v.Info.IsFromMe {
 		// Return if status is from ignored chat
-		if v.Info.Chat.String() == "status@broadcast" && slices.Contains(cfg.WhatsApp.StatusIgnoredChats, v.Info.MessageSource.Sender.User) {
+		if v.Info.Chat.String() == "status@broadcast" &&
+			(cfg.WhatsApp.SkipStatus ||
+				slices.Contains(cfg.WhatsApp.StatusIgnoredChats, v.Info.MessageSource.Sender.User)) {
 			logger.Debug("returning because status from a ignored chat",
 				zap.String("event_id", v.Info.ID),
 				zap.String("chat_jid", v.Info.Chat.String()),
