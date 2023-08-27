@@ -2,11 +2,8 @@ name: Release Prebuilt Binaries
 
 on:
   push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
+    paths:
+      - state/state.go
 
 jobs:
 
@@ -22,7 +19,7 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y git gcc golang imagemagick
+        sudo apt-get install -y gcc golang
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
@@ -53,15 +50,9 @@ jobs:
       with:
         files: ./watgbridge_linux_amd64
         tag_name: v${{ steps.get_version.outputs.version }}
-        title: Release ${{ steps.get_version.outputs.version }}
+        name: Release ${{ steps.get_version.outputs.version }}
       env:
         GITHUB_TOKEN: ${{ secrets.TOKEN }}
-
-    - name: Upload Artifact
-      uses: actions/upload-artifact@v2
-      with:
-        name: watgbridge_linux_amd64
-        path: ./watgbridge_linux_amd64
 
   build-arm64:
     runs-on: ubuntu-latest
@@ -106,6 +97,6 @@ jobs:
       with:
         files: ./watgbridge_linux_aarch64
         tag_name: v${{ steps.get_version.outputs.version }}
-        title: Release ${{ steps.get_version.outputs.version }}
+        name: Release ${{ steps.get_version.outputs.version }}
       env:
         GITHUB_TOKEN: ${{ secrets.TOKEN }}
