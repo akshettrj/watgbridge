@@ -1,0 +1,111 @@
+name: Release Prebuilt Binaries
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+
+  build-amd64:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        architecture: [amd64]
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y git gcc golang imagemagick
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.20'
+
+    - name: Clone libwebp and build
+      run: |
+        git clone https://chromium.googlesource.com/webm/libwebp
+        cd libwebp
+        ./autogen.sh
+        ./configure
+        make
+        sudo make install
+        echo "/usr/local/lib" | sudo tee -a /etc/ld.so.conf
+        sudo ldconfig
+        
+    - name: Build
+      run: GOARCH=amd64 GOOS=linux go build -o watgbridge_linux_amd64 .
+
+    - name: Get Project Version
+      id: get_version
+      run: |
+        echo "::set-output name=version::$(grep -oP 'WATGBRIDGE_VERSION = \"\K[0-9]+\.[0-9]+\.[0-9]+' state/state.go)"
+
+    - name: Create Release for amd64
+      if: always()
+      uses: softprops/action-gh-release@v1
+      with:
+        files: ./watgbridge_linux_amd64
+        tag_name: v${{ steps.get_version.outputs.version }}
+        title: Release ${{ steps.get_version.outputs.version }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.TOKEN }}
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v2
+      with:
+        name: watgbridge_linux_amd64
+        path: ./watgbridge_linux_amd64
+
+  build-arm64:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        architecture: [arm64]
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y golang gcc-aarch64-linux-gnu g++-aarch64-linux-gnu libwebp-dev
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.20'
+
+    - name: Clone libwebp and build
+      run: |
+        git clone https://chromium.googlesource.com/webm/libwebp
+        cd libwebp
+        ./autogen.sh
+        ./configure --host=aarch64-linux-gnu
+        make
+        sudo make install
+        echo "/usr/local/lib" | sudo tee -a /etc/ld.so.conf
+        sudo ldconfig
+        
+    - name: Build
+      run: CGO_ENABLED=1 CC=aarch64-linux-gnu-gcc CXX=aarch64-linux-gnu-g++ GOARCH=arm64 GOOS=linux go build -o watgbridge_linux_aarch64 .
+
+    - name: Get Project Version
+      id: get_version
+      run: |
+        echo "::set-output name=version::$(grep -oP 'WATGBRIDGE_VERSION = \"\K[0-9]+\.[0-9]+\.[0-9]+' state/state.go)"
+
+    - name: Create Release for arm64
+      if: always()
+      uses: softprops/action-gh-release@v1
+      with:
+        files: ./watgbridge_linux_aarch64
+        tag_name: v${{ steps.get_version.outputs.version }}
+        title: Release ${{ steps.get_version.outputs.version }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.TOKEN }}
