@@ -25,7 +25,12 @@ import (
 	waTypes "go.mau.fi/whatsmeow/types"
 )
 
-var commands = []handlers.Command{}
+type waTgBridgeCommand struct {
+	command     handlers.Command
+	description string
+}
+
+var commands = []waTgBridgeCommand{}
 
 func AddTelegramHandlers() {
 	var (
@@ -40,90 +45,84 @@ func AddTelegramHandlers() {
 	), DispatcherForwardHandlerGroup)
 
 	commands = append(commands,
-		handlers.NewCommand("start", StartCommandHandler),
-		handlers.NewCommand("getwagroups", GetWhatsAppGroupsHandler),
-		handlers.NewCommand("findcontact", FindContactHandler),
-		handlers.NewCommand("revoke", RevokeCommandHandler),
-		handlers.NewCommand("synccontacts", SyncContactsHandler),
-		handlers.NewCommand("clearpairhistory", ClearMessageIdPairsHistoryHandler),
-		handlers.NewCommand("restartwa", RestartWhatsAppConnectionHandler),
-		handlers.NewCommand("joininvitelink", JoinInviteLinkHandler),
-		handlers.NewCommand("settargetgroupchat", SetTargetGroupChatHandler),
-		handlers.NewCommand("settargetprivatechat", SetTargetPrivateChatHandler),
-		handlers.NewCommand("getprofilepicture", GetProfilePictureHandler),
-		handlers.NewCommand("updateandrestart", UpdateAndRestartHandler),
-		handlers.NewCommand("synctopicnames", SyncTopicNamesHandler),
-		handlers.NewCommand("send", SendToWhatsAppHandler),
-		handlers.NewCommand("help", HelpCommandHandler),
+		waTgBridgeCommand{
+			handlers.NewCommand("start", StartCommandHandler),
+			"",
+		},
+		waTgBridgeCommand{
+			handlers.NewCommand("getwagroups", GetWhatsAppGroupsHandler),
+			"Get all the WhatsApp groups along with their JIDs",
+		},
+		waTgBridgeCommand{
+			handlers.NewCommand("findcontact", FindContactHandler),
+			"Fuzzy find contact JIDs from names in WhatsApp",
+		},
+		waTgBridgeCommand{
+			handlers.NewCommand("revoke", RevokeCommandHandler),
+			"Revoke a message from WhatsApp",
+		},
+		waTgBridgeCommand{
+			handlers.NewCommand("synccontacts", SyncContactsHandler),
+			"Try to sync the contacts list from WhatsApp",
+		},
+		waTgBridgeCommand{
+			handlers.NewCommand("clearpairhistory", ClearMessageIdPairsHistoryHandler),
+			"Delete all the past stored message id pairs",
+		},
+		waTgBridgeCommand{
+			handlers.NewCommand("restartwa", RestartWhatsAppConnectionHandler),
+			"Restart the WhatsApp client",
+		},
+		waTgBridgeCommand{
+			handlers.NewCommand("joininvitelink", JoinInviteLinkHandler),
+			"Join a WhatsApp chat using invite link",
+		},
+		waTgBridgeCommand{
+			handlers.NewCommand("settargetgroupchat", SetTargetGroupChatHandler),
+			"Set the target WhatsApp group chat for current thread",
+		},
+		waTgBridgeCommand{
+			handlers.NewCommand("settargetprivatechat", SetTargetPrivateChatHandler),
+			"Set the target WhatsApp private chat for current thread",
+		},
+		waTgBridgeCommand{
+			handlers.NewCommand("getprofilepicture", GetProfilePictureHandler),
+			"Get the profile picture of user or group using its ID",
+		},
+		waTgBridgeCommand{
+			handlers.NewCommand("updateandrestart", UpdateAndRestartHandler),
+			"Try to fetch updates from GitHub and build and restart the bot",
+		},
+		waTgBridgeCommand{
+			handlers.NewCommand("synctopicnames", SyncTopicNamesHandler),
+			"Update the names of the topics created",
+		},
+		waTgBridgeCommand{
+			handlers.NewCommand("send", SendToWhatsAppHandler),
+			"Send a message to WhatsApp",
+		},
+		waTgBridgeCommand{
+			handlers.NewCommand("help", HelpCommandHandler),
+			"Get all the available commands",
+		},
 	)
 
 	for _, command := range commands {
-		dispatcher.AddHandler(command)
+		dispatcher.AddHandler(command.command)
+		if command.description != "" {
+			state.State.TelegramCommands = append(state.State.TelegramCommands,
+				gotgbot.BotCommand{
+					Command:     command.command.Command,
+					Description: command.description,
+				},
+			)
+		}
 	}
 
 	dispatcher.AddHandlerToGroup(handlers.NewCallback(
 		func(cq *gotgbot.CallbackQuery) bool {
 			return strings.HasPrefix(cq.Data, "revoke")
 		}, RevokeCallbackHandler), DispatcherCallbackHandlerGroup)
-
-	state.State.TelegramCommands = append(state.State.TelegramCommands,
-		gotgbot.BotCommand{
-			Command:     "getwagroups",
-			Description: "Get all the WhatsApp groups along with their JIDs",
-		},
-		gotgbot.BotCommand{
-			Command:     "findcontact",
-			Description: "Fuzzy find contact JIDs from names in WhatsApp",
-		},
-		gotgbot.BotCommand{
-			Command:     "revoke",
-			Description: "Revoke a message from WhatsApp",
-		},
-		gotgbot.BotCommand{
-			Command:     "synccontacts",
-			Description: "Try to sync the contacts list from WhatsApp",
-		},
-		gotgbot.BotCommand{
-			Command:     "clearpairhistory",
-			Description: "Delete all the past stored message id pairs",
-		},
-		gotgbot.BotCommand{
-			Command:     "restartwa",
-			Description: "Restart the WhatsApp client",
-		},
-		gotgbot.BotCommand{
-			Command:     "joininvitelink",
-			Description: "Join a WhatsApp chat using invite link",
-		},
-		gotgbot.BotCommand{
-			Command:     "settargetgroupchat",
-			Description: "Set the target WhatsApp group chat for current thread",
-		},
-		gotgbot.BotCommand{
-			Command:     "settargetprivatechat",
-			Description: "Set the target WhatsApp private chat for current thread",
-		},
-		gotgbot.BotCommand{
-			Command:     "getprofilepicture",
-			Description: "Get the profile picture of user or group using its ID",
-		},
-		gotgbot.BotCommand{
-			Command:     "synctopicnames",
-			Description: "Update the names of the topics created",
-		},
-		gotgbot.BotCommand{
-			Command:     "send",
-			Description: "Send a message to WhatsApp",
-		},
-		gotgbot.BotCommand{
-			Command:     "help",
-			Description: "Get all the available commands",
-		},
-		gotgbot.BotCommand{
-			Command:     "updateandrestart",
-			Description: "Try to fetch updates from GitHub and build and restart the bot",
-		},
-	)
 }
 
 func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
@@ -132,7 +131,7 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 	}
 
 	for _, command := range commands {
-		if command.CheckUpdate(b, c) {
+		if command.command.CheckUpdate(b, c) {
 			return nil
 		}
 	}
