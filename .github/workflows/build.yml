@@ -43,7 +43,7 @@ jobs:
     - name: Get Project Version
       id: get_version
       run: |
-        echo "::set-output name=version::$(grep -oP 'WATGBRIDGE_VERSION = \"\K[0-9]+\.[0-9]+\.[0-9]+' state/state.go)"
+        echo "version=$(grep -oP 'WATGBRIDGE_VERSION = \"\K[0-9]+\.[0-9]+\.[0-9]+' state/state.go)" >> $GITHUB_OUTPUT
 
     - name: Create Release for amd64
       if: always()
@@ -90,7 +90,7 @@ jobs:
     - name: Get Project Version
       id: get_version
       run: |
-        echo "::set-output name=version::$(grep -oP 'WATGBRIDGE_VERSION = \"\K[0-9]+\.[0-9]+\.[0-9]+' state/state.go)"
+        echo "version=$(grep -oP 'WATGBRIDGE_VERSION = \"\K[0-9]+\.[0-9]+\.[0-9]+' state/state.go)" >> $GITHUB_OUTPUT
 
     - name: Create Release for arm64
       if: always()
