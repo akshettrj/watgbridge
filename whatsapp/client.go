@@ -105,7 +105,7 @@ func NewWhatsAppClient() error {
 						&gotgbot.SendMessageOpts{},
 					)
 				}
-				qrterminal.Generate(evt.Code, qrterminal.L, os.Stdout)
+				qrterminal.GenerateHalfBlock(evt.Code, qrterminal.L, os.Stdout)
 			} else {
 				logger.Info("received WhatsApp login event",
 					zap.Any("event", evt.Event),
