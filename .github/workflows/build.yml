@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - state/state.go
+  workflow_dispatch:
 
 jobs:
 
