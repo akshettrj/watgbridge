@@ -1071,10 +1071,13 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 				)
 			}
 		}
-		sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+		sentMsg, err := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
 			ReplyToMessageId: replyToMsgId,
 			MessageThreadId:  threadId,
 		})
+		if err != nil {
+			panic(fmt.Errorf("failed to send telegram message: %s", err))
+		}
 		if sentMsg.MessageId != 0 {
 			database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 				cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
