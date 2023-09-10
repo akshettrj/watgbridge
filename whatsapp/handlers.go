@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"html"
-	"reflect"
 	"strings"
 	"time"
 
@@ -25,12 +24,6 @@ import (
 
 func WhatsAppEventHandler(evt interface{}) {
 
-	var (
-		cfg    = state.State.Config
-		logger = state.State.Logger
-	)
-	defer logger.Sync()
-
 	switch v := evt.(type) {
 
 	case *events.PushName:
@@ -41,84 +34,68 @@ func WhatsAppEventHandler(evt interface{}) {
 
 	case *events.Message:
 
-		logger.Debug("new Message event",
-			zap.String("event_id", v.Info.ID),
-		)
+		isEdited := false
+		if protoMsg := v.Message.GetProtocolMessage(); protoMsg != nil &&
+			protoMsg.GetType() == waProto.ProtocolMessage_MESSAGE_EDIT {
+			isEdited = true
+		}
 
 		if v.Info.Timestamp.UTC().Before(state.State.StartTime) {
 			// Old events
-			logger.Debug("returning due to message being older than bot start time",
-				zap.String("event_id", v.Info.ID),
-				zap.String("message_timestamp",
-					v.Info.Timestamp.In(state.State.LocalLocation).Format(cfg.TimeFormat)),
-				zap.String("bot_start_timestamp",
-					state.State.StartTime.In(state.State.LocalLocation).Format(cfg.TimeFormat)),
-				zap.String("chat_jid", v.Info.Chat.String()),
-				zap.String("sender_jid", v.Info.MessageSource.Sender.String()),
-			)
 			return
 		}
 
 		if protoMsg := v.Message.GetProtocolMessage(); protoMsg != nil &&
 			protoMsg.GetType() == waProto.ProtocolMessage_REVOKE {
-			logger.Debug("new revoked message",
-				zap.String("event_id", v.Info.ID),
-			)
 			RevokedMessageEventHandler(v)
 			return
 		}
 
 		text := ""
-		if extendedMessageText := v.Message.GetExtendedTextMessage().GetText(); extendedMessageText != "" {
-			text = extendedMessageText
-			logger.Debug("took text from ExtendedTextMessage",
-				zap.String("event_id", v.Info.ID),
-				zap.String("text", text),
-			)
+		if isEdited {
+			msg := v.Message.GetProtocolMessage().GetEditedMessage()
+			if extendedMessageText := msg.GetExtendedTextMessage().GetText(); extendedMessageText != "" {
+				text = extendedMessageText
+			} else {
+				text = msg.GetConversation()
+			}
 		} else {
-			text = v.Message.GetConversation()
-			logger.Debug("took text from Conversation",
-				zap.String("event_id", v.Info.ID),
-				zap.String("text", text),
-			)
+			if extendedMessageText := v.Message.GetExtendedTextMessage().GetText(); extendedMessageText != "" {
+				text = extendedMessageText
+			} else {
+				text = v.Message.GetConversation()
+			}
 		}
 
 		if v.Info.IsFromMe {
-			logger.Debug("new message from your account",
-				zap.String("event_id", v.Info.ID),
-			)
-			MessageFromMeEventHandler(text, v)
+			MessageFromMeEventHandler(text, v, isEdited)
 		} else {
-			logger.Debug("new message from others",
-				zap.String("event_id", v.Info.ID),
-			)
-			MessageFromOthersEventHandler(text, v)
+			MessageFromOthersEventHandler(text, v, isEdited)
 		}
-
-	default:
-		logger.Debug("new unhandled whatsapp event type",
-			zap.Any("event_type", reflect.TypeOf(evt)),
-		)
 	}
 
 }
 
-func MessageFromMeEventHandler(text string, v *events.Message) {
+func MessageFromMeEventHandler(text string, v *events.Message, isEdited bool) {
 	logger := state.State.Logger
 	defer logger.Sync()
 
+	var msgId string
+	if isEdited {
+		msgId = v.Message.GetProtocolMessage().GetKey().GetId()
+	} else {
+		msgId = v.Info.ID
+	}
+
 	// Get ID of the current chat
 	if text == ".id" {
-		logger.Debug("identified .id command",
-			zap.String("event_id", v.Info.ID),
-		)
 		waClient := state.State.WhatsAppClient
 
 		_, err := waClient.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
 			ExtendedTextMessage: &waProto.ExtendedTextMessage{
 				Text: proto.String(fmt.Sprintf("The ID of the current chat is:\n\n```%s```", v.Info.Chat.String())),
 				ContextInfo: &waProto.ContextInfo{
-					StanzaId:      proto.String(v.Info.ID),
+					StanzaId:      proto.String(msgId),
 					Participant:   proto.String(v.Info.MessageSource.Sender.String()),
 					QuotedMessage: v.Message,
 				},
@@ -132,23 +109,22 @@ func MessageFromMeEventHandler(text string, v *events.Message) {
 		}
 	}
 
-	// Tag everyone in the group
-	textSplit := strings.Fields(strings.ToLower(text))
-	if v.Info.IsGroup &&
-		(slices.Contains(textSplit, "@all") || slices.Contains(textSplit, "@everyone")) {
-		logger.Debug("identified usage of @all/@everyone in an allowed group",
-			zap.String("event_id", v.Info.ID),
-			zap.String("group_jid", v.Info.Chat.String()),
-		)
-		utils.WaTagAll(v.Info.Chat, v.Message, v.Info.ID, v.Info.MessageSource.Sender.String(), true)
+	if !isEdited {
+		// Tag everyone in the group
+		textSplit := strings.Fields(strings.ToLower(text))
+		if v.Info.IsGroup &&
+			(slices.Contains(textSplit, "@all") || slices.Contains(textSplit, "@everyone")) {
+
+			utils.WaTagAll(v.Info.Chat, v.Message, msgId, v.Info.MessageSource.Sender.String(), true)
+		}
 	}
 
 	if state.State.Config.WhatsApp.SendMyMessagesFromOtherDevices {
-		MessageFromOthersEventHandler(text, v)
+		MessageFromOthersEventHandler(text, v, isEdited)
 	}
 }
 
-func MessageFromOthersEventHandler(text string, v *events.Message) {
+func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool) {
 	var (
 		cfg      = state.State.Config
 		logger   = state.State.Logger
@@ -157,9 +133,16 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 	)
 	defer logger.Sync()
 
-	{
+	var msgId string
+	if isEdited {
+		msgId = v.Message.GetProtocolMessage().GetKey().GetId()
+	} else {
+		msgId = v.Info.ID
+	}
+
+	if !isEdited {
 		// Return if duplicate event is emitted
-		tgChatId, _, _, _ := database.MsgIdGetTgFromWa(v.Info.ID, v.Info.Chat.String())
+		tgChatId, _, _, _ := database.MsgIdGetTgFromWa(msgId, v.Info.Chat.String())
 		if tgChatId == cfg.Telegram.TargetChatID {
 			logger.Debug("returning because duplicate event id emitted",
 				zap.String("event_id", v.Info.ID),
@@ -187,14 +170,17 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 			return
 		}
 	}
-	replymarkup := utils.TgBuildUrlButton(utils.WaGetContactName(v.Info.Sender), fmt.Sprintf("https://wa.me/%s", v.Info.MessageSource.Sender.ToNonAD().User))
-	if lowercaseText := strings.ToLower(text); !v.Info.IsFromMe && v.Info.IsGroup && slices.Contains(cfg.WhatsApp.TagAllAllowedGroups, v.Info.Chat.User) &&
-		(strings.Contains(lowercaseText, "@all") || strings.Contains(lowercaseText, "@everyone")) {
-		logger.Debug("usage of @all/@everyone command from your account",
-			zap.String("event_id", v.Info.ID),
-			zap.String("chat_jid", v.Info.Chat.String()),
-		)
-		utils.WaTagAll(v.Info.Chat, v.Message, v.Info.ID, v.Info.MessageSource.Sender.String(), false)
+
+	replyMarkup := utils.TgBuildUrlButton(utils.WaGetContactName(v.Info.Sender), fmt.Sprintf("https://wa.me/%s", v.Info.MessageSource.Sender.ToNonAD().User))
+	if !isEdited {
+		if lowercaseText := strings.ToLower(text); !v.Info.IsFromMe && v.Info.IsGroup && slices.Contains(cfg.WhatsApp.TagAllAllowedGroups, v.Info.Chat.User) &&
+			(strings.Contains(lowercaseText, "@all") || strings.Contains(lowercaseText, "@everyone")) {
+			logger.Debug("usage of @all/@everyone command from your account",
+				zap.String("event_id", v.Info.ID),
+				zap.String("chat_jid", v.Info.Chat.String()),
+			)
+			utils.WaTagAll(v.Info.Chat, v.Message, msgId, v.Info.MessageSource.Sender.String(), false)
+		}
 	}
 
 	var bridgedText string
@@ -227,6 +213,10 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 
 	}
 
+	if isEdited {
+		bridgedText += "<i>Edited</i>\n"
+	}
+
 	if time.Since(v.Info.Timestamp).Seconds() > 60 {
 		bridgedText += fmt.Sprintf("🕛: <b>%s</b>\n",
 			html.EscapeString(v.Info.Timestamp.In(state.State.LocalLocation).Format(cfg.TimeFormat)))
@@ -238,134 +228,157 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 		threadIdFound bool
 	)
 
-	logger.Debug("trying to retrieve context info from Message",
-		zap.String("event_id", v.Info.ID),
-	)
-	var contextInfo *waProto.ContextInfo = nil
+	if isEdited {
 
-	if v.Message.GetExtendedTextMessage().GetContextInfo() != nil {
-		logger.Debug("taking context info from ExtendedTextMessage",
-			zap.String("event_id", v.Info.ID),
+		tgChatId, tgThreadId, tgMsgId, err := database.MsgIdGetTgFromWa(
+			v.Message.GetProtocolMessage().GetKey().GetId(),
+			v.Info.Chat.String(),
 		)
-		contextInfo = v.Message.GetExtendedTextMessage().GetContextInfo()
-	} else if v.Message.GetImageMessage() != nil {
-		logger.Debug("taking context info from ImageMessage",
-			zap.String("event_id", v.Info.ID),
-		)
-		contextInfo = v.Message.GetImageMessage().GetContextInfo()
-	} else if v.Message.GetVideoMessage() != nil {
-		logger.Debug("taking context info from VideoMessage",
-			zap.String("event_id", v.Info.ID),
-		)
-		contextInfo = v.Message.GetVideoMessage().GetContextInfo()
-	} else if v.Message.GetAudioMessage() != nil {
-		logger.Debug("taking context info from AudioMessage",
-			zap.String("event_id", v.Info.ID),
-		)
-		contextInfo = v.Message.GetAudioMessage().GetContextInfo()
-	} else if v.Message.GetDocumentMessage() != nil {
-		logger.Debug("taking context info from DocumentMessage",
-			zap.String("event_id", v.Info.ID),
-		)
-		contextInfo = v.Message.GetDocumentMessage().GetContextInfo()
-	} else if v.Message.GetStickerMessage() != nil {
-		logger.Debug("taking context info from StickerMessage",
-			zap.String("event_id", v.Info.ID),
-		)
-		contextInfo = v.Message.GetStickerMessage().GetContextInfo()
-	} else if v.Message.GetContactMessage() != nil {
-		logger.Debug("taking context info from ContactMessage",
-			zap.String("event_id", v.Info.ID),
-		)
-		contextInfo = v.Message.GetContactMessage().GetContextInfo()
-	} else if v.Message.GetContactsArrayMessage() != nil {
-		logger.Debug("taking context info from ContactsArrayMessage",
-			zap.String("event_id", v.Info.ID),
-		)
-		contextInfo = v.Message.GetContactsArrayMessage().GetContextInfo()
-	} else if v.Message.GetLocationMessage() != nil {
-		logger.Debug("taking context info from LocationMessage",
-			zap.String("event_id", v.Info.ID),
-		)
-		contextInfo = v.Message.GetLocationMessage().GetContextInfo()
-	} else if v.Message.GetLiveLocationMessage() != nil {
-		logger.Debug("taking context info from LiveLocationMessage",
-			zap.String("event_id", v.Info.ID),
-		)
-		contextInfo = v.Message.GetLiveLocationMessage().GetContextInfo()
-	} else if v.Message.GetPollCreationMessage() != nil {
-		logger.Debug("taking context info from PollCreationMessage",
-			zap.String("event_id", v.Info.ID),
-		)
-		contextInfo = v.Message.GetPollCreationMessage().GetContextInfo()
-	} else if v.Message.GetPollCreationMessageV2() != nil {
-		logger.Debug("taking context info from PollCreationMessageV2",
-			zap.String("event_id", v.Info.ID),
-		)
-		contextInfo = v.Message.GetPollCreationMessageV2().GetContextInfo()
-	} else if v.Message.GetPollCreationMessageV3() != nil {
-		logger.Debug("taking context info from PollCreationMessageV3",
-			zap.String("event_id", v.Info.ID),
-		)
-		contextInfo = v.Message.GetPollCreationMessageV3().GetContextInfo()
-	} else {
-		logger.Debug("no context info found in any kind of messages",
-			zap.String("event_id", v.Info.ID),
-		)
-	}
-
-	if contextInfo != nil {
-
-		if contextInfo.GetIsForwarded() {
-			bridgedText += fmt.Sprintf("⏩: Forwarded %v times\n", contextInfo.GetForwardingScore())
-		}
-
-		// Telegram will automatically trim the string
-		bridgedText += "\n"
-
-		logger.Debug("checking if your account is mentioned in the message",
-			zap.String("event_id", v.Info.ID),
-		)
-		if mentioned := contextInfo.GetMentionedJid(); v.Info.IsGroup && mentioned != nil {
-			for _, jid := range mentioned {
-				parsedJid, _ := utils.WaParseJID(jid)
-				if parsedJid.User == waClient.Store.ID.User {
-
-					tagInfoText := "#mentions\n\n" + bridgedText + fmt.Sprintf("\n<i>You were tagged in %s</i>",
-						html.EscapeString(utils.WaGetGroupName(v.Info.Chat)))
-
-					threadId, err := utils.TgGetOrMakeThreadFromWa("status@broadcast", cfg.Telegram.TargetChatID, "Status/Calls/Tags [ status@broadcast ]")
-					if err != nil {
-						utils.TgSendErrorById(tgBot, cfg.Telegram.TargetChatID, 0, "failed to create/find thread id for 'status@broadcast'", err)
-					} else {
-						tgBot.SendMessage(cfg.Telegram.TargetChatID, tagInfoText, &gotgbot.SendMessageOpts{
-							MessageThreadId: threadId,
-							ReplyMarkup:     replymarkup,
-						})
-					}
-
-					break
-				}
-			}
-		}
-
-		logger.Debug("trying to retrieve mapped Message in Telegram",
-			zap.String("event_id", v.Info.ID),
-		)
-		stanzaId := contextInfo.GetStanzaId()
-		tgChatId, tgThreadId, tgMsgId, err := database.MsgIdGetTgFromWa(stanzaId, v.Info.Chat.String())
 		if err == nil && tgChatId == cfg.Telegram.TargetChatID {
 			replyToMsgId = tgMsgId
 			threadId = tgThreadId
 			threadIdFound = true
 		}
+
 	} else {
-		// Telegram will automatically trim the string
-		bridgedText += "\n"
+
+		logger.Debug("trying to retrieve context info from Message",
+			zap.String("event_id", v.Info.ID),
+		)
+		var contextInfo *waProto.ContextInfo = nil
+
+		if v.Message.GetExtendedTextMessage().GetContextInfo() != nil {
+			logger.Debug("taking context info from ExtendedTextMessage",
+				zap.String("event_id", v.Info.ID),
+			)
+			contextInfo = v.Message.GetExtendedTextMessage().GetContextInfo()
+		} else if v.Message.GetImageMessage() != nil {
+			logger.Debug("taking context info from ImageMessage",
+				zap.String("event_id", v.Info.ID),
+			)
+			contextInfo = v.Message.GetImageMessage().GetContextInfo()
+		} else if v.Message.GetVideoMessage() != nil {
+			logger.Debug("taking context info from VideoMessage",
+				zap.String("event_id", v.Info.ID),
+			)
+			contextInfo = v.Message.GetVideoMessage().GetContextInfo()
+		} else if v.Message.GetAudioMessage() != nil {
+			logger.Debug("taking context info from AudioMessage",
+				zap.String("event_id", v.Info.ID),
+			)
+			contextInfo = v.Message.GetAudioMessage().GetContextInfo()
+		} else if v.Message.GetDocumentMessage() != nil {
+			logger.Debug("taking context info from DocumentMessage",
+				zap.String("event_id", v.Info.ID),
+			)
+			contextInfo = v.Message.GetDocumentMessage().GetContextInfo()
+		} else if v.Message.GetStickerMessage() != nil {
+			logger.Debug("taking context info from StickerMessage",
+				zap.String("event_id", v.Info.ID),
+			)
+			contextInfo = v.Message.GetStickerMessage().GetContextInfo()
+		} else if v.Message.GetContactMessage() != nil {
+			logger.Debug("taking context info from ContactMessage",
+				zap.String("event_id", v.Info.ID),
+			)
+			contextInfo = v.Message.GetContactMessage().GetContextInfo()
+		} else if v.Message.GetContactsArrayMessage() != nil {
+			logger.Debug("taking context info from ContactsArrayMessage",
+				zap.String("event_id", v.Info.ID),
+			)
+			contextInfo = v.Message.GetContactsArrayMessage().GetContextInfo()
+		} else if v.Message.GetLocationMessage() != nil {
+			logger.Debug("taking context info from LocationMessage",
+				zap.String("event_id", v.Info.ID),
+			)
+			contextInfo = v.Message.GetLocationMessage().GetContextInfo()
+		} else if v.Message.GetLiveLocationMessage() != nil {
+			logger.Debug("taking context info from LiveLocationMessage",
+				zap.String("event_id", v.Info.ID),
+			)
+			contextInfo = v.Message.GetLiveLocationMessage().GetContextInfo()
+		} else if v.Message.GetPollCreationMessage() != nil {
+			logger.Debug("taking context info from PollCreationMessage",
+				zap.String("event_id", v.Info.ID),
+			)
+			contextInfo = v.Message.GetPollCreationMessage().GetContextInfo()
+		} else if v.Message.GetPollCreationMessageV2() != nil {
+			logger.Debug("taking context info from PollCreationMessageV2",
+				zap.String("event_id", v.Info.ID),
+			)
+			contextInfo = v.Message.GetPollCreationMessageV2().GetContextInfo()
+		} else if v.Message.GetPollCreationMessageV3() != nil {
+			logger.Debug("taking context info from PollCreationMessageV3",
+				zap.String("event_id", v.Info.ID),
+			)
+			contextInfo = v.Message.GetPollCreationMessageV3().GetContextInfo()
+		} else {
+			logger.Debug("no context info found in any kind of messages",
+				zap.String("event_id", v.Info.ID),
+			)
+		}
+
+		if contextInfo != nil {
+
+			if contextInfo.GetIsForwarded() {
+				bridgedText += fmt.Sprintf("⏩: Forwarded %v times\n", contextInfo.GetForwardingScore())
+			}
+
+			// Telegram will automatically trim the string
+			bridgedText += "\n"
+
+			logger.Debug("checking if your account is mentioned in the message",
+				zap.String("event_id", v.Info.ID),
+			)
+			if mentioned := contextInfo.GetMentionedJid(); v.Info.IsGroup && mentioned != nil {
+				for _, jid := range mentioned {
+					parsedJid, _ := utils.WaParseJID(jid)
+					if parsedJid.User == waClient.Store.ID.User {
+
+						tagInfoText := "#mentions\n\n" + bridgedText + fmt.Sprintf("\n<i>You were tagged in %s</i>",
+							html.EscapeString(utils.WaGetGroupName(v.Info.Chat)))
+
+						threadId, err := utils.TgGetOrMakeThreadFromWa("mentions", cfg.Telegram.TargetChatID, "Mentions")
+						if err != nil {
+							utils.TgSendErrorById(tgBot, cfg.Telegram.TargetChatID, 0, "failed to create/find thread id for 'mentions'", err)
+						} else {
+							tgBot.SendMessage(cfg.Telegram.TargetChatID, tagInfoText, &gotgbot.SendMessageOpts{
+								MessageThreadId: threadId,
+								ReplyMarkup:     replyMarkup,
+							})
+						}
+
+						break
+					}
+				}
+			}
+
+			logger.Debug("trying to retrieve mapped Message in Telegram",
+				zap.String("event_id", v.Info.ID),
+			)
+			stanzaId := contextInfo.GetStanzaId()
+			tgChatId, tgThreadId, tgMsgId, err := database.MsgIdGetTgFromWa(stanzaId, v.Info.Chat.String())
+			if err == nil && tgChatId == cfg.Telegram.TargetChatID {
+				replyToMsgId = tgMsgId
+				threadId = tgThreadId
+				threadIdFound = true
+			}
+		}
 	}
+
+	// Telegram will automatically trim the string
+	bridgedText += "\n"
+
 	if !threadIdFound {
 		var err error
-		if v.Info.IsIncomingBroadcast() {
+		if v.Info.Chat.String() == "status@broadcast" {
+			threadId, err = utils.TgGetOrMakeThreadFromWa("status@broadcast", cfg.Telegram.TargetChatID,
+				"Status")
+			if err != nil {
+				utils.TgSendErrorById(tgBot, cfg.Telegram.TargetChatID, 0, "failed to create/find thread id for 'status@broadcast'", err)
+				return
+			}
+		} else if v.Info.IsIncomingBroadcast() {
 			threadId, err = utils.TgGetOrMakeThreadFromWa(v.Info.MessageSource.Sender.ToNonAD().String(), cfg.Telegram.TargetChatID,
 				utils.WaGetContactName(v.Info.MessageSource.Sender))
 			if err != nil {
@@ -412,7 +425,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 				MessageThreadId:  threadId,
 			})
 			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
+				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
 			return
@@ -423,7 +436,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 				MessageThreadId:  threadId,
 			})
 			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
+				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
 			return
@@ -436,7 +449,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 					MessageThreadId:  threadId,
 				})
 				if sentMsg.MessageId != 0 {
-					database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
+					database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 						cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 				}
 				return
@@ -456,7 +469,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 				MessageThreadId:  threadId,
 			})
 			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
+				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
 			return
@@ -476,7 +489,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 				MessageThreadId:  threadId,
 			})
 			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
+				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
 			return
@@ -487,7 +500,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 				MessageThreadId:  threadId,
 			})
 			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
+				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
 			return
@@ -500,7 +513,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 					MessageThreadId:  threadId,
 				})
 				if sentMsg.MessageId != 0 {
-					database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
+					database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 						cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 				}
 				return
@@ -525,7 +538,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 				MessageThreadId:  threadId,
 			})
 			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
+				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
 			return
@@ -545,7 +558,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 				MessageThreadId:  threadId,
 			})
 			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
+				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
 			return
@@ -556,7 +569,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 				MessageThreadId:  threadId,
 			})
 			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
+				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
 			return
@@ -569,7 +582,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 					MessageThreadId:  threadId,
 				})
 				if sentMsg.MessageId != 0 {
-					database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
+					database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 						cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 				}
 				return
@@ -594,7 +607,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 				MessageThreadId:  threadId,
 			})
 			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
+				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
 			return
@@ -614,7 +627,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 				MessageThreadId:  threadId,
 			})
 			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
+				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
 			return
@@ -625,7 +638,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 				MessageThreadId:  threadId,
 			})
 			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
+				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
 			return
@@ -638,7 +651,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 					MessageThreadId:  threadId,
 				})
 				if sentMsg.MessageId != 0 {
-					database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
+					database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 						cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 				}
 				return
@@ -656,7 +669,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 				MessageThreadId:  threadId,
 			})
 			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
+				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
 			return
@@ -676,7 +689,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 				MessageThreadId:  threadId,
 			})
 			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
+				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
 			return
@@ -687,7 +700,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 				MessageThreadId:  threadId,
 			})
 			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
+				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
 			return
@@ -700,7 +713,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 					MessageThreadId:  threadId,
 				})
 				if sentMsg.MessageId != 0 {
-					database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
+					database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 						cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 				}
 				return
@@ -718,7 +731,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 				MessageThreadId:  threadId,
 			})
 			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
+				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
 			return
@@ -738,7 +751,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 				MessageThreadId:  threadId,
 			})
 			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
+				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
 			return
@@ -749,7 +762,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 				MessageThreadId:  threadId,
 			})
 			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
+				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
 			return
@@ -762,7 +775,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 					MessageThreadId:  threadId,
 				})
 				if sentMsg.MessageId != 0 {
-					database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
+					database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 						cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 				}
 				return
@@ -787,7 +800,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 				MessageThreadId:  threadId,
 			})
 			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
+				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
 			return
@@ -807,7 +820,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 				MessageThreadId:  threadId,
 			})
 			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
+				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
 			return
@@ -818,7 +831,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 				MessageThreadId:  threadId,
 			})
 			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
+				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
 			return
@@ -831,7 +844,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 					MessageThreadId:  threadId,
 				})
 				if sentMsg.MessageId != 0 {
-					database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
+					database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 						cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 				}
 				return
@@ -851,10 +864,10 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 					Caption:          bridgedText,
 					ReplyToMessageId: replyToMsgId,
 					MessageThreadId:  threadId,
-					ReplyMarkup:      replymarkup,
+					ReplyMarkup:      replyMarkup,
 				})
 				if sentMsg.MessageId != 0 {
-					database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
+					database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 						cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 				}
 				return
@@ -864,10 +877,10 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 			sentMsg, _ := tgBot.SendSticker(cfg.Telegram.TargetChatID, stickerBytes, &gotgbot.SendStickerOpts{
 				ReplyToMessageId: replyToMsgId,
 				MessageThreadId:  threadId,
-				ReplyMarkup:      replymarkup,
+				ReplyMarkup:      replyMarkup,
 			})
 			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
+				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
 		}
@@ -882,7 +895,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 				MessageThreadId:  threadId,
 			})
 			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
+				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
 			return
@@ -897,7 +910,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 				MessageThreadId:  threadId,
 			})
 			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
+				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
 			return
@@ -908,10 +921,10 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 				Vcard:            contactMsg.GetVcard(),
 				ReplyToMessageId: replyToMsgId,
 				MessageThreadId:  threadId,
-				ReplyMarkup:      replymarkup,
+				ReplyMarkup:      replyMarkup,
 			})
 		if sentMsg.MessageId != 0 {
-			database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
+			database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 				cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 		}
 		return
@@ -927,7 +940,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 				MessageThreadId:  threadId,
 			})
 			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
+				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
 			return
@@ -949,10 +962,10 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 					Vcard:            contactMsg.GetVcard(),
 					ReplyToMessageId: replyToMsgId,
 					MessageThreadId:  threadId,
-					ReplyMarkup:      replymarkup,
+					ReplyMarkup:      replyMarkup,
 				})
 			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
+				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
 		}
@@ -969,7 +982,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 				MessageThreadId:  threadId,
 			})
 			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
+				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
 			return
@@ -981,7 +994,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 				MessageThreadId:    threadId,
 			})
 		if sentMsg.MessageId != 0 {
-			database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
+			database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 				cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 		}
 
@@ -998,7 +1011,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 				MessageThreadId:  threadId,
 			})
 			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
+				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
 			return
@@ -1009,7 +1022,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 			MessageThreadId:  threadId,
 		})
 		if sentMsg.MessageId != 0 {
-			database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
+			database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 				cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 		}
 		return
@@ -1041,7 +1054,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 			MessageThreadId:  threadId,
 		})
 		if sentMsg.MessageId != 0 {
-			database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
+			database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 				cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 		}
 		return
@@ -1079,7 +1092,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message) {
 			panic(fmt.Errorf("failed to send telegram message: %s", err))
 		}
 		if sentMsg.MessageId != 0 {
-			database.MsgIdAddNewPair(v.Info.ID, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
+			database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 				cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 		}
 		return
@@ -1095,9 +1108,9 @@ func CallOfferEventHandler(v *events.CallOffer) {
 	// TODO : Check and handle group calls
 	callerName := utils.WaGetContactName(v.CallCreator)
 
-	callThreadId, err := utils.TgGetOrMakeThreadFromWa("status@broadcast", cfg.Telegram.TargetChatID, "Status/Calls/Tags [ status@broadcast ]")
+	callThreadId, err := utils.TgGetOrMakeThreadFromWa("calls", cfg.Telegram.TargetChatID, "Calls")
 	if err != nil {
-		utils.TgSendErrorById(tgBot, cfg.Telegram.TargetChatID, 0, "Failed to create/retreive corresponding thread id for status/calls/tags", err)
+		utils.TgSendErrorById(tgBot, cfg.Telegram.TargetChatID, 0, "Failed to create/retreive corresponding thread id for calls", err)
 		return
 	}
 
