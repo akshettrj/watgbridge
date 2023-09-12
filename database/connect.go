@@ -46,7 +46,9 @@ func Connect() (*gorm.DB, error) {
 		dns += " dbname=" + dbConfig["dbname"]
 		dns += " port=" + dbConfig["port"]
 		dns += " TimeZone=" + dbConfig["time_zone"]
-		dns += " sslmode=disable"
+		if _, found := dbConfig["ssl"]; !found {
+			dns += " sslmode=disable"
+		}
 
 		return gorm.Open(postgres.Open(dns), &gorm.Config{})
 
