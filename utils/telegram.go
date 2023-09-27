@@ -20,6 +20,7 @@ import (
 	"go.mau.fi/whatsmeow"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
 	waTypes "go.mau.fi/whatsmeow/types"
+	"go.uber.org/zap"
 	"golang.org/x/exp/slices"
 	"google.golang.org/protobuf/proto"
 )
@@ -170,6 +171,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 
 	var (
 		cfg      = state.State.Config
+		logger   = state.State.Logger
 		waClient = state.State.WhatsAppClient
 		mentions = []string{}
 	)
@@ -194,6 +196,27 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			parsedJID, _ := WaParseJID(username)
 			mentions = append(mentions, parsedJID.String())
 		}
+	}
+
+	if cfg.WhatsApp.SendMyPresenceAndReceipts {
+		err := waClient.SendPresence(waTypes.PresenceAvailable)
+		if err != nil {
+			logger.Warn("failed to send presence",
+				zap.Error(err),
+				zap.String("presence", string(waTypes.PresenceAvailable)),
+			)
+		}
+
+		go func() {
+			time.Sleep(10 * time.Second)
+			err := waClient.SendPresence(waTypes.PresenceUnavailable)
+			if err != nil {
+				logger.Warn("failed to send presence",
+					zap.Error(err),
+					zap.String("presence", string(waTypes.PresenceUnavailable)),
+				)
+			}
+		}()
 	}
 
 	if msgToForward.Photo != nil && len(msgToForward.Photo) > 0 {

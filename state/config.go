@@ -55,6 +55,7 @@ type Config struct {
 		SendRevokedMessageUpdates      bool     `yaml:"send_revoked_message_updates"`
 		WhatsmeowDebugMode             bool     `yaml:"whatsmeow_debug_mode"`
 		SendMyMessagesFromOtherDevices bool     `yaml:"send_my_messages_from_other_devices"`
+		SendMyPresenceAndReceipts      bool     `yaml:"send_my_presence_and_receipts"`
 	} `yaml:"whatsapp"`
 
 	Database map[string]string `yaml:"database"`
