@@ -22,10 +22,12 @@ func NewTelegramClient() error {
 	defer logger.Sync()
 
 	bot, err := gotgbot.NewBot(cfg.Telegram.BotToken, &gotgbot.BotOpts{
-		Client: http.Client{},
-		DefaultRequestOpts: &gotgbot.RequestOpts{
-			APIURL:  cfg.Telegram.APIURL,
-			Timeout: time.Duration(math.MaxInt64),
+		BotClient: &gotgbot.BaseBotClient{
+			Client: http.Client{},
+			DefaultRequestOpts: &gotgbot.RequestOpts{
+				APIURL:  cfg.Telegram.APIURL,
+				Timeout: time.Duration(math.MaxInt64),
+			},
 		},
 	})
 	if err != nil {
@@ -61,7 +63,7 @@ func NewTelegramClient() error {
 
 	err = updater.StartPolling(bot, &ext.PollingOpts{
 		DropPendingUpdates: true,
-		GetUpdatesOpts: gotgbot.GetUpdatesOpts{
+		GetUpdatesOpts: &gotgbot.GetUpdatesOpts{
 			Timeout: 9,
 			RequestOpts: &gotgbot.RequestOpts{
 				Timeout: 10 * time.Second,
@@ -76,7 +78,7 @@ func NewTelegramClient() error {
 		zap.Int64("id", bot.Id),
 		zap.String("name", bot.FirstName),
 		zap.String("username", "@"+bot.Username),
-		zap.String("api_url", bot.GetAPIURL()),
+		zap.String("api_url", cfg.Telegram.APIURL),
 	)
 
 	return nil

@@ -34,6 +34,10 @@ func main() {
 		panic(fmt.Errorf("failed to load config file: %s", err))
 	}
 
+	if cfg.Telegram.APIURL == "" {
+		cfg.Telegram.APIURL = gotgbot.DefaultAPIURL
+	}
+
 	if cfg.DebugMode {
 		developmentConfig := zap.NewDevelopmentConfig()
 		developmentConfig.OutputPaths = append(developmentConfig.OutputPaths, "debug.log")

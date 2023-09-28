@@ -13,7 +13,7 @@ type disableWebPagePreviewBotClient struct {
 }
 
 func (b *disableWebPagePreviewBotClient) RequestWithContext(ctx context.Context,
-	method string, params map[string]string,
+	token string, method string, params map[string]string,
 	data map[string]gotgbot.NamedReader,
 	opts *gotgbot.RequestOpts) (json.RawMessage, error) {
 
@@ -21,7 +21,7 @@ func (b *disableWebPagePreviewBotClient) RequestWithContext(ctx context.Context,
 		params["disable_web_page_preview"] = "true"
 	}
 
-	return b.BotClient.RequestWithContext(ctx, method, params, data, opts)
+	return b.BotClient.RequestWithContext(ctx, token, method, params, data, opts)
 }
 
 func DisableWebPagePreview(b gotgbot.BotClient) gotgbot.BotClient {
