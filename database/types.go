@@ -1,6 +1,10 @@
 package database
 
-import "watgbridge/state"
+import (
+	"database/sql"
+
+	"watgbridge/state"
+)
 
 type MsgIdPair struct {
 	// WhatsApp
@@ -12,6 +16,8 @@ type MsgIdPair struct {
 	TgChatId   int64
 	TgThreadId int64
 	TgMsgId    int64
+
+	MarkRead sql.NullBool
 }
 
 type ChatThreadPair struct {

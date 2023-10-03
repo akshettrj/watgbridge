@@ -26,6 +26,8 @@ type Config struct {
 		SelfHostedAPI       bool    `yaml:"self_hosted_api"`
 		SkipVideoStickers   bool    `yaml:"skip_video_stickers"`
 		SkipSettingCommands bool    `yaml:"skip_setting_commands"`
+		SendMyPresence      bool    `yaml:"send_my_presence"`
+		SendMyReadReceipts  bool    `yaml:"send_my_read_receipts"`
 	} `yaml:"telegram"`
 
 	WhatsApp struct {

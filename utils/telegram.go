@@ -20,6 +20,7 @@ import (
 	"go.mau.fi/whatsmeow"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
 	waTypes "go.mau.fi/whatsmeow/types"
+	"go.uber.org/zap"
 	"golang.org/x/exp/slices"
 	"google.golang.org/protobuf/proto"
 )
@@ -170,6 +171,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 
 	var (
 		cfg      = state.State.Config
+		logger   = state.State.Logger
 		waClient = state.State.WhatsAppClient
 		mentions = []string{}
 	)
@@ -194,6 +196,27 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			parsedJID, _ := WaParseJID(username)
 			mentions = append(mentions, parsedJID.String())
 		}
+	}
+
+	if cfg.Telegram.SendMyPresence {
+		err := waClient.SendPresence(waTypes.PresenceAvailable)
+		if err != nil {
+			logger.Warn("failed to send presence",
+				zap.Error(err),
+				zap.String("presence", string(waTypes.PresenceAvailable)),
+			)
+		}
+
+		go func() {
+			time.Sleep(10 * time.Second)
+			err := waClient.SendPresence(waTypes.PresenceUnavailable)
+			if err != nil {
+				logger.Warn("failed to send presence",
+					zap.Error(err),
+					zap.String("presence", string(waTypes.PresenceUnavailable)),
+				)
+			}
+		}()
 	}
 
 	if msgToForward.Photo != nil && len(msgToForward.Photo) > 0 {
@@ -869,6 +892,32 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			}
 		}
 
+	}
+
+	if cfg.Telegram.SendMyReadReceipts {
+		unreadMsgs, err := database.MsgIdGetUnread(waChatJID.String())
+		if err != nil {
+			return TgReplyWithErrorByContext(b, c, "Message sent but failed to get unread messages to mark them read", err)
+		}
+
+		for sender, msgIds := range unreadMsgs {
+			senderJID, _ := WaParseJID(sender)
+			err := waClient.MarkRead(msgIds, time.Now(), waChatJID, senderJID)
+			if err != nil {
+				logger.Warn(
+					"failed to mark messages as read",
+					zap.String("chat_id", waChatJID.String()),
+					zap.Any("msg_ids", msgIds),
+					zap.String("sender", senderJID.String()),
+				)
+			} else {
+				for _, msgId := range msgIds {
+					database.MsgIdMarkRead(waChatJID.String(), msgId)
+				}
+			}
+		}
+
+		// waClient.MarkRead(unreadMsgs, time.Now(), waChatJID, )
 	}
 
 	return nil
