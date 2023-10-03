@@ -198,7 +198,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		}
 	}
 
-	if cfg.WhatsApp.SendMyPresenceAndReceipts {
+	if cfg.Telegram.SendMyPresence {
 		err := waClient.SendPresence(waTypes.PresenceAvailable)
 		if err != nil {
 			logger.Warn("failed to send presence",
@@ -892,6 +892,32 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			}
 		}
 
+	}
+
+	if cfg.Telegram.SendMyReadReceipts {
+		unreadMsgs, err := database.MsgIdGetUnread(waChatJID.String())
+		if err != nil {
+			return TgReplyWithErrorByContext(b, c, "Message sent but failed to get unread messages to mark them read", err)
+		}
+
+		for sender, msgIds := range unreadMsgs {
+			senderJID, _ := WaParseJID(sender)
+			err := waClient.MarkRead(msgIds, time.Now(), waChatJID, senderJID)
+			if err != nil {
+				logger.Warn(
+					"failed to mark messages as read",
+					zap.String("chat_id", waChatJID.String()),
+					zap.Any("msg_ids", msgIds),
+					zap.String("sender", senderJID.String()),
+				)
+			} else {
+				for _, msgId := range msgIds {
+					database.MsgIdMarkRead(waChatJID.String(), msgId)
+				}
+			}
+		}
+
+		// waClient.MarkRead(unreadMsgs, time.Now(), waChatJID, )
 	}
 
 	return nil

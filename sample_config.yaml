@@ -17,6 +17,9 @@ telegram:
   skip_video_stickers: false              # Setting this as true will stop trying to convert telegram video stickers to webp and sending them
   skip_setting_commands: false            # This will not show you list of commands when you start typing / in telegram
 
+  send_my_presence: false                 # Setting this to true will show your account as online to others whenever you send a message using Telegram
+  send_my_read_receipts: false            # Setting this to true will mark all unread messages in a chat as read when you send a new message using Telegram
+
 whatsapp:
   session_name: watgbridge        # This will appear in your Linked Devices in mobile app
   # All these values can be obtained by running /findcontacts and /getwagroups commands

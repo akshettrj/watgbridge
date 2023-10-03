@@ -26,6 +26,9 @@ func WhatsAppEventHandler(evt interface{}) {
 
 	switch v := evt.(type) {
 
+	case *events.Receipt:
+		ReceiptEventHandler(v)
+
 	case *events.PushName:
 		PushNameEventHandler(v)
 
@@ -1118,6 +1121,14 @@ func CallOfferEventHandler(v *events.CallOffer) {
 		html.EscapeString(callerName), html.EscapeString(v.Timestamp.In(state.State.LocalLocation).Format(cfg.TimeFormat)))
 
 	utils.TgSendTextById(tgBot, cfg.Telegram.TargetChatID, callThreadId, bridgeText)
+}
+
+func ReceiptEventHandler(v *events.Receipt) {
+	if v.Type == events.ReceiptTypeReadSelf {
+		for _, msgId := range v.MessageIDs {
+			database.MsgIdMarkRead(v.Chat.String(), msgId)
+		}
+	}
 }
 
 func PushNameEventHandler(v *events.PushName) {

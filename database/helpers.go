@@ -1,6 +1,8 @@
 package database
 
 import (
+	"database/sql"
+
 	"watgbridge/state"
 
 	"go.mau.fi/whatsmeow/types"
@@ -22,6 +24,7 @@ func MsgIdAddNewPair(waMsgId, participantId, waChatId string, tgChatId, tgMsgId,
 		bridgePair.TgChatId = tgChatId
 		bridgePair.TgMsgId = tgMsgId
 		bridgePair.TgThreadId = tgThreadId
+		bridgePair.MarkRead = sql.NullBool{Valid: true, Bool: false}
 		res = db.Save(&bridgePair)
 		return res.Error
 	}
@@ -33,6 +36,7 @@ func MsgIdAddNewPair(waMsgId, participantId, waChatId string, tgChatId, tgMsgId,
 		TgChatId:      tgChatId,
 		TgMsgId:       tgMsgId,
 		TgThreadId:    tgThreadId,
+		MarkRead:      sql.NullBool{Valid: true, Bool: false},
 	})
 	return res.Error
 }
@@ -55,6 +59,44 @@ func MsgIdGetWaFromTg(tgChatId, tgMsgId, tgThreadId int64) (msgId, participantId
 	res := db.Where("tg_chat_id = ? AND tg_msg_id = ? AND tg_thread_id = ?", tgChatId, tgMsgId, tgThreadId).Find(&bridgePair)
 
 	return bridgePair.ID, bridgePair.ParticipantId, bridgePair.WaChatId, res.Error
+}
+
+func MsgIdGetUnread(waChatId string) (map[string]([]string), error) {
+
+	db := state.State.Database
+
+	var bridgePairs []MsgIdPair
+	res := db.Where("wa_chat_id = ? AND mark_read = false", waChatId).Find(&bridgePairs)
+
+	var msgIds = make(map[string]([]string))
+
+	for _, pair := range bridgePairs {
+		if _, found := msgIds[pair.ParticipantId]; !found {
+			msgIds[pair.ParticipantId] = []string{}
+		}
+		msgIds[pair.ParticipantId] = append(msgIds[pair.ParticipantId], pair.ID)
+	}
+
+	return msgIds, res.Error
+}
+
+func MsgIdMarkRead(waChatId, waMsgId string) error {
+
+	db := state.State.Database
+
+	var bridgePair MsgIdPair
+	res := db.Where("id = ? AND wa_chat_id = ?", waMsgId, waChatId).Find(&bridgePair)
+	if res.Error != nil {
+		return res.Error
+	}
+
+	if bridgePair.ID == waMsgId {
+		bridgePair.MarkRead = sql.NullBool{Valid: true, Bool: true}
+		res = db.Save(&bridgePair)
+		return res.Error
+	}
+
+	return nil
 }
 
 func MsgIdDeletePair(tgChatId, tgMsgId int64) error {
