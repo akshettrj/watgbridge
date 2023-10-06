@@ -29,6 +29,10 @@ func Connect() (*gorm.DB, error) {
 		return nil, fmt.Errorf("Error: key 'type' not found in database config")
 	}
 
+	gormConfig := gorm.Config{
+		SkipDefaultTransaction: true,
+	}
+
 	switch dbType {
 
 	case "postgres":
@@ -50,7 +54,7 @@ func Connect() (*gorm.DB, error) {
 			dns += " sslmode=disable"
 		}
 
-		return gorm.Open(postgres.Open(dns), &gorm.Config{})
+		return gorm.Open(postgres.Open(dns), &gormConfig)
 
 	case "sqlite":
 
@@ -58,7 +62,7 @@ func Connect() (*gorm.DB, error) {
 			return nil, fmt.Errorf("Error: database config for type '%s' requires the keys %+v", dbType, missingKeys)
 		}
 
-		return gorm.Open(sqlite.Open(dbConfig["path"]), &gorm.Config{})
+		return gorm.Open(sqlite.Open(dbConfig["path"]), &gormConfig)
 
 	case "mysql":
 
@@ -76,7 +80,7 @@ func Connect() (*gorm.DB, error) {
 			dbConfig["dbname"],
 		)
 
-		return gorm.Open(mysql.Open(dns), &gorm.Config{})
+		return gorm.Open(mysql.Open(dns), &gormConfig)
 	}
 
 	return nil, fmt.Errorf("Database of type '%s' is not supported", dbType)
