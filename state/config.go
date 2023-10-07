@@ -28,6 +28,7 @@ type Config struct {
 		SkipSettingCommands bool    `yaml:"skip_setting_commands"`
 		SendMyPresence      bool    `yaml:"send_my_presence"`
 		SendMyReadReceipts  bool    `yaml:"send_my_read_receipts"`
+		Architecture        string  `yaml:"architecture"`
 	} `yaml:"telegram"`
 
 	WhatsApp struct {
