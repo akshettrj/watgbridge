@@ -6,6 +6,9 @@ go_executable: /usr/bin/go
 ffmpeg_executable: /usr/bin/ffmpeg
 debug_mode: false
 
+use_github_binaries: false              # Set to true if you want to use pre-built binaries from GitHub
+architecture:                           # Set it to aarch64 or amd64 based on your machine architecture to update using prebuilt releases
+
 telegram:
   bot_token: 186779
   #api_url: http://localhost:8082        # Uncomment if you have a local bot API server running (for bypassing file size limits)
@@ -19,7 +22,6 @@ telegram:
 
   send_my_presence: false                 # Setting this to true will show your account as online to others whenever you send a message using Telegram
   send_my_read_receipts: false            # Setting this to true will mark all unread messages in a chat as read when you send a new message using Telegram
-  architecture:                           # Set it to aarch64 or amd64 based on your machine architecture to update using prebuilt releases
 
 whatsapp:
   session_name: watgbridge        # This will appear in your Linked Devices in mobile app

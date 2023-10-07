@@ -17,6 +17,9 @@ type Config struct {
 	FfmpegExecutable string `yaml:"ffmpeg_executable"`
 	DebugMode        bool   `yaml:"debug_mode"`
 
+	UseGithHubBinaries bool   `yaml:"use_github_binaries"`
+	Architecture       string `yaml:"architecture"`
+
 	Telegram struct {
 		BotToken            string  `yaml:"bot_token"`
 		APIURL              string  `yaml:"api_url"`
@@ -28,7 +31,6 @@ type Config struct {
 		SkipSettingCommands bool    `yaml:"skip_setting_commands"`
 		SendMyPresence      bool    `yaml:"send_my_presence"`
 		SendMyReadReceipts  bool    `yaml:"send_my_read_receipts"`
-		Architecture        string  `yaml:"architecture"`
 	} `yaml:"telegram"`
 
 	WhatsApp struct {

@@ -218,7 +218,6 @@ func main() {
 
 		chatIdString, chatIdFound := os.LookupEnv("WATG_CHAT_ID")
 		msgIdString, msgIdFound := os.LookupEnv("WATG_MESSAGE_ID")
-		threadIdString, threadIdFound := os.LookupEnv("WATG_THREAD_ID")
 		if !chatIdFound || !msgIdFound {
 			goto SKIP_RESTART
 		}
@@ -231,12 +230,6 @@ func main() {
 
 		opts := gotgbot.SendMessageOpts{
 			ReplyToMessageId: msgId,
-		}
-		if threadIdFound {
-			threadId, threadIdSuccess := strconv.ParseInt(threadIdString, 10, 64)
-			if threadIdSuccess == nil {
-				opts.MessageThreadId = threadId
-			}
 		}
 
 		state.State.TelegramBot.SendMessage(chatId, "Successfully restarted", &opts)
