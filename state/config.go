@@ -17,6 +17,9 @@ type Config struct {
 	FfmpegExecutable string `yaml:"ffmpeg_executable"`
 	DebugMode        bool   `yaml:"debug_mode"`
 
+	UseGithHubBinaries bool   `yaml:"use_github_binaries"`
+	Architecture       string `yaml:"architecture"`
+
 	Telegram struct {
 		BotToken            string  `yaml:"bot_token"`
 		APIURL              string  `yaml:"api_url"`

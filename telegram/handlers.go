@@ -294,28 +294,57 @@ func UpdateAndRestartHandler(b *gotgbot.Bot, c *ext.Context) error {
 
 	cfg := state.State.Config
 
-	gitPullCmd := exec.Command(cfg.GitExecutable, "pull", "--rebase")
-	err := gitPullCmd.Run()
-	if err != nil {
-		return utils.TgReplyWithErrorByContext(b, c, "Failed to execute 'git pull --rebase' command", err)
-	}
-	utils.TgReplyTextByContext(b, c, "Successfully pulled from GitHub", nil)
+	if cfg.UseGithHubBinaries {
+		if cfg.Architecture == "" {
+			return utils.TgReplyWithErrorByContext(b, c,
+				"Please set an architecture field in config file\nCan be 'amd64' or 'aarch64'",
+				nil)
+		}
 
-	goBuildCmd := exec.Command(cfg.GoExecutable, "build")
-	err = goBuildCmd.Run()
-	if err != nil {
-		return utils.TgReplyWithErrorByContext(b, c, "Failed to execute 'go build' command", err)
+		RELEASE_URL_FORMAT := "https://github.com/akshettrj/watgbridge/releases/latest/download/watgbridge_linux_%s"
+
+		url := fmt.Sprintf(RELEASE_URL_FORMAT, cfg.Architecture)
+		err := utils.DownloadFileByURL("watgbridge_temp", url)
+		if err != nil {
+			return utils.TgReplyWithErrorByContext(b, c, "Failed to download the release", err)
+		}
+
+		err = os.Rename("watgbridge_temp", "watgbridge")
+		if err != nil {
+			return utils.TgReplyWithErrorByContext(b, c, "Failed to rename the downloaded file", err)
+		}
+
+		err = os.Chmod("watgbridge", 0755)
+		if err != nil {
+			return utils.TgReplyWithErrorByContext(b, c, "Failed to make the file executable", err)
+		}
+
+		utils.TgReplyTextByContext(b, c, "Successfully downloaded and prepared the release, now restarting...", nil)
+
+	} else {
+		gitPullCmd := exec.Command(cfg.GitExecutable, "pull", "--rebase")
+		err := gitPullCmd.Run()
+		if err != nil {
+			return utils.TgReplyWithErrorByContext(b, c, "Failed to execute 'git pull --rebase' command", err)
+		}
+
+		utils.TgReplyTextByContext(b, c, "Successfully pulled from GitHub", nil)
+
+		goBuildCmd := exec.Command(cfg.GoExecutable, "build")
+		err = goBuildCmd.Run()
+		if err != nil {
+			return utils.TgReplyWithErrorByContext(b, c, "Failed to execute 'go build' command", err)
+		}
+
+		utils.TgReplyTextByContext(b, c, "Successfully built the binary, now restarting...", nil)
+
 	}
-	utils.TgReplyTextByContext(b, c, "Successfully built the binary, now restarting...", nil)
 
 	os.Setenv("WATG_IS_RESTARTED", "1")
 	os.Setenv("WATG_CHAT_ID", fmt.Sprint(c.EffectiveChat.Id))
 	os.Setenv("WATG_MESSAGE_ID", fmt.Sprint(c.EffectiveMessage.MessageId))
-	if c.EffectiveMessage.IsTopicMessage {
-		os.Setenv("WATG_THREAD_ID", fmt.Sprint(c.EffectiveMessage.MessageThreadId))
-	}
 
-	err = syscall.Exec(path.Join(".", "watgbridge"), []string{}, os.Environ())
+	err := syscall.Exec(path.Join(".", "watgbridge"), []string{}, os.Environ())
 	if err != nil {
 		return utils.TgReplyWithErrorByContext(b, c, "Failed to run exec syscall to restart the bot", err)
 	}
