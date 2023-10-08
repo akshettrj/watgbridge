@@ -308,7 +308,7 @@ func UpdateAndRestartHandler(b *gotgbot.Bot, c *ext.Context) error {
 		RELEASE_URL_FORMAT := "https://github.com/akshettrj/watgbridge/releases/latest/download/watgbridge_linux_%s"
 
 		url := fmt.Sprintf(RELEASE_URL_FORMAT, cfg.Architecture)
-		err := utils.DownloadFileByURL("watgbridge_temp", url)
+		err := utils.DownloadFileToLocalByURL("watgbridge_temp", url)
 		if err != nil {
 			return utils.TgReplyWithErrorByContext(b, c, "Failed to download the release", err)
 		}

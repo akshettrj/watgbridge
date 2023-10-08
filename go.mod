@@ -8,20 +8,20 @@ require (
 	github.com/davecgh/go-spew v1.1.1
 	github.com/emersion/go-vcard v0.0.0-20230815062825-8fda7d206ec9
 	github.com/forPelevin/gomoji v1.1.8
-	github.com/go-co-op/gocron v1.34.2
+	github.com/go-co-op/gocron v1.35.0
 	github.com/jackc/pgx/v5 v5.4.3
 	github.com/kolesa-team/go-webp v1.0.4
 	github.com/lithammer/fuzzysearch v1.1.8
 	github.com/mattn/go-sqlite3 v1.14.17
 	github.com/mdp/qrterminal/v3 v3.1.1
-	go.mau.fi/whatsmeow v0.0.0-20230926223531-00abc29ba510
+	go.mau.fi/whatsmeow v0.0.0-20230929093856-69d5ba6fa3e3
 	go.uber.org/zap v1.26.0
-	golang.org/x/exp v0.0.0-20230905200255-921286631fa9
+	golang.org/x/exp v0.0.0-20231006140011-7918f672742d
 	google.golang.org/protobuf v1.31.0
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/driver/mysql v1.5.1
 	gorm.io/driver/postgres v1.5.2
-	gorm.io/driver/sqlite v1.5.3
+	gorm.io/driver/sqlite v1.5.4
 	gorm.io/gorm v1.25.4
 )
 
@@ -44,7 +44,7 @@ require (
 	go.mau.fi/util v0.1.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	golang.org/x/crypto v0.13.0 // indirect
+	golang.org/x/crypto v0.14.0 // indirect
 	golang.org/x/text v0.13.0 // indirect
 	rsc.io/qr v0.2.0 // indirect
 )

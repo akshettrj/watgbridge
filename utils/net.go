@@ -6,7 +6,17 @@ import (
 	"os"
 )
 
-func DownloadFileByURL(filepath string, url string) error {
+func DownloadFileBytesByURL(url string) ([]byte, error) {
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	return io.ReadAll(resp.Body)
+}
+
+func DownloadFileToLocalByURL(filepath string, url string) error {
 	resp, err := http.Get(url)
 	if err != nil {
 		return err

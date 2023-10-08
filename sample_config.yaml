@@ -48,6 +48,8 @@ whatsapp:
   skip_status: false
   skip_contacts: false
   skip_locations: false
+  skip_profile_picture_updates: false
+  skip_group_settings_updates: false   # This includes joins, leaves, name change, etc.
   skip_chat_details: true
   send_revoked_message_updates: false
   whatsmeow_debug_mode: false

@@ -14,6 +14,7 @@ import (
 
 	"github.com/PaulSonOfLars/gotgbot/v2"
 	goVCard "github.com/emersion/go-vcard"
+	"go.mau.fi/whatsmeow"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
 	waTypes "go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
@@ -24,10 +25,22 @@ import (
 
 func WhatsAppEventHandler(evt interface{}) {
 
+	cfg := state.State.Config
+
 	switch v := evt.(type) {
 
 	case *events.Receipt:
 		ReceiptEventHandler(v)
+
+	case *events.Picture:
+		if !cfg.WhatsApp.SkipProfilePictureUpdates {
+			PictureEventHandler(v)
+		}
+
+	case *events.GroupInfo:
+		if !cfg.WhatsApp.SkipGroupSettingsUpdates {
+			GroupInfoEventHandler(v)
+		}
 
 	case *events.PushName:
 		PushNameEventHandler(v)
@@ -1176,4 +1189,329 @@ func RevokedMessageEventHandler(v *events.Message) {
 		MessageThreadId:  tgThreadId,
 		ReplyToMessageId: tgMsgId,
 	})
+}
+
+func PictureEventHandler(v *events.Picture) {
+	var (
+		cfg      = state.State.Config
+		logger   = state.State.Logger
+		tgBot    = state.State.TelegramBot
+		waClient = state.State.WhatsAppClient
+	)
+	defer logger.Sync()
+
+	tgThreadId, threadFound, err := database.ChatThreadGetTgFromWa(v.JID.ToNonAD().String(), cfg.Telegram.TargetChatID)
+	if err != nil {
+		err = utils.TgSendTextById(
+			tgBot, cfg.Telegram.OwnerID, 0,
+			fmt.Sprintf(
+				"Warning: Chat thread could not be found for %s:\n\n<code>%s</code>",
+				v.JID.String(), html.EscapeString(err.Error()),
+			),
+		)
+		if err != nil {
+			logger.Error("failed to send message to owner", zap.Error(err))
+		}
+		return
+	}
+	if !threadFound || tgThreadId == 0 {
+		err = utils.TgSendTextById(
+			tgBot, cfg.Telegram.OwnerID, 0,
+			fmt.Sprintf("Warning: Not chat thread found for %s", v.JID.String()),
+		)
+		if err != nil {
+			logger.Error("failed to send message to owner", zap.Error(err))
+		}
+		return
+	}
+
+	if v.JID.Server == waTypes.GroupServer {
+		changer := utils.WaGetContactName(v.Author)
+		if v.Remove {
+			updateText := fmt.Sprintf("The profile picture was removed by %s", html.EscapeString(changer))
+			err = utils.TgSendTextById(
+				tgBot, cfg.Telegram.TargetChatID, tgThreadId,
+				updateText,
+			)
+			if err != nil {
+				logger.Error("failed to send message to the target chat", zap.Error(err))
+				return
+			}
+		} else {
+			pictureInfo, err := waClient.GetProfilePictureInfo(
+				v.JID,
+				&whatsmeow.GetProfilePictureParams{
+					Preview: false,
+				},
+			)
+			if err != nil {
+				logger.Error("failed to get profile picture info", zap.Error(err), zap.String("group", v.JID.String()))
+				return
+			}
+			if pictureInfo == nil {
+				logger.Error("failed to get profile picture info, received null", zap.String("group", v.JID.String()))
+				return
+			}
+
+			newPictureBytes, err := utils.DownloadFileBytesByURL(pictureInfo.URL)
+			if err != nil {
+				logger.Error("failed to download profile picture", zap.Error(err), zap.String("group", v.JID.String()))
+				return
+			}
+
+			_, err = tgBot.SendPhoto(cfg.Telegram.TargetChatID, newPictureBytes, &gotgbot.SendPhotoOpts{
+				MessageThreadId: tgThreadId,
+				Caption:         fmt.Sprintf("The profile picture was updated by %s", html.EscapeString(changer)),
+			})
+			if err != nil {
+				logger.Error("failed to send message to the group", zap.Error(err))
+				return
+			}
+		}
+	} else if v.JID.Server == waTypes.DefaultUserServer {
+		if v.Remove {
+			updateText := fmt.Sprintf("The profile picture was removed")
+			err = utils.TgSendTextById(
+				tgBot, cfg.Telegram.TargetChatID, tgThreadId,
+				updateText,
+			)
+			if err != nil {
+				logger.Error("failed to send message to the target chat", zap.Error(err))
+				return
+			}
+		} else {
+			pictureInfo, err := waClient.GetProfilePictureInfo(
+				v.JID,
+				&whatsmeow.GetProfilePictureParams{
+					Preview: false,
+				},
+			)
+			if err != nil {
+				logger.Error("failed to get profile picture info", zap.Error(err), zap.String("group", v.JID.String()))
+				return
+			}
+			if pictureInfo == nil {
+				logger.Error("failed to get profile picture info, received null", zap.String("group", v.JID.String()))
+				return
+			}
+
+			newPictureBytes, err := utils.DownloadFileBytesByURL(pictureInfo.URL)
+			if err != nil {
+				logger.Error("failed to download profile picture", zap.Error(err), zap.String("group", v.JID.String()))
+				return
+			}
+
+			_, err = tgBot.SendPhoto(cfg.Telegram.TargetChatID, newPictureBytes, &gotgbot.SendPhotoOpts{
+				MessageThreadId: tgThreadId,
+				Caption:         "The profile picture was updated",
+			})
+			if err != nil {
+				logger.Error("failed to send message to the group", zap.Error(err))
+				return
+			}
+		}
+	} else {
+		logger.Warn(
+			"Received Picture event for unknown JID type",
+			zap.String("jid", v.JID.String()),
+		)
+	}
+}
+
+func GroupInfoEventHandler(v *events.GroupInfo) {
+	var (
+		cfg    = state.State.Config
+		logger = state.State.Logger
+		tgBot  = state.State.TelegramBot
+	)
+	defer logger.Sync()
+
+	tgThreadId, threadFound, err := database.ChatThreadGetTgFromWa(v.JID.String(), cfg.Telegram.TargetChatID)
+	if err != nil {
+		err = utils.TgSendTextById(
+			tgBot, cfg.Telegram.OwnerID, 0,
+			fmt.Sprintf(
+				"Warning: Chat thread could not be found for %s:\n\n<code>%s</code>",
+				v.JID.String(), html.EscapeString(err.Error()),
+			),
+		)
+		if err != nil {
+			logger.Error("failed to send message to owner", zap.Error(err))
+		}
+		return
+	}
+	if !threadFound || tgThreadId == 0 {
+		err = utils.TgSendTextById(
+			tgBot, cfg.Telegram.OwnerID, 0,
+			fmt.Sprintf("Warning: Not chat thread found for %s", v.JID.String()),
+		)
+		if err != nil {
+			logger.Error("failed to send message to owner", zap.Error(err))
+		}
+		return
+	}
+
+	if v.Announce != nil {
+		var updateText string
+		if v.Announce.IsAnnounce {
+			updateText = "Group settings have been changed, only admins can send messages now"
+		} else {
+			updateText = "Group settings have been changed, everybody can send messages now"
+		}
+		err = utils.TgSendTextById(tgBot, cfg.Telegram.TargetChatID, tgThreadId, updateText)
+		if err != nil {
+			logger.Error("failed to send message", zap.Error(err))
+		}
+	}
+
+	if v.Ephemeral != nil {
+		var updateText string
+		if v.Ephemeral.IsEphemeral {
+			updateText = "Group's auto deletion timer has been turned on:\n"
+			updateText += fmt.Sprintf("Timer: %s", time.Second*time.Duration(v.Ephemeral.DisappearingTimer))
+		} else {
+			updateText = "Group's auto deletion timer has been disabled"
+		}
+		err = utils.TgSendTextById(tgBot, cfg.Telegram.TargetChatID, tgThreadId, updateText)
+		if err != nil {
+			logger.Error("failed to send message", zap.Error(err))
+		}
+	}
+
+	if v.Delete != nil {
+		updateText := "The group has been deleted"
+		if v.Delete.DeleteReason != "" {
+			updateText += fmt.Sprintf(
+				"\nReason: <code>%s</code>",
+				html.EscapeString(v.Delete.DeleteReason),
+			)
+		}
+		err = utils.TgSendTextById(
+			tgBot, cfg.Telegram.TargetChatID, tgThreadId,
+			"The group has been deleted",
+		)
+		if err != nil {
+			logger.Error("failed to send message", zap.Error(err))
+		}
+	}
+
+	if len(v.Join) > 0 {
+		var updateText string
+		if len(v.Join) == 1 {
+			newMemName := utils.WaGetContactName(v.Join[0])
+			updateText = fmt.Sprintf("%s joined the group\n", html.EscapeString(newMemName))
+		} else {
+			updateText = "The following people joined the group:\n"
+			for _, newMem := range v.Join {
+				newMemName := utils.WaGetContactName(newMem)
+				updateText += fmt.Sprintf("- %s\n", html.EscapeString(newMemName))
+			}
+		}
+		if v.JoinReason != "" {
+			updateText += fmt.Sprintf("\nReason: %s", html.EscapeString(v.JoinReason))
+		}
+		err = utils.TgSendTextById(tgBot, cfg.Telegram.TargetChatID, tgThreadId, updateText)
+		if err != nil {
+			logger.Error("failed to send message", zap.Error(err))
+		}
+	}
+
+	if len(v.Leave) > 0 {
+		var updateText string
+		if len(v.Leave) == 1 {
+			oldMemName := utils.WaGetContactName(v.Leave[0])
+			updateText = fmt.Sprintf("%s left the group\n", html.EscapeString(oldMemName))
+		} else {
+			updateText = "The following people left the group:\n"
+			for _, oldMem := range v.Leave {
+				oldMemName := utils.WaGetContactName(oldMem)
+				updateText += fmt.Sprintf("- %s\n", oldMemName)
+			}
+		}
+		err = utils.TgSendTextById(tgBot, cfg.Telegram.TargetChatID, tgThreadId, updateText)
+		if err != nil {
+			logger.Error("failed to send message", zap.Error(err))
+		}
+	}
+
+	if len(v.Demote) > 0 {
+		var updateText string
+		if len(v.Demote) == 1 {
+			demotedMemName := utils.WaGetContactName(v.Demote[0])
+			updateText = fmt.Sprintf("%s was demoted in the group\n", html.EscapeString(demotedMemName))
+		} else {
+			updateText = "The following people were demoted:\n"
+			for _, demotedMem := range v.Demote {
+				demotedMemName := utils.WaGetContactName(demotedMem)
+				updateText += fmt.Sprintf("- %s\n", demotedMemName)
+			}
+		}
+		err = utils.TgSendTextById(tgBot, cfg.Telegram.TargetChatID, tgThreadId, updateText)
+		if err != nil {
+			logger.Error("failed to send message", zap.Error(err))
+		}
+	}
+
+	if len(v.Promote) > 0 {
+		var updateText string
+		if len(v.Promote) == 1 {
+			promotedMemName := utils.WaGetContactName(v.Promote[0])
+			updateText = fmt.Sprintf("%s was promoted in the group\n", html.EscapeString(promotedMemName))
+		} else {
+			updateText = "The following people were promoted:\n"
+			for _, promotedMem := range v.Promote {
+				promotedMemName := utils.WaGetContactName(promotedMem)
+				updateText += fmt.Sprintf("- %s\n", promotedMemName)
+			}
+		}
+		err = utils.TgSendTextById(tgBot, cfg.Telegram.TargetChatID, tgThreadId, updateText)
+		if err != nil {
+			logger.Error("failed to send message", zap.Error(err))
+		}
+	}
+
+	if v.Topic != nil {
+		changer := utils.WaGetContactName(v.Topic.TopicSetBy)
+		updateText := fmt.Sprintf(
+			"The group description was changed by <b>%s</b>:\n\n<code>%s</code>",
+			html.EscapeString(changer),
+			html.EscapeString(v.Topic.Topic),
+		)
+		err = utils.TgSendTextById(tgBot, cfg.Telegram.TargetChatID, tgThreadId, updateText)
+		if err != nil {
+			logger.Error("failed to send message", zap.Error(err))
+		}
+	}
+
+	if v.Name != nil {
+		_, err = tgBot.EditForumTopic(
+			cfg.Telegram.TargetChatID, tgThreadId,
+			&gotgbot.EditForumTopicOpts{
+				Name: v.Name.Name,
+			},
+		)
+		if err != nil {
+			err = utils.TgSendTextById(
+				tgBot, cfg.Telegram.OwnerID, 0,
+				fmt.Sprintf(
+					"Warning: Chat name could not be changed for <code>%s</code> to <code>%s</code>:\n\n<code>%s</code>",
+					v.JID.String(), html.EscapeString(v.Name.Name), html.EscapeString(err.Error()),
+				),
+			)
+			if err != nil {
+				logger.Error("failed to send message to owner", zap.Error(err))
+			}
+			return
+		}
+		changer := utils.WaGetContactName(v.Name.NameSetBy)
+		updateText := fmt.Sprintf(
+			"The group name was changed by <b>%s</b>:\n\n<code>%s</code>",
+			html.EscapeString(changer),
+			html.EscapeString(v.Name.Name),
+		)
+		err = utils.TgSendTextById(tgBot, cfg.Telegram.TargetChatID, tgThreadId, updateText)
+		if err != nil {
+			logger.Error("failed to send message", zap.Error(err))
+		}
+	}
 }
