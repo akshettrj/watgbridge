@@ -53,6 +53,6 @@ PRs are welcome :)
 - Copy `sample_config.yaml` to `config.yaml` and fill the values, there are comments to help you.
 - Execute the binary by running `./watgbridge`
 - On first run, it will show QR code for logging into WhatsApp that can by scanned by the WhatsApp app in `Linked devices`
-- It is recommended to restart the bot after every few hours becuase WhatsApp likes to disconnect a lot. So a Systemd service file has been provided. Edit the `User` and `ExecStart` according to your setup:
+- It is recommended to restart the bot after every few hours becuase WhatsApp likes to disconnect a lot. So a sample Systemd service file has been provided (`watgbridge.service.sample`). Edit the `User` and `ExecStart` according to your setup:
     - If you do not have local bot API server, remove `tgbotapi.service` from the `After` key in `Unit` section.
     - This service file will restart the bot every 24 hours
