@@ -327,9 +327,6 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 				bridgedText += fmt.Sprintf("⏩: Forwarded %v times\n", contextInfo.GetForwardingScore())
 			}
 
-			// Telegram will automatically trim the string
-			bridgedText += "\n"
-
 			logger.Debug("checking if your account is mentioned in the message",
 				zap.String("event_id", v.Info.ID),
 			)
@@ -369,8 +366,9 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 		}
 	}
 
-	// Telegram will automatically trim the string
-	bridgedText += "\n"
+	if !strings.HasSuffix(bridgedText, "\n\n") {
+		bridgedText += "\n"
+	}
 
 	if !threadIdFound {
 		var err error
