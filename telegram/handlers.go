@@ -86,6 +86,10 @@ func AddTelegramHandlers() {
 			"Set the target WhatsApp private chat for current thread",
 		},
 		waTgBridgeCommand{
+			handlers.NewCommand("unlinkthread", UnlinkThreadHandler),
+			"Unlink the current thread from its WhatsApp chat",
+		},
+		waTgBridgeCommand{
 			handlers.NewCommand("getprofilepicture", GetProfilePictureHandler),
 			"Get the profile picture of user or group using its ID",
 		},
@@ -480,12 +484,46 @@ func SetTargetGroupChatHandler(b *gotgbot.Bot, c *ext.Context) error {
 	return err
 }
 
+func UnlinkThreadHandler(b *gotgbot.Bot, c *ext.Context) error {
+	if !utils.TgUpdateIsAuthorized(b, c) {
+		return nil
+	}
+
+	if !c.EffectiveMessage.IsTopicMessage || c.EffectiveMessage.MessageThreadId == 0 {
+		_, err := utils.TgReplyTextByContext(b, c, "The command should be sent in a topic", nil)
+		return err
+	}
+
+	var (
+		tgChatId   = c.EffectiveChat.Id
+		tgThreadId = c.EffectiveMessage.MessageThreadId
+	)
+
+	waChatId, err := database.ChatThreadGetWaFromTg(tgChatId, tgThreadId)
+	if err != nil {
+		err = utils.TgReplyWithErrorByContext(b, c, "Failed to get existing chat ID pairing", err)
+		return err
+	} else if waChatId == "" {
+		_, err := utils.TgReplyTextByContext(b, c, "No existing chat pairing found!!", nil)
+		return err
+	}
+
+	err = database.ChatThreadDropPairByTg(tgChatId, tgThreadId)
+	if err != nil {
+		err = utils.TgReplyWithErrorByContext(b, c, "Failed to delete the thread chat pairing", err)
+		return err
+	}
+
+	_, err = utils.TgReplyTextByContext(b, c, "Successfully unlinked", nil)
+	return err
+}
+
 func SetTargetPrivateChatHandler(b *gotgbot.Bot, c *ext.Context) error {
 	if !utils.TgUpdateIsAuthorized(b, c) {
 		return nil
 	}
 
-	usageString := "Usage: (Send in a topic) <code>" + html.EscapeString("/settargetprivatechat <user_id>") + "</code>"
+	usageString := "Usage (Send in a topic): <code>" + html.EscapeString("/settargetprivatechat <user_id>") + "</code>"
 
 	args := c.Args()
 	if len(args) <= 1 {

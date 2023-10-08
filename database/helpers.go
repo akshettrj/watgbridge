@@ -152,6 +152,15 @@ func ChatThreadGetTgFromWa(waChatId string, tgChatId int64) (int64, bool, error)
 	return chatPair.TgThreadId, found, res.Error
 }
 
+func ChatThreadDropPairByTg(tgChatId, tgThreadId int64) error {
+
+	db := state.State.Database
+
+	res := db.Where("tg_chat_id = ? AND tg_thread_id = ?", tgChatId, tgThreadId).Delete(&ChatThreadPair{})
+
+	return res.Error
+}
+
 func ChatThreadGetWaFromTg(tgChatId, tgThreadId int64) (string, error) {
 
 	db := state.State.Database
