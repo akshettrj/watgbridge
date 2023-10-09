@@ -1202,26 +1202,18 @@ func PictureEventHandler(v *events.Picture) {
 
 	tgThreadId, threadFound, err := database.ChatThreadGetTgFromWa(v.JID.ToNonAD().String(), cfg.Telegram.TargetChatID)
 	if err != nil {
-		err = utils.TgSendTextById(
-			tgBot, cfg.Telegram.OwnerID, 0,
-			fmt.Sprintf(
-				"Warning: Chat thread could not be found for %s:\n\n<code>%s</code>",
-				v.JID.String(), html.EscapeString(err.Error()),
-			),
+		logger.Warn(
+			"failed to find thread for a WhatsApp chat (handling Picture event)",
+			zap.String("chat", v.JID.String()),
+			zap.Error(err),
 		)
-		if err != nil {
-			logger.Error("failed to send message to owner", zap.Error(err))
-		}
 		return
 	}
 	if !threadFound || tgThreadId == 0 {
-		err = utils.TgSendTextById(
-			tgBot, cfg.Telegram.OwnerID, 0,
-			fmt.Sprintf("Warning: Not chat thread found for %s", v.JID.String()),
+		logger.Warn(
+			"no thread found for a WhatsApp chat (handling Picture event)",
+			zap.String("chat", v.JID.String()),
 		)
-		if err != nil {
-			logger.Error("failed to send message to owner", zap.Error(err))
-		}
 		return
 	}
 
@@ -1326,28 +1318,20 @@ func GroupInfoEventHandler(v *events.GroupInfo) {
 	)
 	defer logger.Sync()
 
-	tgThreadId, threadFound, err := database.ChatThreadGetTgFromWa(v.JID.String(), cfg.Telegram.TargetChatID)
+	tgThreadId, threadFound, err := database.ChatThreadGetTgFromWa(v.JID.ToNonAD().String(), cfg.Telegram.TargetChatID)
 	if err != nil {
-		err = utils.TgSendTextById(
-			tgBot, cfg.Telegram.OwnerID, 0,
-			fmt.Sprintf(
-				"Warning: Chat thread could not be found for %s:\n\n<code>%s</code>",
-				v.JID.String(), html.EscapeString(err.Error()),
-			),
+		logger.Warn(
+			"failed to find thread for a WhatsApp chat (handling GroupInfo event)",
+			zap.String("chat", v.JID.String()),
+			zap.Error(err),
 		)
-		if err != nil {
-			logger.Error("failed to send message to owner", zap.Error(err))
-		}
 		return
 	}
 	if !threadFound || tgThreadId == 0 {
-		err = utils.TgSendTextById(
-			tgBot, cfg.Telegram.OwnerID, 0,
-			fmt.Sprintf("Warning: Not chat thread found for %s", v.JID.String()),
+		logger.Warn(
+			"no thread found for a WhatsApp chat (handling GroupInfo event)",
+			zap.String("chat", v.JID.String()),
 		)
-		if err != nil {
-			logger.Error("failed to send message to owner", zap.Error(err))
-		}
 		return
 	}
 
@@ -1491,16 +1475,12 @@ func GroupInfoEventHandler(v *events.GroupInfo) {
 			},
 		)
 		if err != nil {
-			err = utils.TgSendTextById(
-				tgBot, cfg.Telegram.OwnerID, 0,
-				fmt.Sprintf(
-					"Warning: Chat name could not be changed for <code>%s</code> to <code>%s</code>:\n\n<code>%s</code>",
-					v.JID.String(), html.EscapeString(v.Name.Name), html.EscapeString(err.Error()),
-				),
+			logger.Error(
+				"failed to change thread name",
+				zap.Error(err),
+				zap.String("chat", v.JID.String()),
+				zap.String("new_name", v.Name.Name),
 			)
-			if err != nil {
-				logger.Error("failed to send message to owner", zap.Error(err))
-			}
 			return
 		}
 		changer := utils.WaGetContactName(v.Name.NameSetBy)
