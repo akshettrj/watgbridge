@@ -23,6 +23,7 @@ import (
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/appstate"
 	waTypes "go.mau.fi/whatsmeow/types"
+	"go.mau.fi/whatsmeow/types/events"
 )
 
 type waTgBridgeCommand struct {
@@ -108,6 +109,14 @@ func AddTelegramHandlers() {
 		waTgBridgeCommand{
 			handlers.NewCommand("help", HelpCommandHandler),
 			"Get all the available commands",
+		},
+		waTgBridgeCommand{
+			handlers.NewCommand("block", BlockUserHandler),
+			"Block a user in WhatsApp",
+		},
+		waTgBridgeCommand{
+			handlers.NewCommand("unblock", UnblockUserHandler),
+			"Unblock a user in WhatsApp",
 		},
 	)
 
@@ -516,6 +525,51 @@ func UnlinkThreadHandler(b *gotgbot.Bot, c *ext.Context) error {
 
 	_, err = utils.TgReplyTextByContext(b, c, "Successfully unlinked", nil)
 	return err
+}
+
+func handleBlockUnblockUser(b *gotgbot.Bot, c *ext.Context, action events.BlocklistChangeAction) error {
+	if !utils.TgUpdateIsAuthorized(b, c) {
+		return nil
+	}
+	if !c.EffectiveMessage.IsTopicMessage || c.EffectiveMessage.MessageThreadId == 0 {
+		_, err := utils.TgReplyTextByContext(b, c, "The command should be sent in a topic", nil)
+		return err
+	}
+
+	var (
+		tgChatId   = c.EffectiveChat.Id
+		tgThreadId = c.EffectiveMessage.MessageThreadId
+	)
+
+	waChatId, err := database.ChatThreadGetWaFromTg(tgChatId, tgThreadId)
+	if err != nil {
+		err = utils.TgReplyWithErrorByContext(b, c, "Failed to get existing chat ID pairing", err)
+		return err
+	} else if waChatId == "" {
+		_, err := utils.TgReplyTextByContext(b, c, "No existing chat pairing found!!", nil)
+		return err
+	}
+	jId, _ := utils.WaParseJID(waChatId)
+	_, err = state.State.WhatsAppClient.UpdateBlocklist(jId, action)
+	if err != nil {
+		err = utils.TgReplyWithErrorByContext(b, c, "Failed to change the blocklist status", err)
+		return err
+	}
+	actionText := "Blocked"
+	if action == events.BlocklistChangeActionUnblock {
+		actionText = "Unblocked"
+	}
+
+	_, err = utils.TgReplyTextByContext(b, c, fmt.Sprintf("Successfully %s the user", actionText), nil)
+	return err
+}
+
+func BlockUserHandler(b *gotgbot.Bot, c *ext.Context) error {
+	return handleBlockUnblockUser(b, c, events.BlocklistChangeActionBlock)
+}
+
+func UnblockUserHandler(b *gotgbot.Bot, c *ext.Context) error {
+	return handleBlockUnblockUser(b, c, events.BlocklistChangeActionUnblock)
 }
 
 func SetTargetPrivateChatHandler(b *gotgbot.Bot, c *ext.Context) error {
