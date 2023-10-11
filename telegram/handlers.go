@@ -111,11 +111,11 @@ func AddTelegramHandlers() {
 			"Get all the available commands",
 		},
 		waTgBridgeCommand{
-			handlers.NewCommand("block", BlockUserHandler),
+			handlers.NewCommand("block", BlockCommandHandler),
 			"Block a user in WhatsApp",
 		},
 		waTgBridgeCommand{
-			handlers.NewCommand("unblock", UnblockUserHandler),
+			handlers.NewCommand("unblock", UnblockCommandHandler),
 			"Unblock a user in WhatsApp",
 		},
 	)
@@ -549,26 +549,26 @@ func handleBlockUnblockUser(b *gotgbot.Bot, c *ext.Context, action events.Blockl
 		_, err := utils.TgReplyTextByContext(b, c, "No existing chat pairing found!!", nil)
 		return err
 	}
-	jId, _ := utils.WaParseJID(waChatId)
-	_, err = state.State.WhatsAppClient.UpdateBlocklist(jId, action)
+	jid, _ := utils.WaParseJID(waChatId)
+	_, err = state.State.WhatsAppClient.UpdateBlocklist(jid, action)
 	if err != nil {
 		err = utils.TgReplyWithErrorByContext(b, c, "Failed to change the blocklist status", err)
 		return err
 	}
-	actionText := "Blocked"
+	actionText := "blocked"
 	if action == events.BlocklistChangeActionUnblock {
-		actionText = "Unblocked"
+		actionText = "unblocked"
 	}
 
 	_, err = utils.TgReplyTextByContext(b, c, fmt.Sprintf("Successfully %s the user", actionText), nil)
 	return err
 }
 
-func BlockUserHandler(b *gotgbot.Bot, c *ext.Context) error {
+func BlockCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
 	return handleBlockUnblockUser(b, c, events.BlocklistChangeActionBlock)
 }
 
-func UnblockUserHandler(b *gotgbot.Bot, c *ext.Context) error {
+func UnblockCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
 	return handleBlockUnblockUser(b, c, events.BlocklistChangeActionUnblock)
 }
 
