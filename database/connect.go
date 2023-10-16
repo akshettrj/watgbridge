@@ -29,9 +29,7 @@ func Connect() (*gorm.DB, error) {
 		return nil, fmt.Errorf("Error: key 'type' not found in database config")
 	}
 
-	gormConfig := gorm.Config{
-		SkipDefaultTransaction: true,
-	}
+	gormConfig := gorm.Config{}
 
 	switch dbType {
 
