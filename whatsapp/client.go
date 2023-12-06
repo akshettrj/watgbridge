@@ -55,7 +55,7 @@ func NewWhatsAppClient() error {
 	if cfg.WhatsApp.WhatsmeowDebugMode {
 		developmentConfig := zap.NewDevelopmentConfig()
 		developmentConfig.OutputPaths = append(developmentConfig.OutputPaths, "whatsmeow_debug.log")
-		logger, err = zap.NewDevelopment()
+		logger, err = developmentConfig.Build()
 		if err != nil {
 			panic(fmt.Errorf("failed to initialize development loggers for WhatsMeow client: %s", err))
 		}
