@@ -1135,7 +1135,7 @@ func CallOfferEventHandler(v *events.CallOffer) {
 }
 
 func ReceiptEventHandler(v *events.Receipt) {
-	if v.Type == events.ReceiptTypeReadSelf {
+	if v.Type == waTypes.ReceiptTypeReadSelf {
 		for _, msgId := range v.MessageIDs {
 			database.MsgIdMarkRead(v.Chat.String(), msgId)
 		}

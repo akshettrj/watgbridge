@@ -49,13 +49,12 @@ func NewTelegramClient() error {
 		MaxRoutines: ext.DefaultMaxRoutines,
 	})
 
-	updater := ext.NewUpdater(&ext.UpdaterOpts{
+	updater := ext.NewUpdater(dispatcher, &ext.UpdaterOpts{
 		UnhandledErrFunc: func(err error) {
 			logger.Error("telegram updater received error",
 				zap.Error(err),
 			)
 		},
-		Dispatcher: dispatcher,
 	})
 
 	state.State.TelegramUpdater = updater
