@@ -219,6 +219,37 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		}()
 	}
 
+	isEphemeral, ephemeralTimer, ephemeralFound, err := database.GetEphemeralSettings(waChatJID.String())
+	if err != nil {
+		logger.Info(
+			"failed to get ephemeral setttings from database",
+			zap.Error(err),
+			zap.String("jid", waChatJID.String()),
+		)
+	}
+
+	if !ephemeralFound && waChatJID.Server == waTypes.GroupServer {
+		groupInfo, err := waClient.GetGroupInfo(waChatJID)
+		if err != nil {
+			logger.Info(
+				"failed to get group info from WhatsApp",
+				zap.Error(err),
+				zap.String("jid", waChatJID.String()),
+			)
+		} else {
+			isEphemeral = groupInfo.IsEphemeral
+			ephemeralTimer = groupInfo.DisappearingTimer
+			err = database.UpdateEphemeralSettings(waChatJID.String(), isEphemeral, ephemeralTimer)
+			if err != nil {
+				logger.Info(
+					"failed to update group ephemeral setttings in database",
+					zap.Error(err),
+					zap.String("jid", waChatJID.String()),
+				)
+			}
+		}
+	}
+
 	if msgToForward.Photo != nil && len(msgToForward.Photo) > 0 {
 
 		bestPhoto := msgToForward.Photo[0]
@@ -276,6 +307,9 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		}
 		if len(mentions) > 0 {
 			msgToSend.ImageMessage.ContextInfo.MentionedJid = mentions
+		}
+		if isEphemeral {
+			msgToSend.ImageMessage.ContextInfo.Expiration = &ephemeralTimer
 		}
 
 		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, msgToSend)
@@ -349,6 +383,9 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		if len(mentions) > 0 {
 			msgToSend.VideoMessage.ContextInfo.MentionedJid = mentions
 		}
+		if isEphemeral {
+			msgToSend.VideoMessage.ContextInfo.Expiration = &ephemeralTimer
+		}
 
 		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, msgToSend)
 		if err != nil {
@@ -417,6 +454,9 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		}
 		if len(mentions) > 0 {
 			msgToSend.VideoMessage.ContextInfo.MentionedJid = mentions
+		}
+		if isEphemeral {
+			msgToSend.VideoMessage.ContextInfo.Expiration = &ephemeralTimer
 		}
 
 		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, msgToSend)
@@ -490,6 +530,9 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		if len(mentions) > 0 {
 			msgToSend.VideoMessage.ContextInfo.MentionedJid = mentions
 		}
+		if isEphemeral {
+			msgToSend.VideoMessage.ContextInfo.Expiration = &ephemeralTimer
+		}
 
 		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, msgToSend)
 		if err != nil {
@@ -557,6 +600,9 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		if len(mentions) > 0 {
 			msgToSend.AudioMessage.ContextInfo.MentionedJid = mentions
 		}
+		if isEphemeral {
+			msgToSend.AudioMessage.ContextInfo.Expiration = &ephemeralTimer
+		}
 
 		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, msgToSend)
 		if err != nil {
@@ -623,6 +669,9 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		}
 		if len(mentions) > 0 {
 			msgToSend.AudioMessage.ContextInfo.MentionedJid = mentions
+		}
+		if isEphemeral {
+			msgToSend.AudioMessage.ContextInfo.Expiration = &ephemeralTimer
 		}
 
 		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, msgToSend)
@@ -693,6 +742,9 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		}
 		if len(mentions) > 0 {
 			msgToSend.DocumentMessage.ContextInfo.MentionedJid = mentions
+		}
+		if isEphemeral {
+			msgToSend.DocumentMessage.ContextInfo.Expiration = &ephemeralTimer
 		}
 
 		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, msgToSend)
@@ -803,6 +855,9 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 				QuotedMessage: &waProto.Message{Conversation: proto.String("")},
 			}
 		}
+		if isEphemeral {
+			msgToSend.StickerMessage.ContextInfo.Expiration = &ephemeralTimer
+		}
 
 		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, msgToSend)
 		if err != nil {
@@ -850,7 +905,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		}
 
 		msgToSend := &waProto.Message{}
-		if isReply || len(mentions) > 0 {
+		if isReply || len(mentions) > 0 || isEphemeral {
 			msgToSend.ExtendedTextMessage = &waProto.ExtendedTextMessage{
 				Text: proto.String(msgToForward.Text),
 				ContextInfo: &waProto.ContextInfo{
@@ -861,6 +916,9 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			}
 			if len(mentions) > 0 {
 				msgToSend.ExtendedTextMessage.ContextInfo.MentionedJid = mentions
+			}
+			if isEphemeral {
+				msgToSend.ExtendedTextMessage.ContextInfo.Expiration = &ephemeralTimer
 			}
 		} else {
 			msgToSend.Conversation = proto.String(msgToForward.Text)

@@ -337,3 +337,47 @@ func ContactUpdateBusinessName(waUserId, businessName string) error {
 
 	return res.Error
 }
+
+func UpdateEphemeralSettings(waChatId string, isEphemeral bool, ephemeralTimer uint32) error {
+	db := state.State.Database
+
+	var settings ChatEphemeralSettings
+	res := db.Where("id = ?", waChatId).Find(&settings)
+
+	if res.Error != nil {
+		return res.Error
+	}
+
+	if settings.ID != waChatId {
+		res = db.Create(&ChatEphemeralSettings{
+			ID:             waChatId,
+			IsEphemeral:    isEphemeral,
+			EphemeralTimer: ephemeralTimer,
+		})
+		return res.Error
+	}
+
+	settings.IsEphemeral = isEphemeral
+	settings.EphemeralTimer = ephemeralTimer
+
+	res = db.Save(&settings)
+
+	return res.Error
+}
+
+func GetEphemeralSettings(waChatId string) (bool, uint32, bool, error) {
+	db := state.State.Database
+
+	var settings ChatEphemeralSettings
+	res := db.Where("id = ?", waChatId).Find(&settings)
+
+	if res.Error != nil {
+		return false, 0, false, res.Error
+	}
+
+	if settings.ID != waChatId {
+		return false, 0, false, nil
+	}
+
+	return settings.IsEphemeral, settings.EphemeralTimer, true, nil
+}

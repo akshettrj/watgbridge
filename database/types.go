@@ -34,7 +34,18 @@ type ContactName struct {
 	BusinessName string
 }
 
+type ChatEphemeralSettings struct {
+	ID             string `gorm:"primaryKey;"` // WhatsApp Chat ID
+	IsEphemeral    bool
+	EphemeralTimer uint32
+}
+
 func AutoMigrate() error {
 	db := state.State.Database
-	return db.AutoMigrate(&MsgIdPair{}, &ChatThreadPair{}, &ContactName{})
+	return db.AutoMigrate(
+		&MsgIdPair{},
+		&ChatThreadPair{},
+		&ContactName{},
+		&ChatEphemeralSettings{},
+	)
 }

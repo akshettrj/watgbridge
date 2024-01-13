@@ -56,14 +56,20 @@ func WhatsAppEventHandler(evt interface{}) {
 			isEdited = true
 		}
 
-		if v.Info.Timestamp.UTC().Before(state.State.StartTime) {
-			// Old events
+		if protoMsg := v.Message.GetProtocolMessage(); protoMsg != nil &&
+			protoMsg.GetType() == waProto.ProtocolMessage_REVOKE {
+			RevokedMessageEventHandler(v)
 			return
 		}
 
 		if protoMsg := v.Message.GetProtocolMessage(); protoMsg != nil &&
-			protoMsg.GetType() == waProto.ProtocolMessage_REVOKE {
-			RevokedMessageEventHandler(v)
+			protoMsg.GetType() == waProto.ProtocolMessage_EPHEMERAL_SETTING {
+			if protoMsg.GetEphemeralExpiration() == 0 {
+				database.UpdateEphemeralSettings(v.Info.Chat.ToNonAD().String(), false, 0)
+			} else {
+				database.UpdateEphemeralSettings(v.Info.Chat.ToNonAD().String(), true, protoMsg.GetEphemeralExpiration())
+			}
+
 			return
 		}
 
@@ -1351,10 +1357,18 @@ func GroupInfoEventHandler(v *events.GroupInfo) {
 	if v.Ephemeral != nil {
 		var updateText string
 		if v.Ephemeral.IsEphemeral {
+			err := database.UpdateEphemeralSettings(v.JID.ToNonAD().String(), true, v.Ephemeral.DisappearingTimer)
 			updateText = "Group's auto deletion timer has been turned on:\n"
-			updateText += fmt.Sprintf("Timer: %s", time.Second*time.Duration(v.Ephemeral.DisappearingTimer))
+			updateText += fmt.Sprintf("Timer: %s\n", time.Second*time.Duration(v.Ephemeral.DisappearingTimer))
+			if err != nil {
+				updateText += fmt.Sprintf("Failed to save to DB: %s", html.EscapeString(err.Error()))
+			}
 		} else {
-			updateText = "Group's auto deletion timer has been disabled"
+			err := database.UpdateEphemeralSettings(v.JID.ToNonAD().String(), false, 0)
+			updateText = "Group's auto deletion timer has been disabled\n"
+			if err != nil {
+				updateText += fmt.Sprintf("Failed to save to DB: %s", html.EscapeString(err.Error()))
+			}
 		}
 		err = utils.TgSendTextById(tgBot, cfg.Telegram.TargetChatID, tgThreadId, updateText)
 		if err != nil {
