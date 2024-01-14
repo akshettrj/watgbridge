@@ -75,6 +75,15 @@ func NewWhatsAppClient() error {
 	store.DeviceProps.Os = proto.String(state.State.Config.WhatsApp.SessionName)
 	store.DeviceProps.RequireFullSync = proto.Bool(false)
 	store.DeviceProps.PlatformType = waProto.DeviceProps_DESKTOP.Enum()
+	store.DeviceProps.HistorySyncConfig = &waProto.DeviceProps_HistorySyncConfig{
+		FullSyncDaysLimit:              proto.Uint32(0),
+		FullSyncSizeMbLimit:            proto.Uint32(0),
+		StorageQuotaMb:                 proto.Uint32(0),
+		RecentSyncDaysLimit:            proto.Uint32(0),
+		SupportCallLogHistory:          proto.Bool(false),
+		SupportBotUserAgentChatHistory: proto.Bool(false),
+		SupportCagReactionsAndPolls:    proto.Bool(false),
+	}
 
 	container, err := sqlstore.New(state.State.Config.WhatsApp.LoginDatabase.Type,
 		state.State.Config.WhatsApp.LoginDatabase.URL, waDatabaseLogger)
