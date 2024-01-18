@@ -681,7 +681,7 @@ func SyncTopicNamesHandler(b *gotgbot.Bot, c *ext.Context) error {
 			tgThreadId = pair.TgThreadId
 		)
 
-		if waChatId == "status@broadcast" {
+		if waChatId == "status@broadcast" || waChatId == "calls" || waChatId == "mentions" {
 			continue
 		}
 		waChatJid, _ := utils.WaParseJID(waChatId)
