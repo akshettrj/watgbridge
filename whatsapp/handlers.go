@@ -177,23 +177,22 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 		}
 	}
 
-	if !v.Info.IsFromMe {
+	if v.Info.Chat.String() == "status@broadcast" &&
+		(cfg.WhatsApp.SkipStatus ||
+			slices.Contains(cfg.WhatsApp.StatusIgnoredChats, v.Info.MessageSource.Sender.User)) {
 		// Return if status is from ignored chat
-		if v.Info.Chat.String() == "status@broadcast" &&
-			(cfg.WhatsApp.SkipStatus ||
-				slices.Contains(cfg.WhatsApp.StatusIgnoredChats, v.Info.MessageSource.Sender.User)) {
-			logger.Debug("returning because status from a ignored chat",
-				zap.String("event_id", v.Info.ID),
-				zap.String("chat_jid", v.Info.Chat.String()),
-			)
-			return
-		} else if slices.Contains(cfg.WhatsApp.IgnoreChats, v.Info.Chat.User) {
-			logger.Debug("returning because message from an ignored chat",
-				zap.String("event_id", v.Info.ID),
-				zap.String("chat_jid", v.Info.Chat.String()),
-			)
-			return
-		}
+		logger.Debug("returning because status from a ignored chat",
+			zap.String("event_id", v.Info.ID),
+			zap.String("chat_jid", v.Info.Chat.String()),
+		)
+		return
+	} else if slices.Contains(cfg.WhatsApp.IgnoreChats, v.Info.Chat.User) {
+		// Return if the chat is ignored
+		logger.Debug("returning because message from an ignored chat",
+			zap.String("event_id", v.Info.ID),
+			zap.String("chat_jid", v.Info.Chat.String()),
+		)
+		return
 	}
 
 	replyMarkup := utils.TgBuildUrlButton(utils.WaGetContactName(v.Info.Sender), fmt.Sprintf("https://wa.me/%s", v.Info.MessageSource.Sender.ToNonAD().User))
