@@ -652,7 +652,9 @@ func GetProfilePictureHandler(b *gotgbot.Bot, c *ext.Context) error {
 	}
 
 	opts := &gotgbot.SendPhotoOpts{
-		ReplyToMessageId: c.EffectiveMessage.MessageId,
+		ReplyParameters: &gotgbot.ReplyParameters{
+			MessageId: c.EffectiveMessage.MessageId,
+		},
 	}
 	if c.EffectiveMessage.IsTopicMessage {
 		opts.MessageThreadId = c.EffectiveMessage.MessageThreadId

@@ -229,7 +229,9 @@ func main() {
 		}
 
 		opts := gotgbot.SendMessageOpts{
-			ReplyToMessageId: msgId,
+			ReplyParameters: &gotgbot.ReplyParameters{
+				MessageId: msgId,
+			},
 		}
 
 		state.State.TelegramBot.SendMessage(chatId, "Successfully restarted", &opts)

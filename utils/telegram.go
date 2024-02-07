@@ -90,7 +90,9 @@ func TgDownloadByFilePath(b *gotgbot.Bot, filePath string) ([]byte, error) {
 
 func TgReplyTextByContext(b *gotgbot.Bot, c *ext.Context, text string, buttons *gotgbot.InlineKeyboardMarkup) (*gotgbot.Message, error) {
 	sendOpts := &gotgbot.SendMessageOpts{
-		ReplyToMessageId: c.EffectiveMessage.MessageId,
+		ReplyParameters: &gotgbot.ReplyParameters{
+			MessageId: c.EffectiveMessage.MessageId,
+		},
 	}
 	if c.EffectiveMessage.IsTopicMessage {
 		sendOpts.MessageThreadId = c.EffectiveMessage.MessageThreadId
@@ -142,7 +144,9 @@ func TgReplyWithErrorByContext(b *gotgbot.Bot, c *ext.Context, eMessage string, 
 	}
 
 	sendOpts := &gotgbot.SendMessageOpts{
-		ReplyToMessageId: c.EffectiveMessage.MessageId,
+		ReplyParameters: &gotgbot.ReplyParameters{
+			MessageId: c.EffectiveMessage.MessageId,
+		},
 	}
 	if c.EffectiveMessage.IsTopicMessage {
 		sendOpts.MessageThreadId = c.EffectiveMessage.MessageThreadId
