@@ -187,7 +187,7 @@ func WaTagAll(group types.JID, msg *waProto.Message, msgId, msgSender string, ms
 	}
 
 	if !msgIsFromMe {
-		tagsThreadId, err := TgGetOrMakeThreadFromWa("status@broadcast", cfg.Telegram.TargetChatID, "Status/Calls/Tags [ status@broadcast ]")
+		tagsThreadId, err := TgGetOrMakeThreadFromWa("mentions", cfg.Telegram.TargetChatID, "Mentions")
 		if err != nil {
 			TgSendErrorById(tgBot, cfg.Telegram.TargetChatID, 0, "Failed to create/retreive corresponding thread id for status/calls/tags", err)
 			return
