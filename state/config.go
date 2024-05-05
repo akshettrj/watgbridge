@@ -32,6 +32,7 @@ type Config struct {
 		SendMyPresence      bool    `yaml:"send_my_presence"`
 		SendMyReadReceipts  bool    `yaml:"send_my_read_receipts"`
 		SilentConfirmation  bool    `yaml:"silent_confirmation"`
+		EmojiConfirmation  bool    `yaml:"emoji_confirmation"`
 	} `yaml:"telegram"`
 
 	WhatsApp struct {

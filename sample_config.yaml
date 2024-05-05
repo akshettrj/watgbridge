@@ -24,6 +24,7 @@ telegram:
   send_my_read_receipts: false            # Setting this to true will mark all unread messages in a chat as read when you send a new message using Telegram
 
   silent_confirmation: true               # Send a silent "Successfully sent" message
+  emoji_confirmation: true                # Reacts to the message with a "👍" emoji instead of replying
 
 whatsapp:
   session_name: watgbridge        # This will appear in your Linked Devices in mobile app
