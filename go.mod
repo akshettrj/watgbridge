@@ -6,7 +6,7 @@ toolchain go1.22.2
 
 require (
 	github.com/Benau/tgsconverter v0.0.0-20210809170556-99f4a4f6337f
-	github.com/PaulSonOfLars/gotgbot/v2 v2.0.0-rc.26
+	github.com/PaulSonOfLars/gotgbot/v2 v2.0.0-rc.27
 	github.com/emersion/go-vcard v0.0.0-20230815062825-8fda7d206ec9
 	github.com/forPelevin/gomoji v1.2.0
 	github.com/go-co-op/gocron v1.37.0
@@ -15,10 +15,10 @@ require (
 	github.com/lithammer/fuzzysearch v1.1.8
 	github.com/mattn/go-sqlite3 v1.14.22
 	github.com/mdp/qrterminal/v3 v3.2.0
-	go.mau.fi/whatsmeow v0.0.0-20240327124018-350073db195c
+	go.mau.fi/whatsmeow v0.0.0-20240520180327-81f8f07f1dfb
 	go.uber.org/zap v1.27.0
-	golang.org/x/exp v0.0.0-20240416160154-fe59bbe5cc7f
-	google.golang.org/protobuf v1.34.0
+	golang.org/x/exp v0.0.0-20240506185415-9bf2ced13842
+	google.golang.org/protobuf v1.34.1
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/driver/mysql v1.5.6
 	gorm.io/driver/postgres v1.5.7
@@ -49,8 +49,8 @@ require (
 	go.mau.fi/util v0.4.2 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	golang.org/x/crypto v0.22.0 // indirect
-	golang.org/x/net v0.24.0 // indirect
+	golang.org/x/crypto v0.23.0 // indirect
+	golang.org/x/net v0.25.0 // indirect
 	golang.org/x/sync v0.7.0 // indirect
 	golang.org/x/sys v0.20.0 // indirect
 	golang.org/x/term v0.20.0 // indirect
