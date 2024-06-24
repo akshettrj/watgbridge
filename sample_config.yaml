@@ -1,90 +1,53 @@
-time_zone: Asia/Kolkata
-time_format: 02 Jan, 2006 - Mon @ 15:04
+time_zone: ${TIME_ZONE}
+time_format: ${TIME_FORMAT}
 
-git_executable: /usr/bin/git
-go_executable: /usr/bin/go
-ffmpeg_executable: /usr/bin/ffmpeg
-debug_mode: false
+git_executable: ${GIT_EXECUTABLE}
+go_executable: ${GO_EXECUTABLE}
+ffmpeg_executable: ${FFMPEG_EXECUTABLE}
+debug_mode: ${DEBUG_MODE}
 
-use_github_binaries: false              # Set to true if you want to use pre-built binaries from GitHub
-architecture:                           # Set it to aarch64 or amd64 based on your machine architecture to update using prebuilt releases
+use_github_binaries: ${USE_GITHUB_BINARIES}
+architecture: ${ARCHITECTURE}
 
 telegram:
-  bot_token: 186779
-  #api_url: http://localhost:8082        # Uncomment if you have a local bot API server running (for bypassing file size limits)
-  self_hosted_api: false
-  owner_id: 704338780
+  bot_token: ${TELEGRAM_BOT_TOKEN}
+  self_hosted_api: ${TELEGRAM_SELF_HOSTED_API}
+  owner_id: ${TELEGRAM_OWNER_ID}
   sudo_users_id:
-    - 704338780
-  target_chat_id: -100423424              # This is the chat where messages will be forwarded (note the "100" prefix of a supergroup)
-  skip_video_stickers: false              # Setting this as true will stop trying to convert telegram video stickers to webp and sending them
-  skip_setting_commands: false            # This will not show you list of commands when you start typing / in telegram
-
-  send_my_presence: false                 # Setting this to true will show your account as online to others whenever you send a message using Telegram
-  send_my_read_receipts: false            # Setting this to true will mark all unread messages in a chat as read when you send a new message using Telegram
-
-  silent_confirmation: true               # Send a silent "Successfully sent" message
-  emoji_confirmation: true                # Reacts to the message with a "👍" emoji instead of replying
+    - ${TELEGRAM_SUDO_USERS_ID}
+  target_chat_id: ${TELEGRAM_TARGET_CHAT_ID}
+  skip_video_stickers: ${TELEGRAM_SKIP_VIDEO_STICKERS}
+  skip_setting_commands: ${TELEGRAM_SKIP_SETTING_COMMANDS}
+  send_my_presence: ${TELEGRAM_SEND_MY_PRESENCE}
+  send_my_read_receipts: ${TELEGRAM_SEND_MY_READ_RECEIPTS}
+  silent_confirmation: ${TELEGRAM_SILENT_CONFIRMATION}
+  emoji_confirmation: ${TELEGRAM_EMOJI_CONFIRMATION}
 
 whatsapp:
-  session_name: watgbridge        # This will appear in your Linked Devices in mobile app
-  # All these values can be obtained by running /findcontacts and /getwagroups commands
-  # You have to put only the values preceding the @ character
-  tag_all_allowed_groups:         # Members of these groups can tag everyone by sending @all or @everyone
-    - 91xxxxxxxxxx-xxxxxxxxxx
-    - 91xxxxxxxxxx-xxxxxxxxxx
-    - 91xxxxxxxxxx-xxxxxxxxxx
-    - 12xxxxxxxxxxxxx669
-  ignore_chats:
-    - 91xxxxxxxxxx
-    - 12xxxxxxxxxxxxx669
-  status_ignored_chats:           # Statuses of these people WILL NOT BE FORWARDED to Telegram
-    - 91xxxxxxxxxx
-    - 1xxxxxxxxxx
-  skip_documents: false
-  skip_images: false
-  skip_gifs: false
-  skip_videos: false
-  skip_voice_notes: false
-  skip_audios: false
-  skip_stickers: false
-  skip_status: false
-  skip_contacts: false
-  skip_locations: false
-  skip_profile_picture_updates: false
-  skip_group_settings_updates: false   # This includes joins, leaves, name change, etc.
-  skip_chat_details: true
-  send_revoked_message_updates: false
-  whatsmeow_debug_mode: false
-  send_my_messages_from_other_devices: false      # If set to true, the messages sent by you from other devices will be sent to Telgram as well
-  #login_database:               # Uncomment only if you want to use something other than sqlite
-  #  type: sqlite3
-  #  url: file:wawebstore.db?foreign_keys=on
-  sticker_metadata:               # This will work only if you have webpmux installed on your system
-    pack_name: WaTgBridge
-    author_name: WaTgBridge
+  session_name: ${WHATSAPP_SESSION_NAME}
+  tag_all_allowed_groups: ${WHATSAPP_TAG_ALL_ALLOWED_GROUPS}
+  ignore_chats: ${WHATSAPP_IGNORE_CHATS}
+  status_ignored_chats: ${WHATSAPP_STATUS_IGNORED_CHATS}
+  skip_documents: ${WHATSAPP_SKIP_DOCUMENTS}
+  skip_images: ${WHATSAPP_SKIP_IMAGES}
+  skip_gifs: ${WHATSAPP_SKIP_GIFS}
+  skip_videos: ${WHATSAPP_SKIP_VIDEOS}
+  skip_voice_notes: ${WHATSAPP_SKIP_VOICE_NOTES}
+  skip_audios: ${WHATSAPP_SKIP_AUDIOS}
+  skip_stickers: ${WHATSAPP_SKIP_STICKERS}
+  skip_status: ${WHATSAPP_SKIP_STATUS}
+  skip_contacts: ${WHATSAPP_SKIP_CONTACTS}
+  skip_locations: ${WHATSAPP_SKIP_LOCATIONS}
+  skip_profile_picture_updates: ${WHATSAPP_SKIP_PROFILE_PICTURE_UPDATES}
+  skip_group_settings_updates: ${WHATSAPP_SKIP_GROUP_SETTINGS_UPDATES}
+  skip_chat_details: ${WHATSAPP_SKIP_CHAT_DETAILS}
+  send_revoked_message_updates: ${WHATSAPP_SEND_REVOKED_MESSAGE_UPDATES}
+  whatsmeow_debug_mode: ${WHATSAPP_WHATSMEOW_DEBUG_MODE}
+  send_my_messages_from_other_devices: ${WHATSAPP_SEND_MY_MESSAGES_FROM_OTHER_DEVICES}
+  sticker_metadata:
+    pack_name: ${STICKER_METADATA_PACK_NAME}
+    author_name: ${STICKER_METADATA_AUTHOR_NAME}
 
-
-#Uncomment any on of these sections
-#Using the sqlite database will be easiest as it does not require any hosted database server and stores data in a single file on your device
-
-#database:
-#  type: postgres
-#  host: localhost
-#  user: admin
-#  password: password
-#  dbname: gobot
-#  port: 5432
-#  time_zone: Asia/Kolkata
-
-#database:
-#  type: sqlite
-#  path: ./gobot.sqlite.db
-
-#database:
-#  type: mysql
-#  host: localhost
-#  port: 3306
-#  user: admin
-#  password: password
-#  dbname: gobot
+database:
+  type: ${DATABASE_TYPE}
+  path: ${DATABASE_PATH}
