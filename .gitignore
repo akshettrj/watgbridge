@@ -28,3 +28,8 @@ downloads/
 imports.go
 *.log
 watgbridge.service
+
+# Nix
+/result
+.direnv/
+/.go/
