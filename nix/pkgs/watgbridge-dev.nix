@@ -4,27 +4,28 @@
 , enableLibWebPTools ? false
 , ffmpeg
 , libwebp
+, nix-filter
 }:
 
 let
 
-  localSrc = builtins.path {
-    path = ../../.;
+  localSrc = nix-filter {
     name = "watgbridge";
-    filter = path: type: (
-      builtins.baseNameOf path != "flake.nix" &&
-      builtins.baseNameOf path != "flake.lock" &&
-      builtins.baseNameOf path != "README.md" &&
-      builtins.baseNameOf path != "sample_config.yaml" &&
-      builtins.baseNameOf path != "watgbridge.service.sample" &&
-      builtins.baseNameOf path != ".github" &&
-      builtins.baseNameOf path != "nix" &&
-      builtins.baseNameOf path != "assets" &&
-      builtins.baseNameOf path != ".envrc" &&
-      builtins.baseNameOf path != ".gitignore" &&
-      builtins.baseNameOf path != "Dockerfile" &&
-      builtins.baseNameOf path != "LICENSE"
-    );
+    root = ../../.;
+    exclude = [
+      "flake.nix"
+      "flake.lock"
+      "README.md"
+      "sample_config.yaml"
+      "watgbridge.service.sample"
+      ".github"
+      "nix"
+      "assets"
+      ".envrc"
+      ".gitignore"
+      "Dockerfile"
+      "LICENSE"
+    ];
   };
 
 in buildGoApplication rec {
