@@ -41,4 +41,9 @@
 
       }
     );
+
+  nixConfig = {
+    extra-substituters = [ "https://watgbridge.cachix.org" ];
+    extra-trusted-public-keys = [ "watgbridge.cachix.org-1:KSfgmbSBvXQTpUnoCj21vST7zgwpy3SbNfk0/nesR1Y=" ];
+  };
 }
