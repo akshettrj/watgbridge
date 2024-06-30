@@ -26,17 +26,6 @@ jobs:
       with:
         go-version: '1.22'
 
-    - name: Clone libwebp and build
-      run: |
-        git clone https://chromium.googlesource.com/webm/libwebp
-        cd libwebp
-        ./autogen.sh
-        ./configure
-        make
-        sudo make install
-        echo "/usr/local/lib" | sudo tee -a /etc/ld.so.conf
-        sudo ldconfig
-
     - name: Build
       run: GOARCH=amd64 GOOS=linux go build -o watgbridge_linux_amd64 .
 
@@ -67,22 +56,11 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y golang gcc-aarch64-linux-gnu g++-aarch64-linux-gnu libwebp-dev
+        sudo apt-get install -y golang gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
         go-version: '1.22'
-
-    - name: Clone libwebp and build
-      run: |
-        git clone https://chromium.googlesource.com/webm/libwebp
-        cd libwebp
-        ./autogen.sh
-        ./configure --host=aarch64-linux-gnu
-        make
-        sudo make install
-        echo "/usr/local/lib" | sudo tee -a /etc/ld.so.conf
-        sudo ldconfig
 
     - name: Build
       run: CGO_ENABLED=1 CC=aarch64-linux-gnu-gcc CXX=aarch64-linux-gnu-g++ GOARCH=arm64 GOOS=linux go build -o watgbridge_linux_aarch64 .
