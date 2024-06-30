@@ -1,5 +1,9 @@
 { lib
 , buildGoApplication
+, enableFfmpeg ? false
+, enableLibWebPTools ? false
+, ffmpeg
+, libwebp
 }:
 
 let
@@ -29,6 +33,13 @@ in buildGoApplication rec {
 
   pwd = localSrc;
   src = localSrc;
+
+  buildInputs = [
+  ] ++ lib.optionals enableFfmpeg [
+    ffmpeg
+  ] ++ lib.optionals enableLibWebPTools [
+    libwebp
+  ];
 
   ldflags = [ "-s" "-w" ];
 
