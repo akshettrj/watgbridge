@@ -27,7 +27,7 @@ jobs:
         go-version: '1.22'
 
     - name: Build
-      run: GOARCH=amd64 GOOS=linux go build -o watgbridge_linux_amd64 .
+      run: GOARCH=amd64 GOOS=linux go build -ldflags '-s -w' -o watgbridge_linux_amd64 .
 
     - name: Get Project Version
       id: get_version
@@ -63,7 +63,7 @@ jobs:
         go-version: '1.22'
 
     - name: Build
-      run: CGO_ENABLED=1 CC=aarch64-linux-gnu-gcc CXX=aarch64-linux-gnu-g++ GOARCH=arm64 GOOS=linux go build -o watgbridge_linux_aarch64 .
+      run: CGO_ENABLED=1 CC=aarch64-linux-gnu-gcc CXX=aarch64-linux-gnu-g++ GOARCH=arm64 GOOS=linux go build -ldflags '-s -w' -o watgbridge_linux_aarch64 .
 
     - name: Get Project Version
       id: get_version
