@@ -1,16 +1,13 @@
 { lib
 , buildGoApplication
-, libwebp
 }:
 
 buildGoApplication rec {
-  pname = "watgbridge-dev";
+  pname = "watgbridge";
   version = "1.8.2";
 
   pwd = ../../.;
   src = ../../.;
-
-  buildInputs = [ libwebp ];
 
   ldflags = [ "-s" "-w" ];
 

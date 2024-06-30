@@ -7,9 +7,6 @@ schema = 3
   [mod."github.com/Benau/go_rlottie"]
     version = "v0.0.0-20210807002906-98c1b2421989"
     hash = "sha256-oIe5oARFioEFTv/tR8V0PJGvsW1qB0/ZFo7E/UPhJX4="
-  [mod."github.com/Benau/tgsconverter"]
-    version = "v0.0.0-20210809170556-99f4a4f6337f"
-    hash = "sha256-RTGCRJWX5JOWuNJ76uMyy3PzEgRlUDvNJ2mjckunp5o="
   [mod."github.com/PaulSonOfLars/gotgbot/v2"]
     version = "v2.0.0-rc.27"
     hash = "sha256-SvKMqWCkKPKjJEH3QpXYWAfQa+ruJK7+KfoEStpWbt8="
@@ -55,9 +52,6 @@ schema = 3
   [mod."github.com/kettek/apng"]
     version = "v0.0.0-20220823221153-ff692776a607"
     hash = "sha256-VuxcQDPJsmSpueFu9ECqG/EIr29eDALA1iRpl2pquzI="
-  [mod."github.com/kolesa-team/go-webp"]
-    version = "v1.0.4"
-    hash = "sha256-9yXYck2+V3UiYoceKEVCwfX4RUbo2xmD6hsjDPwtQnY="
   [mod."github.com/lithammer/fuzzysearch"]
     version = "v1.1.8"
     hash = "sha256-aMMRcrlUc9CBiiNkcnWWn4hfNMNyVhrAt67kvP4D4Do="
@@ -82,9 +76,12 @@ schema = 3
   [mod."github.com/rs/zerolog"]
     version = "v1.32.0"
     hash = "sha256-9dZjtsES+wLp1cFiSVMuEUbdeXVFcgT0dgg5ACZkILk="
-  [mod."github.com/sizeofint/webpanimation"]
-    version = "v0.0.0-20210809145948-1d2b32119882"
-    hash = "sha256-WlTBMUd+SLAh1TWuVHIWm/wy9cblds3f+yZYC3jJs/w="
+  [mod."github.com/watgbridge/tgsconverter"]
+    version = "v0.0.0-20240630070853-83de423ff0ec"
+    hash = "sha256-d8FdFV4/VlXsie+6D50qJS8OtU+W+ECRTTbkzLRpsgA="
+  [mod."github.com/watgbridge/webp"]
+    version = "v0.0.0-20240630070243-84d3a70502bb"
+    hash = "sha256-DUFTpV/qVqjHavAdv+5HuOn7lDq4Fu2EU4iZQNjwy14="
   [mod."go.mau.fi/libsignal"]
     version = "v0.1.0"
     hash = "sha256-hSZQkw/0eV5Y0pj1N+idYuKb/jtiw/qTfaOGdYCXmn0="

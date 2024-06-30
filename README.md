@@ -5,10 +5,10 @@ from Telegram.
 
 <a href="https://t.me/PropheCProjects">
   <img src="https://img.shields.io/badge/Updates_Channel-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white"></img>
-</a>&nbsp; &nbsp; 
+</a>&nbsp; &nbsp;
 <a href="https://t.me/WaTgBridge">
   <img src="https://img.shields.io/badge/Discussion_Group-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white"></img>
-</a>&nbsp; &nbsp; 
+</a>&nbsp; &nbsp;
 <a href="https://youtu.be/xc75XLoTmA4">
   <img src="https://img.shields.io/badge/YouTube-FF0000?style=for-the-badge&logo=youtube&logoColor=white"</img>
 </a>
@@ -47,7 +47,7 @@ PRs are welcome :)
 
 - Make a supergroup (enable message history for new members) with topics enabled
 - Add your bot in the group, make it an admin with permissions to `Manage topics`
-- Install `git`, `gcc` and `golang`, `ffmpeg` , `imagemagick` (optional), `libwebp` (latest version) on your system
+- Install `git`, `gcc` and `golang`, `ffmpeg` , `imagemagick` (optional), on your system
 - Clone this repository anywhere and navigate to the cloned directory
 - Run `go build`
 - Copy `sample_config.yaml` to `config.yaml` and fill the values, there are comments to help you.

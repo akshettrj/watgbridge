@@ -1,20 +1,18 @@
 module watgbridge
 
-go 1.21
-
-toolchain go1.22.2
+go 1.22.3
 
 require (
-	github.com/Benau/tgsconverter v0.0.0-20210809170556-99f4a4f6337f
 	github.com/PaulSonOfLars/gotgbot/v2 v2.0.0-rc.27
 	github.com/emersion/go-vcard v0.0.0-20230815062825-8fda7d206ec9
 	github.com/forPelevin/gomoji v1.2.0
 	github.com/go-co-op/gocron v1.37.0
 	github.com/jackc/pgx/v5 v5.5.5
-	github.com/kolesa-team/go-webp v1.0.4
 	github.com/lithammer/fuzzysearch v1.1.8
 	github.com/mattn/go-sqlite3 v1.14.22
 	github.com/mdp/qrterminal/v3 v3.2.0
+	github.com/watgbridge/tgsconverter v0.0.0-20240630070853-83de423ff0ec
+	github.com/watgbridge/webp v0.0.0-20240630070243-84d3a70502bb
 	go.mau.fi/whatsmeow v0.0.0-20240520180327-81f8f07f1dfb
 	go.uber.org/zap v1.27.0
 	golang.org/x/exp v0.0.0-20240506185415-9bf2ced13842
@@ -44,7 +42,6 @@ require (
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/rs/zerolog v1.32.0 // indirect
-	github.com/sizeofint/webpanimation v0.0.0-20210809145948-1d2b32119882 // indirect
 	go.mau.fi/libsignal v0.1.0 // indirect
 	go.mau.fi/util v0.4.2 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
