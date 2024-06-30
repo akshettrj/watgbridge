@@ -20,28 +20,3 @@ jobs:
         authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
     - run: |
         nix build --accept-flake-config -L .#packages.x86_64-linux.watgbridge
-
-  aarch64-linux:
-    needs: [x86_64-linux]
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-    - uses: cachix/install-nix-action@v25
-      with:
-        nix_path: nixpkgs=channel:nixos-unstable
-    - run: |
-        DEBIAN_FRONTEND=noninteractive
-        sudo apt-get update -q -y && sudo apt-get install -q -y qemu-system-aarch64 qemu-efi binfmt-support qemu-user-static
-        mkdir -p ~/.config/nix
-        sudo bash -c "echo system-features = aarch64-linux arm-linux >> /etc/nix/nix.conf"
-    - uses: cachix/cachix-action@v14
-      with:
-        name: watgbridge
-        authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
-    - run: |
-        nix build -L \
-          --option system aarch64-linux \
-          --option sandbox false \
-          --extra-platforms aarch64-linux \
-          --accept-flake-config \
-          .#packages.aarch64-linux.watgbridge
