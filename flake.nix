@@ -29,10 +29,6 @@
             libwebp
             gomod2nix.packages."${system}".default
           ];
-
-          shellHook = ''
-              export GOPATH="$(git rev-parse --show-toplevel)/.go";
-          '';
         };
 
         packages = rec {

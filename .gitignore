@@ -32,4 +32,3 @@ watgbridge.service
 # Nix
 /result
 .direnv/
-/.go/
