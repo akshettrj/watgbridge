@@ -1306,10 +1306,21 @@ func PictureEventHandler(v *events.Picture) {
 			"no thread found for a WhatsApp chat (handling Picture event)",
 			zap.String("chat", v.JID.String()),
 		)
-		return
+		if !cfg.WhatsApp.CreateThreadForInfoUpdates {
+			return
+		}
 	}
 
 	if v.JID.Server == waTypes.GroupServer {
+		tgThreadId, err = utils.TgGetOrMakeThreadFromWa(v.JID.ToNonAD().String(), cfg.Telegram.TargetChatID, utils.WaGetGroupName(v.JID))
+		if err != nil {
+			logger.Warn(
+				"failed to create a new thread for a WhatsApp chat (handling Picture event)",
+				zap.String("chat", v.JID.String()),
+				zap.Error(err),
+			)
+			return
+		}
 		changer := utils.WaGetContactName(v.Author)
 		if v.Remove {
 			updateText := fmt.Sprintf("The profile picture was removed by %s", html.EscapeString(changer))
@@ -1353,8 +1364,17 @@ func PictureEventHandler(v *events.Picture) {
 			}
 		}
 	} else if v.JID.Server == waTypes.DefaultUserServer {
+		tgThreadId, err = utils.TgGetOrMakeThreadFromWa(v.JID.ToNonAD().String(), cfg.Telegram.TargetChatID, utils.WaGetContactName(v.JID.ToNonAD()))
+		if err != nil {
+			logger.Warn(
+				"failed to create a new thread for a WhatsApp chat (handling Picture event)",
+				zap.String("chat", v.JID.String()),
+				zap.Error(err),
+			)
+			return
+		}
 		if v.Remove {
-			updateText := fmt.Sprintf("The profile picture was removed")
+			updateText := "The profile picture was removed"
 			err = utils.TgSendTextById(
 				tgBot, cfg.Telegram.TargetChatID, tgThreadId,
 				updateText,
@@ -1424,15 +1444,33 @@ func GroupInfoEventHandler(v *events.GroupInfo) {
 			"no thread found for a WhatsApp chat (handling GroupInfo event)",
 			zap.String("chat", v.JID.String()),
 		)
-		return
+		if cfg.WhatsApp.CreateThreadForInfoUpdates {
+			tgThreadId, err = utils.TgGetOrMakeThreadFromWa(v.JID.ToNonAD().String(), cfg.Telegram.TargetChatID, utils.WaGetGroupName(v.JID))
+			if err != nil {
+				logger.Warn(
+					"failed to create a new thread for a WhatsApp chat (handling GroupInfo event)",
+					zap.String("chat", v.JID.String()),
+					zap.Error(err),
+				)
+				return
+			}
+		} else {
+			return
+		}
 	}
 
 	if v.Announce != nil {
+		var authorInfo string
+		if v.Sender != nil {
+			authorName := utils.WaGetContactName(*v.Sender)
+			authorInfo = fmt.Sprintf(" by %s", html.EscapeString(authorName))
+		}
+
 		var updateText string
 		if v.Announce.IsAnnounce {
-			updateText = "Group settings have been changed, only admins can send messages now"
+			updateText = fmt.Sprintf("Group settings have been changed%s, only admins can send messages now", authorInfo)
 		} else {
-			updateText = "Group settings have been changed, everybody can send messages now"
+			updateText = fmt.Sprintf("Group settings have been changed%s, everybody can send messages now", authorInfo)
 		}
 		err = utils.TgSendTextById(tgBot, cfg.Telegram.TargetChatID, tgThreadId, updateText)
 		if err != nil {
@@ -1441,17 +1479,23 @@ func GroupInfoEventHandler(v *events.GroupInfo) {
 	}
 
 	if v.Ephemeral != nil {
+		var authorInfo string
+		if v.Sender != nil {
+			authorName := utils.WaGetContactName(*v.Sender)
+			authorInfo = fmt.Sprintf(" by %s", html.EscapeString(authorName))
+		}
+
 		var updateText string
 		if v.Ephemeral.IsEphemeral {
-			err := database.UpdateEphemeralSettings(v.JID.ToNonAD().String(), true, v.Ephemeral.DisappearingTimer)
-			updateText = "Group's auto deletion timer has been turned on:\n"
+			err = database.UpdateEphemeralSettings(v.JID.ToNonAD().String(), true, v.Ephemeral.DisappearingTimer)
+			updateText = fmt.Sprintf("Group's auto deletion timer has been turned on%s:\n", authorInfo)
 			updateText += fmt.Sprintf("Timer: %s\n", time.Second*time.Duration(v.Ephemeral.DisappearingTimer))
 			if err != nil {
 				updateText += fmt.Sprintf("Failed to save to DB: %s", html.EscapeString(err.Error()))
 			}
 		} else {
-			err := database.UpdateEphemeralSettings(v.JID.ToNonAD().String(), false, 0)
-			updateText = "Group's auto deletion timer has been disabled\n"
+			err = database.UpdateEphemeralSettings(v.JID.ToNonAD().String(), false, 0)
+			updateText = fmt.Sprintf("Group's auto deletion timer has been disabled%s:\n", authorInfo)
 			if err != nil {
 				updateText += fmt.Sprintf("Failed to save to DB: %s", html.EscapeString(err.Error()))
 			}
@@ -1463,7 +1507,13 @@ func GroupInfoEventHandler(v *events.GroupInfo) {
 	}
 
 	if v.Delete != nil {
-		updateText := "The group has been deleted"
+		var authorInfo string
+		if v.Sender != nil {
+			authorName := utils.WaGetContactName(*v.Sender)
+			authorInfo = fmt.Sprintf(" by %s", html.EscapeString(authorName))
+		}
+
+		updateText := fmt.Sprintf("The group has been deleted%s", authorInfo)
 		if v.Delete.DeleteReason != "" {
 			updateText += fmt.Sprintf(
 				"\nReason: <code>%s</code>",
@@ -1480,15 +1530,28 @@ func GroupInfoEventHandler(v *events.GroupInfo) {
 	}
 
 	if len(v.Join) > 0 {
+		var adderName string
+		if v.Sender != nil {
+			adderName = utils.WaGetContactName(*v.Sender)
+		}
+
 		var updateText string
 		if len(v.Join) == 1 {
 			newMemName := utils.WaGetContactName(v.Join[0])
-			updateText = fmt.Sprintf("%s joined the group\n", html.EscapeString(newMemName))
+			if v.Sender != nil && *v.Sender != v.Join[0] {
+				updateText = fmt.Sprintf("%s was added by %s to the group\n", html.EscapeString(newMemName), html.EscapeString(adderName))
+			} else {
+				updateText = fmt.Sprintf("%s joined the group\n", html.EscapeString(newMemName))
+			}
 		} else {
 			updateText = "The following people joined the group:\n"
 			for _, newMem := range v.Join {
 				newMemName := utils.WaGetContactName(newMem)
-				updateText += fmt.Sprintf("- %s\n", html.EscapeString(newMemName))
+				if v.Sender != nil && *v.Sender != newMem {
+					updateText += fmt.Sprintf("- %s (added by %s)\n", html.EscapeString(newMemName), html.EscapeString(adderName))
+				} else {
+					updateText += fmt.Sprintf("- %s\n", html.EscapeString(newMemName))
+				}
 			}
 		}
 		if v.JoinReason != "" {
@@ -1501,15 +1564,28 @@ func GroupInfoEventHandler(v *events.GroupInfo) {
 	}
 
 	if len(v.Leave) > 0 {
+		var removerName string
+		if v.Sender != nil {
+			removerName = utils.WaGetContactName(*v.Sender)
+		}
+
 		var updateText string
 		if len(v.Leave) == 1 {
 			oldMemName := utils.WaGetContactName(v.Leave[0])
-			updateText = fmt.Sprintf("%s left the group\n", html.EscapeString(oldMemName))
+			if v.Sender != nil && *v.Sender == v.Leave[0] {
+				updateText = fmt.Sprintf("%s left the group\n", html.EscapeString(oldMemName))
+			} else {
+				updateText = fmt.Sprintf("%s was kicked by %s from the group\n", html.EscapeString(oldMemName), html.EscapeString(removerName))
+			}
 		} else {
 			updateText = "The following people left the group:\n"
 			for _, oldMem := range v.Leave {
 				oldMemName := utils.WaGetContactName(oldMem)
-				updateText += fmt.Sprintf("- %s\n", oldMemName)
+				if v.Sender != nil && *v.Sender != oldMem {
+					updateText += fmt.Sprintf("- %s (kicked by %s)\n", html.EscapeString(oldMemName), html.EscapeString(removerName))
+				} else {
+					updateText += fmt.Sprintf("- %s\n", html.EscapeString(oldMemName))
+				}
 			}
 		}
 		err = utils.TgSendTextById(tgBot, cfg.Telegram.TargetChatID, tgThreadId, updateText)
@@ -1520,11 +1596,25 @@ func GroupInfoEventHandler(v *events.GroupInfo) {
 
 	if len(v.Demote) > 0 {
 		var updateText string
+
+		var demoterName string
+		if v.Sender != nil {
+			demoterName = utils.WaGetContactName(*v.Sender)
+		}
+
 		if len(v.Demote) == 1 {
 			demotedMemName := utils.WaGetContactName(v.Demote[0])
-			updateText = fmt.Sprintf("%s was demoted in the group\n", html.EscapeString(demotedMemName))
+			updateText = fmt.Sprintf("%s was demoted in the group", html.EscapeString(demotedMemName))
+			if demoterName != "" {
+				updateText += fmt.Sprintf(" by %s", html.EscapeString(demoterName))
+			}
+			updateText += "\n"
 		} else {
-			updateText = "The following people were demoted:\n"
+			updateText = "The following people were demoted"
+			if demoterName != "" {
+				updateText += fmt.Sprintf(" by %s", html.EscapeString(demoterName))
+			}
+			updateText += ":\n"
 			for _, demotedMem := range v.Demote {
 				demotedMemName := utils.WaGetContactName(demotedMem)
 				updateText += fmt.Sprintf("- %s\n", demotedMemName)
@@ -1538,14 +1628,28 @@ func GroupInfoEventHandler(v *events.GroupInfo) {
 
 	if len(v.Promote) > 0 {
 		var updateText string
+
+		var promoterName string
+		if v.Sender != nil {
+			promoterName = utils.WaGetContactName(*v.Sender)
+		}
+
 		if len(v.Promote) == 1 {
 			promotedMemName := utils.WaGetContactName(v.Promote[0])
-			updateText = fmt.Sprintf("%s was promoted in the group\n", html.EscapeString(promotedMemName))
+			updateText = fmt.Sprintf("%s was promoted in the group", html.EscapeString(promotedMemName))
+			if promoterName != "" {
+				updateText += fmt.Sprintf(" by %s", html.EscapeString(promoterName))
+			}
+			updateText += "\n"
 		} else {
-			updateText = "The following people were promoted:\n"
+			updateText = "The following people were promoted"
+			if promoterName != "" {
+				updateText += fmt.Sprintf(" by %s", html.EscapeString(promoterName))
+			}
+			updateText += ":\n"
 			for _, promotedMem := range v.Promote {
 				promotedMemName := utils.WaGetContactName(promotedMem)
-				updateText += fmt.Sprintf("- %s\n", promotedMemName)
+				updateText += fmt.Sprintf("- %s\n", html.EscapeString(promotedMemName))
 			}
 		}
 		err = utils.TgSendTextById(tgBot, cfg.Telegram.TargetChatID, tgThreadId, updateText)

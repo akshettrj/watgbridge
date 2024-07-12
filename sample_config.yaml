@@ -57,6 +57,7 @@ whatsapp:
   send_revoked_message_updates: false
   whatsmeow_debug_mode: false
   send_my_messages_from_other_devices: false      # If set to true, the messages sent by you from other devices will be sent to Telgram as well
+  create_thread_for_info_updates: false  # If set to true, new thread will be created (if it doesn't exist) when profile picture changes for group/someone and when group metadata/members changes
   #login_database:               # Uncomment only if you want to use something other than sqlite
   #  type: sqlite3
   #  url: file:wawebstore.db?foreign_keys=on

@@ -107,6 +107,10 @@ func WaGetGroupName(jid types.JID) string {
 }
 
 func WaGetContactName(jid types.JID) string {
+	if jid.ToNonAD() == state.State.WhatsAppClient.Store.ID.ToNonAD() {
+		return "You"
+	}
+
 	var name string
 
 	firstName, fullName, pushName, businessName, err := database.ContactNameGet(jid.User)
