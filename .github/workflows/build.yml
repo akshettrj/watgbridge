@@ -4,6 +4,8 @@ on:
   push:
     paths:
       - state/state.go
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
