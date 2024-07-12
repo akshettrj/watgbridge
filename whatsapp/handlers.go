@@ -1306,10 +1306,21 @@ func PictureEventHandler(v *events.Picture) {
 			"no thread found for a WhatsApp chat (handling Picture event)",
 			zap.String("chat", v.JID.String()),
 		)
-		return
+		if !cfg.WhatsApp.CreateThreadForInfoUpdates {
+			return
+		}
 	}
 
 	if v.JID.Server == waTypes.GroupServer {
+		tgThreadId, err = utils.TgGetOrMakeThreadFromWa(v.JID.ToNonAD().String(), cfg.Telegram.TargetChatID, utils.WaGetGroupName(v.JID))
+		if err != nil {
+			logger.Warn(
+				"failed to create a new thread for a WhatsApp chat (handling Picture event)",
+				zap.String("chat", v.JID.String()),
+				zap.Error(err),
+			)
+			return
+		}
 		changer := utils.WaGetContactName(v.Author)
 		if v.Remove {
 			updateText := fmt.Sprintf("The profile picture was removed by %s", html.EscapeString(changer))
@@ -1353,8 +1364,17 @@ func PictureEventHandler(v *events.Picture) {
 			}
 		}
 	} else if v.JID.Server == waTypes.DefaultUserServer {
+		tgThreadId, err = utils.TgGetOrMakeThreadFromWa(v.JID.ToNonAD().String(), cfg.Telegram.TargetChatID, utils.WaGetContactName(v.JID.ToNonAD()))
+		if err != nil {
+			logger.Warn(
+				"failed to create a new thread for a WhatsApp chat (handling Picture event)",
+				zap.String("chat", v.JID.String()),
+				zap.Error(err),
+			)
+			return
+		}
 		if v.Remove {
-			updateText := fmt.Sprintf("The profile picture was removed")
+			updateText := "The profile picture was removed"
 			err = utils.TgSendTextById(
 				tgBot, cfg.Telegram.TargetChatID, tgThreadId,
 				updateText,
@@ -1424,7 +1444,19 @@ func GroupInfoEventHandler(v *events.GroupInfo) {
 			"no thread found for a WhatsApp chat (handling GroupInfo event)",
 			zap.String("chat", v.JID.String()),
 		)
-		return
+		if cfg.WhatsApp.CreateThreadForInfoUpdates {
+			tgThreadId, err = utils.TgGetOrMakeThreadFromWa(v.JID.ToNonAD().String(), cfg.Telegram.TargetChatID, utils.WaGetGroupName(v.JID))
+			if err != nil {
+				logger.Warn(
+					"failed to create a new thread for a WhatsApp chat (handling GroupInfo event)",
+					zap.String("chat", v.JID.String()),
+					zap.Error(err),
+				)
+				return
+			}
+		} else {
+			return
+		}
 	}
 
 	if v.Announce != nil {

@@ -32,7 +32,7 @@ type Config struct {
 		SendMyPresence      bool    `yaml:"send_my_presence"`
 		SendMyReadReceipts  bool    `yaml:"send_my_read_receipts"`
 		SilentConfirmation  bool    `yaml:"silent_confirmation"`
-		EmojiConfirmation  bool    `yaml:"emoji_confirmation"`
+		EmojiConfirmation   bool    `yaml:"emoji_confirmation"`
 	} `yaml:"telegram"`
 
 	WhatsApp struct {
@@ -64,6 +64,7 @@ type Config struct {
 		SendRevokedMessageUpdates      bool     `yaml:"send_revoked_message_updates"`
 		WhatsmeowDebugMode             bool     `yaml:"whatsmeow_debug_mode"`
 		SendMyMessagesFromOtherDevices bool     `yaml:"send_my_messages_from_other_devices"`
+		CreateThreadForInfoUpdates     bool     `yaml:"create_thread_for_info_updates"`
 	} `yaml:"whatsapp"`
 
 	Database map[string]string `yaml:"database"`
