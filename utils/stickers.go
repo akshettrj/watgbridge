@@ -105,7 +105,7 @@ func WebpImagePad(inputData []byte, wPad, hPad int, updateId int64) ([]byte, err
 	)
 
 	outputWidth := inputImage.Bounds().Dx() + wPad
-	outputHeight := inputImage.Bounds().Dx() + hPad
+	outputHeight := inputImage.Bounds().Dy() + hPad
 
 	outputImage := image.NewRGBA(image.Rect(0, 0, outputWidth, outputHeight))
 	draw.Draw(outputImage, image.Rect(wOffset, hOffset, outputWidth-wOffset, outputHeight-hOffset), inputImage, image.Point{}, draw.Src)
