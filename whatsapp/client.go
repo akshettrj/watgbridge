@@ -12,7 +12,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/mdp/qrterminal/v3"
 	"go.mau.fi/whatsmeow"
-	waProto "go.mau.fi/whatsmeow/binary/proto"
+	"go.mau.fi/whatsmeow/proto/waCompanionReg"
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	waLog "go.mau.fi/whatsmeow/util/log"
@@ -74,8 +74,8 @@ func NewWhatsAppClient() error {
 
 	store.DeviceProps.Os = proto.String(state.State.Config.WhatsApp.SessionName)
 	store.DeviceProps.RequireFullSync = proto.Bool(false)
-	store.DeviceProps.PlatformType = waProto.DeviceProps_DESKTOP.Enum()
-	store.DeviceProps.HistorySyncConfig = &waProto.DeviceProps_HistorySyncConfig{
+	store.DeviceProps.PlatformType = waCompanionReg.DeviceProps_DESKTOP.Enum()
+	store.DeviceProps.HistorySyncConfig = &waCompanionReg.DeviceProps_HistorySyncConfig{
 		FullSyncDaysLimit:              proto.Uint32(0),
 		FullSyncSizeMbLimit:            proto.Uint32(0),
 		StorageQuotaMb:                 proto.Uint32(0),

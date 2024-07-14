@@ -12,7 +12,7 @@ import (
 
 	"github.com/lithammer/fuzzysearch/fuzzy"
 	"go.mau.fi/whatsmeow"
-	waProto "go.mau.fi/whatsmeow/binary/proto"
+	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types"
 	"google.golang.org/protobuf/proto"
 )
@@ -147,7 +147,7 @@ func WaGetContactName(jid types.JID) string {
 	return name
 }
 
-func WaTagAll(group types.JID, msg *waProto.Message, msgId, msgSender string, msgIsFromMe bool) {
+func WaTagAll(group types.JID, msg *waE2E.Message, msgId, msgSender string, msgIsFromMe bool) {
 	var (
 		cfg      = state.State.Config
 		waClient = state.State.WhatsAppClient
@@ -174,14 +174,14 @@ func WaTagAll(group types.JID, msg *waProto.Message, msgId, msgSender string, ms
 		mentioned = append(mentioned, participant.JID.String())
 	}
 
-	_, err = waClient.SendMessage(context.Background(), group, &waProto.Message{
-		ExtendedTextMessage: &waProto.ExtendedTextMessage{
+	_, err = waClient.SendMessage(context.Background(), group, &waE2E.Message{
+		ExtendedTextMessage: &waE2E.ExtendedTextMessage{
 			Text: proto.String(replyText),
-			ContextInfo: &waProto.ContextInfo{
-				StanzaId:      proto.String(msgId),
+			ContextInfo: &waE2E.ContextInfo{
+				StanzaID:      proto.String(msgId),
 				Participant:   proto.String(msgSender),
 				QuotedMessage: msg,
-				MentionedJid:  mentioned,
+				MentionedJID:  mentioned,
 			},
 		},
 	})
@@ -204,15 +204,15 @@ func WaTagAll(group types.JID, msg *waProto.Message, msgId, msgSender string, ms
 	}
 }
 
-func WaSendText(chat types.JID, text, stanzaId, participantId string, quotedMsg *waProto.Message, isReply bool) (whatsmeow.SendResponse, error) {
+func WaSendText(chat types.JID, text, stanzaId, participantId string, quotedMsg *waE2E.Message, isReply bool) (whatsmeow.SendResponse, error) {
 	waClient := state.State.WhatsAppClient
 
-	msgToSend := &waProto.Message{}
+	msgToSend := &waE2E.Message{}
 	if isReply {
-		msgToSend.ExtendedTextMessage = &waProto.ExtendedTextMessage{
+		msgToSend.ExtendedTextMessage = &waE2E.ExtendedTextMessage{
 			Text: proto.String(text),
-			ContextInfo: &waProto.ContextInfo{
-				StanzaId:      proto.String(stanzaId),
+			ContextInfo: &waE2E.ContextInfo{
+				StanzaID:      proto.String(stanzaId),
 				Participant:   proto.String(participantId),
 				QuotedMessage: quotedMsg,
 			},

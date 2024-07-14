@@ -31,7 +31,7 @@ func NewTelegramClient() error {
 		},
 	})
 	if err != nil {
-		return fmt.Errorf("Could not initialize telegram bot : %s", err)
+		return fmt.Errorf("could not initialize telegram bot : %s", err)
 	}
 	state.State.TelegramBot = bot
 

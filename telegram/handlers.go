@@ -1,6 +1,7 @@
 package telegram
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"html"
@@ -659,7 +660,7 @@ func GetProfilePictureHandler(b *gotgbot.Bot, c *ext.Context) error {
 	if c.EffectiveMessage.IsTopicMessage {
 		opts.MessageThreadId = c.EffectiveMessage.MessageThreadId
 	}
-	_, err = b.SendPhoto(c.EffectiveChat.Id, imgBytes, opts)
+	_, err = b.SendPhoto(c.EffectiveChat.Id, &gotgbot.FileReader{Data: bytes.NewReader(imgBytes)}, opts)
 	if err != nil {
 		return utils.TgReplyWithErrorByContext(b, c, "Failed to send photo", err)
 	}

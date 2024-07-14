@@ -18,7 +18,8 @@ import (
 	"github.com/PaulSonOfLars/gotgbot/v2/ext"
 	"github.com/forPelevin/gomoji"
 	"go.mau.fi/whatsmeow"
-	waProto "go.mau.fi/whatsmeow/binary/proto"
+	"go.mau.fi/whatsmeow/proto/waCommon"
+	"go.mau.fi/whatsmeow/proto/waE2E"
 	waTypes "go.mau.fi/whatsmeow/types"
 	"go.uber.org/zap"
 	"golang.org/x/exp/slices"
@@ -292,30 +293,30 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			return TgReplyWithErrorByContext(b, c, "Failed to upload image to WhatsApp", err)
 		}
 
-		msgToSend := &waProto.Message{
-			ImageMessage: &waProto.ImageMessage{
+		msgToSend := &waE2E.Message{
+			ImageMessage: &waE2E.ImageMessage{
 				Caption:           proto.String(msgToForward.Caption),
-				Url:               proto.String(uploadedImage.URL),
+				URL:               proto.String(uploadedImage.URL),
 				DirectPath:        proto.String(uploadedImage.DirectPath),
 				MediaKey:          uploadedImage.MediaKey,
 				MediaKeyTimestamp: proto.Int64(time.Now().Unix()),
 				Mimetype:          proto.String(http.DetectContentType(imageBytes)),
-				FileEncSha256:     uploadedImage.FileEncSHA256,
-				FileSha256:        uploadedImage.FileSHA256,
+				FileEncSHA256:     uploadedImage.FileEncSHA256,
+				FileSHA256:        uploadedImage.FileSHA256,
 				FileLength:        proto.Uint64(uint64(len(imageBytes))),
 				ViewOnce:          proto.Bool(msgToForward.HasProtectedContent),
 				Height:            proto.Uint32(uint32(bestPhoto.Height)),
 				Width:             proto.Uint32(uint32(bestPhoto.Width)),
-				ContextInfo:       &waProto.ContextInfo{},
+				ContextInfo:       &waE2E.ContextInfo{},
 			},
 		}
 		if isReply {
-			msgToSend.ImageMessage.ContextInfo.StanzaId = proto.String(stanzaId)
+			msgToSend.ImageMessage.ContextInfo.StanzaID = proto.String(stanzaId)
 			msgToSend.ImageMessage.ContextInfo.Participant = proto.String(participant)
-			msgToSend.ImageMessage.ContextInfo.QuotedMessage = &waProto.Message{Conversation: proto.String("")}
+			msgToSend.ImageMessage.ContextInfo.QuotedMessage = &waE2E.Message{Conversation: proto.String("")}
 		}
 		if len(mentions) > 0 {
-			msgToSend.ImageMessage.ContextInfo.MentionedJid = mentions
+			msgToSend.ImageMessage.ContextInfo.MentionedJID = mentions
 		}
 		if isEphemeral {
 			msgToSend.ImageMessage.ContextInfo.Expiration = &ephemeralTimer
@@ -330,7 +331,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			b.SetMessageReaction(
 				msgToForward.Chat.Id,
 				msgToForward.MessageId,
-				&gotgbot.SetMessageReactionOpts{ Reaction: []gotgbot.ReactionType{gotgbot.ReactionTypeEmoji{Emoji: "👍"}} },
+				&gotgbot.SetMessageReactionOpts{Reaction: []gotgbot.ReactionType{gotgbot.ReactionTypeEmoji{Emoji: "👍"}}},
 			)
 		} else {
 			msg, err := TgReplyTextByContext(b, c, "Successfully sent", revokeKeyboard, cfg.Telegram.SilentConfirmation)
@@ -374,31 +375,31 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			return TgReplyWithErrorByContext(b, c, "Failed to upload video to WhatsApp", err)
 		}
 
-		msgToSend := &waProto.Message{
-			VideoMessage: &waProto.VideoMessage{
+		msgToSend := &waE2E.Message{
+			VideoMessage: &waE2E.VideoMessage{
 				Caption:       proto.String(msgToForward.Caption),
-				Url:           proto.String(uploadedVideo.URL),
+				URL:           proto.String(uploadedVideo.URL),
 				DirectPath:    proto.String(uploadedVideo.DirectPath),
 				MediaKey:      uploadedVideo.MediaKey,
 				Mimetype:      proto.String(msgToForward.Video.MimeType),
-				FileEncSha256: uploadedVideo.FileEncSHA256,
-				FileSha256:    uploadedVideo.FileSHA256,
+				FileEncSHA256: uploadedVideo.FileEncSHA256,
+				FileSHA256:    uploadedVideo.FileSHA256,
 				FileLength:    proto.Uint64(uint64(len(videoBytes))),
 				ViewOnce:      proto.Bool(msgToForward.HasProtectedContent),
 				Seconds:       proto.Uint32(uint32(msgToForward.Video.Duration)),
 				GifPlayback:   proto.Bool(false),
 				Height:        proto.Uint32(uint32(msgToForward.Video.Height)),
 				Width:         proto.Uint32(uint32(msgToForward.Video.Width)),
-				ContextInfo:   &waProto.ContextInfo{},
+				ContextInfo:   &waE2E.ContextInfo{},
 			},
 		}
 		if isReply {
-			msgToSend.VideoMessage.ContextInfo.StanzaId = proto.String(stanzaId)
+			msgToSend.VideoMessage.ContextInfo.StanzaID = proto.String(stanzaId)
 			msgToSend.VideoMessage.ContextInfo.Participant = proto.String(participant)
-			msgToSend.VideoMessage.ContextInfo.QuotedMessage = &waProto.Message{Conversation: proto.String("")}
+			msgToSend.VideoMessage.ContextInfo.QuotedMessage = &waE2E.Message{Conversation: proto.String("")}
 		}
 		if len(mentions) > 0 {
-			msgToSend.VideoMessage.ContextInfo.MentionedJid = mentions
+			msgToSend.VideoMessage.ContextInfo.MentionedJID = mentions
 		}
 		if isEphemeral {
 			msgToSend.VideoMessage.ContextInfo.Expiration = &ephemeralTimer
@@ -413,7 +414,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			b.SetMessageReaction(
 				msgToForward.Chat.Id,
 				msgToForward.MessageId,
-				&gotgbot.SetMessageReactionOpts{ Reaction: []gotgbot.ReactionType{gotgbot.ReactionTypeEmoji{Emoji: "👍"}} },
+				&gotgbot.SetMessageReactionOpts{Reaction: []gotgbot.ReactionType{gotgbot.ReactionTypeEmoji{Emoji: "👍"}}},
 			)
 		} else {
 			msg, err := TgReplyTextByContext(b, c, "Successfully sent", revokeKeyboard, cfg.Telegram.SilentConfirmation)
@@ -456,29 +457,29 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			return TgReplyWithErrorByContext(b, c, "Failed to upload video note to WhatsApp", err)
 		}
 
-		msgToSend := &waProto.Message{
-			VideoMessage: &waProto.VideoMessage{
+		msgToSend := &waE2E.Message{
+			VideoMessage: &waE2E.VideoMessage{
 				Caption:       proto.String(msgToForward.Caption),
-				Url:           proto.String(uploadedVideo.URL),
+				URL:           proto.String(uploadedVideo.URL),
 				DirectPath:    proto.String(uploadedVideo.DirectPath),
 				MediaKey:      uploadedVideo.MediaKey,
 				Mimetype:      proto.String(http.DetectContentType(videoBytes)),
-				FileEncSha256: uploadedVideo.FileEncSHA256,
-				FileSha256:    uploadedVideo.FileSHA256,
+				FileEncSHA256: uploadedVideo.FileEncSHA256,
+				FileSHA256:    uploadedVideo.FileSHA256,
 				FileLength:    proto.Uint64(uint64(len(videoBytes))),
 				ViewOnce:      proto.Bool(msgToForward.HasProtectedContent),
 				Seconds:       proto.Uint32(uint32(msgToForward.VideoNote.Duration)),
 				GifPlayback:   proto.Bool(false),
-				ContextInfo:   &waProto.ContextInfo{},
+				ContextInfo:   &waE2E.ContextInfo{},
 			},
 		}
 		if isReply {
-			msgToSend.VideoMessage.ContextInfo.StanzaId = proto.String(stanzaId)
+			msgToSend.VideoMessage.ContextInfo.StanzaID = proto.String(stanzaId)
 			msgToSend.VideoMessage.ContextInfo.Participant = proto.String(participant)
-			msgToSend.VideoMessage.ContextInfo.QuotedMessage = &waProto.Message{Conversation: proto.String("")}
+			msgToSend.VideoMessage.ContextInfo.QuotedMessage = &waE2E.Message{Conversation: proto.String("")}
 		}
 		if len(mentions) > 0 {
-			msgToSend.VideoMessage.ContextInfo.MentionedJid = mentions
+			msgToSend.VideoMessage.ContextInfo.MentionedJID = mentions
 		}
 		if isEphemeral {
 			msgToSend.VideoMessage.ContextInfo.Expiration = &ephemeralTimer
@@ -493,7 +494,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			b.SetMessageReaction(
 				msgToForward.Chat.Id,
 				msgToForward.MessageId,
-				&gotgbot.SetMessageReactionOpts{ Reaction: []gotgbot.ReactionType{gotgbot.ReactionTypeEmoji{Emoji: "👍"}} },
+				&gotgbot.SetMessageReactionOpts{Reaction: []gotgbot.ReactionType{gotgbot.ReactionTypeEmoji{Emoji: "👍"}}},
 			)
 		} else {
 			msg, err := TgReplyTextByContext(b, c, "Successfully sent", revokeKeyboard, cfg.Telegram.SilentConfirmation)
@@ -536,32 +537,32 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			return TgReplyWithErrorByContext(b, c, "Failed to upload animation to WhatsApp", err)
 		}
 
-		msgToSend := &waProto.Message{
-			VideoMessage: &waProto.VideoMessage{
+		msgToSend := &waE2E.Message{
+			VideoMessage: &waE2E.VideoMessage{
 				Caption:        proto.String(msgToForward.Caption),
-				Url:            proto.String(uploadedAnimation.URL),
+				URL:            proto.String(uploadedAnimation.URL),
 				DirectPath:     proto.String(uploadedAnimation.DirectPath),
 				MediaKey:       uploadedAnimation.MediaKey,
 				Mimetype:       proto.String(msgToForward.Animation.MimeType),
 				GifPlayback:    proto.Bool(true),
-				FileEncSha256:  uploadedAnimation.FileEncSHA256,
-				FileSha256:     uploadedAnimation.FileSHA256,
+				FileEncSHA256:  uploadedAnimation.FileEncSHA256,
+				FileSHA256:     uploadedAnimation.FileSHA256,
 				FileLength:     proto.Uint64(uint64(len(animationBytes))),
 				ViewOnce:       proto.Bool(msgToForward.HasProtectedContent),
 				Height:         proto.Uint32(uint32(msgToForward.Animation.Height)),
 				Width:          proto.Uint32(uint32(msgToForward.Animation.Width)),
 				Seconds:        proto.Uint32(uint32(msgToForward.Animation.Duration)),
-				GifAttribution: waProto.VideoMessage_TENOR.Enum(),
-				ContextInfo:    &waProto.ContextInfo{},
+				GifAttribution: waE2E.VideoMessage_TENOR.Enum(),
+				ContextInfo:    &waE2E.ContextInfo{},
 			},
 		}
 		if isReply {
-			msgToSend.VideoMessage.ContextInfo.StanzaId = proto.String(stanzaId)
+			msgToSend.VideoMessage.ContextInfo.StanzaID = proto.String(stanzaId)
 			msgToSend.VideoMessage.ContextInfo.Participant = proto.String(participant)
-			msgToSend.VideoMessage.ContextInfo.QuotedMessage = &waProto.Message{Conversation: proto.String("")}
+			msgToSend.VideoMessage.ContextInfo.QuotedMessage = &waE2E.Message{Conversation: proto.String("")}
 		}
 		if len(mentions) > 0 {
-			msgToSend.VideoMessage.ContextInfo.MentionedJid = mentions
+			msgToSend.VideoMessage.ContextInfo.MentionedJID = mentions
 		}
 		if isEphemeral {
 			msgToSend.VideoMessage.ContextInfo.Expiration = &ephemeralTimer
@@ -576,7 +577,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			b.SetMessageReaction(
 				msgToForward.Chat.Id,
 				msgToForward.MessageId,
-				&gotgbot.SetMessageReactionOpts{ Reaction: []gotgbot.ReactionType{gotgbot.ReactionTypeEmoji{Emoji: "👍"}} },
+				&gotgbot.SetMessageReactionOpts{Reaction: []gotgbot.ReactionType{gotgbot.ReactionTypeEmoji{Emoji: "👍"}}},
 			)
 		} else {
 			msg, err := TgReplyTextByContext(b, c, "Successfully sent", revokeKeyboard, cfg.Telegram.SilentConfirmation)
@@ -619,27 +620,27 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			return TgReplyWithErrorByContext(b, c, "Failed to upload audio to WhatsApp", err)
 		}
 
-		msgToSend := &waProto.Message{
-			AudioMessage: &waProto.AudioMessage{
-				Url:           proto.String(uploadedAudio.URL),
+		msgToSend := &waE2E.Message{
+			AudioMessage: &waE2E.AudioMessage{
+				URL:           proto.String(uploadedAudio.URL),
 				DirectPath:    proto.String(uploadedAudio.DirectPath),
 				MediaKey:      uploadedAudio.MediaKey,
 				Mimetype:      proto.String(msgToForward.Audio.MimeType),
-				FileEncSha256: uploadedAudio.FileEncSHA256,
-				FileSha256:    uploadedAudio.FileSHA256,
+				FileEncSHA256: uploadedAudio.FileEncSHA256,
+				FileSHA256:    uploadedAudio.FileSHA256,
 				FileLength:    proto.Uint64(uint64(len(audioBytes))),
 				Seconds:       proto.Uint32(uint32(msgToForward.Audio.Duration)),
-				Ptt:           proto.Bool(false),
-				ContextInfo:   &waProto.ContextInfo{},
+				PTT:           proto.Bool(false),
+				ContextInfo:   &waE2E.ContextInfo{},
 			},
 		}
 		if isReply {
-			msgToSend.AudioMessage.ContextInfo.StanzaId = proto.String(stanzaId)
+			msgToSend.AudioMessage.ContextInfo.StanzaID = proto.String(stanzaId)
 			msgToSend.AudioMessage.ContextInfo.Participant = proto.String(participant)
-			msgToSend.AudioMessage.ContextInfo.QuotedMessage = &waProto.Message{Conversation: proto.String("")}
+			msgToSend.AudioMessage.ContextInfo.QuotedMessage = &waE2E.Message{Conversation: proto.String("")}
 		}
 		if len(mentions) > 0 {
-			msgToSend.AudioMessage.ContextInfo.MentionedJid = mentions
+			msgToSend.AudioMessage.ContextInfo.MentionedJID = mentions
 		}
 		if isEphemeral {
 			msgToSend.AudioMessage.ContextInfo.Expiration = &ephemeralTimer
@@ -654,7 +655,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			b.SetMessageReaction(
 				msgToForward.Chat.Id,
 				msgToForward.MessageId,
-				&gotgbot.SetMessageReactionOpts{ Reaction: []gotgbot.ReactionType{gotgbot.ReactionTypeEmoji{Emoji: "👍"}} },
+				&gotgbot.SetMessageReactionOpts{Reaction: []gotgbot.ReactionType{gotgbot.ReactionTypeEmoji{Emoji: "👍"}}},
 			)
 		} else {
 			msg, err := TgReplyTextByContext(b, c, "Successfully sent", revokeKeyboard, cfg.Telegram.SilentConfirmation)
@@ -697,27 +698,27 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			return TgReplyWithErrorByContext(b, c, "Failed to upload voice to WhatsApp", err)
 		}
 
-		msgToSend := &waProto.Message{
-			AudioMessage: &waProto.AudioMessage{
-				Url:           proto.String(uploadedVoice.URL),
+		msgToSend := &waE2E.Message{
+			AudioMessage: &waE2E.AudioMessage{
+				URL:           proto.String(uploadedVoice.URL),
 				DirectPath:    proto.String(uploadedVoice.DirectPath),
 				MediaKey:      uploadedVoice.MediaKey,
 				Mimetype:      proto.String("audio/ogg; codecs=opus"),
-				FileEncSha256: uploadedVoice.FileEncSHA256,
-				FileSha256:    uploadedVoice.FileSHA256,
+				FileEncSHA256: uploadedVoice.FileEncSHA256,
+				FileSHA256:    uploadedVoice.FileSHA256,
 				FileLength:    proto.Uint64(uint64(len(voiceBytes))),
 				Seconds:       proto.Uint32(uint32(msgToForward.Voice.Duration)),
-				Ptt:           proto.Bool(true),
-				ContextInfo:   &waProto.ContextInfo{},
+				PTT:           proto.Bool(true),
+				ContextInfo:   &waE2E.ContextInfo{},
 			},
 		}
 		if isReply {
-			msgToSend.AudioMessage.ContextInfo.StanzaId = proto.String(stanzaId)
+			msgToSend.AudioMessage.ContextInfo.StanzaID = proto.String(stanzaId)
 			msgToSend.AudioMessage.ContextInfo.Participant = proto.String(participant)
-			msgToSend.AudioMessage.ContextInfo.QuotedMessage = &waProto.Message{Conversation: proto.String("")}
+			msgToSend.AudioMessage.ContextInfo.QuotedMessage = &waE2E.Message{Conversation: proto.String("")}
 		}
 		if len(mentions) > 0 {
-			msgToSend.AudioMessage.ContextInfo.MentionedJid = mentions
+			msgToSend.AudioMessage.ContextInfo.MentionedJID = mentions
 		}
 		if isEphemeral {
 			msgToSend.AudioMessage.ContextInfo.Expiration = &ephemeralTimer
@@ -732,7 +733,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			b.SetMessageReaction(
 				msgToForward.Chat.Id,
 				msgToForward.MessageId,
-				&gotgbot.SetMessageReactionOpts{ Reaction: []gotgbot.ReactionType{gotgbot.ReactionTypeEmoji{Emoji: "👍"}} },
+				&gotgbot.SetMessageReactionOpts{Reaction: []gotgbot.ReactionType{gotgbot.ReactionTypeEmoji{Emoji: "👍"}}},
 			)
 		} else {
 			msg, err := TgReplyTextByContext(b, c, "Successfully sent", revokeKeyboard, cfg.Telegram.SilentConfirmation)
@@ -778,27 +779,27 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		splitName := strings.Split(msgToForward.Document.FileName, ".")
 		documentFileName := strings.Join(splitName[:len(splitName)-1], ".")
 
-		msgToSend := &waProto.Message{
-			DocumentMessage: &waProto.DocumentMessage{
+		msgToSend := &waE2E.Message{
+			DocumentMessage: &waE2E.DocumentMessage{
 				Caption:       proto.String(msgToForward.Caption),
 				Title:         proto.String(documentFileName),
-				Url:           proto.String(uploadedDocument.URL),
+				URL:           proto.String(uploadedDocument.URL),
 				DirectPath:    proto.String(uploadedDocument.DirectPath),
 				MediaKey:      uploadedDocument.MediaKey,
 				Mimetype:      proto.String(msgToForward.Document.MimeType),
-				FileEncSha256: uploadedDocument.FileEncSHA256,
-				FileSha256:    uploadedDocument.FileSHA256,
+				FileEncSHA256: uploadedDocument.FileEncSHA256,
+				FileSHA256:    uploadedDocument.FileSHA256,
 				FileLength:    proto.Uint64(uint64(len(documentBytes))),
-				ContextInfo:   &waProto.ContextInfo{},
+				ContextInfo:   &waE2E.ContextInfo{},
 			},
 		}
 		if isReply {
-			msgToSend.DocumentMessage.ContextInfo.StanzaId = proto.String(stanzaId)
+			msgToSend.DocumentMessage.ContextInfo.StanzaID = proto.String(stanzaId)
 			msgToSend.DocumentMessage.ContextInfo.Participant = proto.String(participant)
-			msgToSend.DocumentMessage.ContextInfo.QuotedMessage = &waProto.Message{Conversation: proto.String("")}
+			msgToSend.DocumentMessage.ContextInfo.QuotedMessage = &waE2E.Message{Conversation: proto.String("")}
 		}
 		if len(mentions) > 0 {
-			msgToSend.DocumentMessage.ContextInfo.MentionedJid = mentions
+			msgToSend.DocumentMessage.ContextInfo.MentionedJID = mentions
 		}
 		if isEphemeral {
 			msgToSend.DocumentMessage.ContextInfo.Expiration = &ephemeralTimer
@@ -813,7 +814,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			b.SetMessageReaction(
 				msgToForward.Chat.Id,
 				msgToForward.MessageId,
-				&gotgbot.SetMessageReactionOpts{ Reaction: []gotgbot.ReactionType{gotgbot.ReactionTypeEmoji{Emoji: "👍"}} },
+				&gotgbot.SetMessageReactionOpts{Reaction: []gotgbot.ReactionType{gotgbot.ReactionTypeEmoji{Emoji: "👍"}}},
 			)
 		} else {
 			msg, err := TgReplyTextByContext(b, c, "Successfully sent", revokeKeyboard, cfg.Telegram.SilentConfirmation)
@@ -897,9 +898,9 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			return TgReplyWithErrorByContext(b, c, "Failed to upload sticker to WhatsApp", err)
 		}
 
-		msgToSend := &waProto.Message{
-			StickerMessage: &waProto.StickerMessage{
-				Url:           proto.String(uploadedSticker.URL),
+		msgToSend := &waE2E.Message{
+			StickerMessage: &waE2E.StickerMessage{
+				URL:           proto.String(uploadedSticker.URL),
 				DirectPath:    proto.String(uploadedSticker.DirectPath),
 				MediaKey:      uploadedSticker.MediaKey,
 				IsAnimated:    proto.Bool(msgToForward.Sticker.IsAnimated || msgToForward.Sticker.IsVideo),
@@ -907,18 +908,17 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 				Height:        proto.Uint32(uint32(msgToForward.Sticker.Height)),
 				Width:         proto.Uint32(uint32(msgToForward.Sticker.Width)),
 				Mimetype:      proto.String("image/webp"),
-				FileEncSha256: uploadedSticker.FileEncSHA256,
-				FileSha256:    uploadedSticker.FileSHA256,
+				FileEncSHA256: uploadedSticker.FileEncSHA256,
+				FileSHA256:    uploadedSticker.FileSHA256,
 				FileLength:    proto.Uint64(uint64(len(stickerBytes))),
-				StickerSentTs: proto.Int64(time.Now().Unix()),
+				StickerSentTS: proto.Int64(time.Now().Unix()),
+				ContextInfo:   &waE2E.ContextInfo{},
 			},
 		}
 		if isReply {
-			msgToSend.StickerMessage.ContextInfo = &waProto.ContextInfo{
-				StanzaId:      proto.String(stanzaId),
-				Participant:   proto.String(participant),
-				QuotedMessage: &waProto.Message{Conversation: proto.String("")},
-			}
+			msgToSend.StickerMessage.ContextInfo.StanzaID = proto.String(stanzaId)
+			msgToSend.StickerMessage.ContextInfo.Participant = proto.String(participant)
+			msgToSend.StickerMessage.ContextInfo.QuotedMessage = &waE2E.Message{Conversation: proto.String("")}
 		}
 		if isEphemeral {
 			msgToSend.StickerMessage.ContextInfo.Expiration = &ephemeralTimer
@@ -933,7 +933,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			b.SetMessageReaction(
 				msgToForward.Chat.Id,
 				msgToForward.MessageId,
-				&gotgbot.SetMessageReactionOpts{ Reaction: []gotgbot.ReactionType{gotgbot.ReactionTypeEmoji{Emoji: "👍"}} },
+				&gotgbot.SetMessageReactionOpts{Reaction: []gotgbot.ReactionType{gotgbot.ReactionTypeEmoji{Emoji: "👍"}}},
 			)
 		} else {
 			msg, err := TgReplyTextByContext(b, c, "Successfully sent", revokeKeyboard, cfg.Telegram.SilentConfirmation)
@@ -953,14 +953,14 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 	} else if msgToForward.Text != "" {
 
 		if emojis := gomoji.CollectAll(msgToForward.Text); isReply && len(emojis) == 1 && gomoji.RemoveEmojis(msgToForward.Text) == "" {
-			_, err := waClient.SendMessage(context.Background(), waChatJID, &waProto.Message{
-				ReactionMessage: &waProto.ReactionMessage{
+			_, err := waClient.SendMessage(context.Background(), waChatJID, &waE2E.Message{
+				ReactionMessage: &waE2E.ReactionMessage{
 					Text:              proto.String(msgToForward.Text),
-					SenderTimestampMs: proto.Int64(time.Now().UnixMilli()),
-					Key: &waProto.MessageKey{
-						RemoteJid: proto.String(waChatJID.String()),
+					SenderTimestampMS: proto.Int64(time.Now().UnixMilli()),
+					Key: &waCommon.MessageKey{
+						RemoteJID: proto.String(waChatJID.String()),
 						FromMe:    proto.Bool(msgToReplyTo != nil && msgToReplyTo.From.Id != b.Id),
-						Id:        proto.String(stanzaId),
+						ID:        proto.String(stanzaId),
 					},
 				},
 			})
@@ -977,18 +977,18 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			return err
 		}
 
-		msgToSend := &waProto.Message{}
+		msgToSend := &waE2E.Message{}
 		if isReply || len(mentions) > 0 || isEphemeral {
-			msgToSend.ExtendedTextMessage = &waProto.ExtendedTextMessage{
+			msgToSend.ExtendedTextMessage = &waE2E.ExtendedTextMessage{
 				Text: proto.String(msgToForward.Text),
-				ContextInfo: &waProto.ContextInfo{
-					StanzaId:      proto.String(stanzaId),
+				ContextInfo: &waE2E.ContextInfo{
+					StanzaID:      proto.String(stanzaId),
 					Participant:   proto.String(participant),
-					QuotedMessage: &waProto.Message{Conversation: proto.String("")},
+					QuotedMessage: &waE2E.Message{Conversation: proto.String("")},
 				},
 			}
 			if len(mentions) > 0 {
-				msgToSend.ExtendedTextMessage.ContextInfo.MentionedJid = mentions
+				msgToSend.ExtendedTextMessage.ContextInfo.MentionedJID = mentions
 			}
 			if isEphemeral {
 				msgToSend.ExtendedTextMessage.ContextInfo.Expiration = &ephemeralTimer
@@ -1006,7 +1006,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			b.SetMessageReaction(
 				msgToForward.Chat.Id,
 				msgToForward.MessageId,
-				&gotgbot.SetMessageReactionOpts{ Reaction: []gotgbot.ReactionType{gotgbot.ReactionTypeEmoji{Emoji: "👍"}} },
+				&gotgbot.SetMessageReactionOpts{Reaction: []gotgbot.ReactionType{gotgbot.ReactionTypeEmoji{Emoji: "👍"}}},
 			)
 		} else {
 			msg, err := TgReplyTextByContext(b, c, "Successfully sent", revokeKeyboard, cfg.Telegram.SilentConfirmation)

@@ -15,7 +15,7 @@ import (
 	"github.com/PaulSonOfLars/gotgbot/v2"
 	goVCard "github.com/emersion/go-vcard"
 	"go.mau.fi/whatsmeow"
-	waProto "go.mau.fi/whatsmeow/binary/proto"
+	"go.mau.fi/whatsmeow/proto/waE2E"
 	waTypes "go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	"go.uber.org/zap"
@@ -55,18 +55,18 @@ func WhatsAppEventHandler(evt interface{}) {
 
 		isEdited := false
 		if protoMsg := v.Message.GetProtocolMessage(); protoMsg != nil &&
-			protoMsg.GetType() == waProto.ProtocolMessage_MESSAGE_EDIT {
+			protoMsg.GetType() == waE2E.ProtocolMessage_MESSAGE_EDIT {
 			isEdited = true
 		}
 
 		if protoMsg := v.Message.GetProtocolMessage(); protoMsg != nil &&
-			protoMsg.GetType() == waProto.ProtocolMessage_REVOKE {
+			protoMsg.GetType() == waE2E.ProtocolMessage_REVOKE {
 			RevokedMessageEventHandler(v)
 			return
 		}
 
 		if protoMsg := v.Message.GetProtocolMessage(); protoMsg != nil &&
-			protoMsg.GetType() == waProto.ProtocolMessage_EPHEMERAL_SETTING {
+			protoMsg.GetType() == waE2E.ProtocolMessage_EPHEMERAL_SETTING {
 			if protoMsg.GetEphemeralExpiration() == 0 {
 				database.UpdateEphemeralSettings(v.Info.Chat.ToNonAD().String(), false, 0)
 			} else {
@@ -107,7 +107,7 @@ func MessageFromMeEventHandler(text string, v *events.Message, isEdited bool) {
 
 	var msgId string
 	if isEdited {
-		msgId = v.Message.GetProtocolMessage().GetKey().GetId()
+		msgId = v.Message.GetProtocolMessage().GetKey().GetID()
 	} else {
 		msgId = v.Info.ID
 	}
@@ -116,11 +116,11 @@ func MessageFromMeEventHandler(text string, v *events.Message, isEdited bool) {
 	if text == ".id" {
 		waClient := state.State.WhatsAppClient
 
-		_, err := waClient.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
-			ExtendedTextMessage: &waProto.ExtendedTextMessage{
+		_, err := waClient.SendMessage(context.Background(), v.Info.Chat, &waE2E.Message{
+			ExtendedTextMessage: &waE2E.ExtendedTextMessage{
 				Text: proto.String(fmt.Sprintf("The ID of the current chat is:\n\n```%s```", v.Info.Chat.String())),
-				ContextInfo: &waProto.ContextInfo{
-					StanzaId:      proto.String(msgId),
+				ContextInfo: &waE2E.ContextInfo{
+					StanzaID:      proto.String(msgId),
 					Participant:   proto.String(v.Info.MessageSource.Sender.String()),
 					QuotedMessage: v.Message,
 				},
@@ -160,7 +160,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 
 	var msgId string
 	if isEdited {
-		msgId = v.Message.GetProtocolMessage().GetKey().GetId()
+		msgId = v.Message.GetProtocolMessage().GetKey().GetID()
 	} else {
 		msgId = v.Info.ID
 	}
@@ -255,7 +255,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 	if isEdited {
 
 		tgChatId, tgThreadId, tgMsgId, err := database.MsgIdGetTgFromWa(
-			v.Message.GetProtocolMessage().GetKey().GetId(),
+			v.Message.GetProtocolMessage().GetKey().GetID(),
 			v.Info.Chat.String(),
 		)
 		if err == nil && tgChatId == cfg.Telegram.TargetChatID {
@@ -269,7 +269,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 		logger.Debug("trying to retrieve context info from Message",
 			zap.String("event_id", v.Info.ID),
 		)
-		var contextInfo *waProto.ContextInfo = nil
+		var contextInfo *waE2E.ContextInfo = nil
 
 		if v.Message.GetExtendedTextMessage().GetContextInfo() != nil {
 			logger.Debug("taking context info from ExtendedTextMessage",
@@ -351,7 +351,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 			logger.Debug("checking if your account is mentioned in the message",
 				zap.String("event_id", v.Info.ID),
 			)
-			if mentioned := contextInfo.GetMentionedJid(); v.Info.IsGroup && mentioned != nil {
+			if mentioned := contextInfo.GetMentionedJID(); v.Info.IsGroup && mentioned != nil {
 				for _, jid := range mentioned {
 					parsedJid, _ := utils.WaParseJID(jid)
 					if parsedJid.User == waClient.Store.ID.User {
@@ -377,7 +377,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 			logger.Debug("trying to retrieve mapped Message in Telegram",
 				zap.String("event_id", v.Info.ID),
 			)
-			stanzaId := contextInfo.GetStanzaId()
+			stanzaId := contextInfo.GetStanzaID()
 			tgChatId, tgThreadId, tgMsgId, err := database.MsgIdGetTgFromWa(stanzaId, v.Info.Chat.String())
 			if err == nil && tgChatId == cfg.Telegram.TargetChatID {
 				replyToMsgId = tgMsgId
@@ -436,7 +436,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 	if v.Message.GetImageMessage() != nil {
 
 		imageMsg := v.Message.GetImageMessage()
-		if imageMsg.GetUrl() == "" {
+		if imageMsg.GetURL() == "" {
 			return
 		}
 
@@ -491,7 +491,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 				}
 			}
 
-			sentMsg, _ := tgBot.SendPhoto(cfg.Telegram.TargetChatID, imageBytes, &gotgbot.SendPhotoOpts{
+			sentMsg, _ := tgBot.SendPhoto(cfg.Telegram.TargetChatID, &gotgbot.FileReader{Data: bytes.NewReader(imageBytes)}, &gotgbot.SendPhotoOpts{
 				Caption: bridgedText,
 				ReplyParameters: &gotgbot.ReplyParameters{
 					MessageId: replyToMsgId,
@@ -508,7 +508,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 	} else if v.Message.GetVideoMessage() != nil && v.Message.GetVideoMessage().GetGifPlayback() {
 
 		gifMsg := v.Message.GetVideoMessage()
-		if gifMsg.GetUrl() == "" {
+		if gifMsg.GetURL() == "" {
 			return
 		}
 
@@ -563,12 +563,12 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 				}
 			}
 
-			fileToSend := gotgbot.NamedFile{
-				FileName: "animation.gif",
-				File:     bytes.NewReader(gifBytes),
+			fileToSend := gotgbot.FileReader{
+				Name: "animation.gif",
+				Data: bytes.NewReader(gifBytes),
 			}
 
-			sentMsg, _ := tgBot.SendAnimation(cfg.Telegram.TargetChatID, fileToSend, &gotgbot.SendAnimationOpts{
+			sentMsg, _ := tgBot.SendAnimation(cfg.Telegram.TargetChatID, &fileToSend, &gotgbot.SendAnimationOpts{
 				Caption: bridgedText,
 				ReplyParameters: &gotgbot.ReplyParameters{
 					MessageId: replyToMsgId,
@@ -585,7 +585,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 	} else if v.Message.GetVideoMessage() != nil {
 
 		videoMsg := v.Message.GetVideoMessage()
-		if videoMsg.GetUrl() == "" {
+		if videoMsg.GetURL() == "" {
 			return
 		}
 
@@ -640,12 +640,12 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 				}
 			}
 
-			fileToSend := gotgbot.NamedFile{
-				FileName: "video." + strings.Split(videoMsg.GetMimetype(), "/")[1],
-				File:     bytes.NewReader(videoBytes),
+			fileToSend := gotgbot.FileReader{
+				Name: "video." + strings.Split(videoMsg.GetMimetype(), "/")[1],
+				Data: bytes.NewReader(videoBytes),
 			}
 
-			sentMsg, _ := tgBot.SendVideo(cfg.Telegram.TargetChatID, fileToSend, &gotgbot.SendVideoOpts{
+			sentMsg, _ := tgBot.SendVideo(cfg.Telegram.TargetChatID, &fileToSend, &gotgbot.SendVideoOpts{
 				Caption: bridgedText,
 				ReplyParameters: &gotgbot.ReplyParameters{
 					MessageId: replyToMsgId,
@@ -659,10 +659,10 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 			return
 		}
 
-	} else if v.Message.GetAudioMessage() != nil && v.Message.GetAudioMessage().GetPtt() {
+	} else if v.Message.GetAudioMessage() != nil && v.Message.GetAudioMessage().GetPTT() {
 
 		audioMsg := v.Message.GetAudioMessage()
-		if audioMsg.GetUrl() == "" {
+		if audioMsg.GetURL() == "" {
 			return
 		}
 
@@ -709,12 +709,12 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 				return
 			}
 
-			fileToSend := gotgbot.NamedFile{
-				FileName: "audio.ogg",
-				File:     bytes.NewReader(audioBytes),
+			fileToSend := gotgbot.FileReader{
+				Name: "audio.ogg",
+				Data: bytes.NewReader(audioBytes),
 			}
 
-			sentMsg, _ := tgBot.SendAudio(cfg.Telegram.TargetChatID, fileToSend, &gotgbot.SendAudioOpts{
+			sentMsg, _ := tgBot.SendAudio(cfg.Telegram.TargetChatID, &fileToSend, &gotgbot.SendAudioOpts{
 				Caption:  bridgedText,
 				Duration: int64(audioMsg.GetSeconds()),
 				ReplyParameters: &gotgbot.ReplyParameters{
@@ -732,7 +732,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 	} else if v.Message.GetAudioMessage() != nil {
 
 		audioMsg := v.Message.GetAudioMessage()
-		if audioMsg.GetUrl() == "" {
+		if audioMsg.GetURL() == "" {
 			return
 		}
 
@@ -779,12 +779,12 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 				return
 			}
 
-			fileToSend := gotgbot.NamedFile{
-				FileName: "audio.m4a",
-				File:     bytes.NewReader(audioBytes),
+			fileToSend := gotgbot.FileReader{
+				Name: "audio.m4a",
+				Data: bytes.NewReader(audioBytes),
 			}
 
-			sentMsg, _ := tgBot.SendAudio(cfg.Telegram.TargetChatID, fileToSend, &gotgbot.SendAudioOpts{
+			sentMsg, _ := tgBot.SendAudio(cfg.Telegram.TargetChatID, &fileToSend, &gotgbot.SendAudioOpts{
 				Caption:  bridgedText,
 				Duration: int64(audioMsg.GetSeconds()),
 				ReplyParameters: &gotgbot.ReplyParameters{
@@ -802,7 +802,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 	} else if v.Message.GetDocumentMessage() != nil {
 
 		documentMsg := v.Message.GetDocumentMessage()
-		if documentMsg.GetUrl() == "" {
+		if documentMsg.GetURL() == "" {
 			return
 		}
 
@@ -857,12 +857,12 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 				}
 			}
 
-			fileToSend := gotgbot.NamedFile{
-				FileName: documentMsg.GetFileName(),
-				File:     bytes.NewReader(documentBytes),
+			fileToSend := gotgbot.FileReader{
+				Name: documentMsg.GetFileName(),
+				Data: bytes.NewReader(documentBytes),
 			}
 
-			sentMsg, _ := tgBot.SendDocument(cfg.Telegram.TargetChatID, fileToSend, &gotgbot.SendDocumentOpts{
+			sentMsg, _ := tgBot.SendDocument(cfg.Telegram.TargetChatID, &fileToSend, &gotgbot.SendDocumentOpts{
 				Caption: bridgedText,
 				ReplyParameters: &gotgbot.ReplyParameters{
 					MessageId: replyToMsgId,
@@ -879,7 +879,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 	} else if v.Message.GetStickerMessage() != nil {
 
 		stickerMsg := v.Message.GetStickerMessage()
-		if stickerMsg.GetUrl() == "" {
+		if stickerMsg.GetURL() == "" {
 			return
 		}
 
@@ -931,12 +931,12 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 					goto WEBP_TO_GIF_FAILED
 				}
 
-				fileToSend := gotgbot.NamedFile{
-					FileName: "animation.gif",
-					File:     bytes.NewReader(gifBytes),
+				fileToSend := gotgbot.FileReader{
+					Name: "animation.gif",
+					Data: bytes.NewReader(gifBytes),
 				}
 
-				sentMsg, _ := tgBot.SendAnimation(cfg.Telegram.TargetChatID, fileToSend, &gotgbot.SendAnimationOpts{
+				sentMsg, _ := tgBot.SendAnimation(cfg.Telegram.TargetChatID, &fileToSend, &gotgbot.SendAnimationOpts{
 					Caption: bridgedText,
 					ReplyParameters: &gotgbot.ReplyParameters{
 						MessageId: replyToMsgId,
@@ -952,7 +952,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 
 			}
 		WEBP_TO_GIF_FAILED:
-			sentMsg, _ := tgBot.SendSticker(cfg.Telegram.TargetChatID, stickerBytes, &gotgbot.SendStickerOpts{
+			sentMsg, _ := tgBot.SendSticker(cfg.Telegram.TargetChatID, &gotgbot.FileReader{Data: bytes.NewReader(stickerBytes)}, &gotgbot.SendStickerOpts{
 				ReplyParameters: &gotgbot.ReplyParameters{
 					MessageId: replyToMsgId,
 				},
@@ -1129,7 +1129,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 
 	} else if v.Message.GetPollCreationMessage() != nil || v.Message.GetPollCreationMessageV2() != nil || v.Message.GetPollCreationMessageV3() != nil {
 
-		var pollMsg *waProto.PollCreationMessage
+		var pollMsg *waE2E.PollCreationMessage
 		if i := v.Message.GetPollCreationMessage(); i != nil {
 			pollMsg = i
 		} else if i := v.Message.GetPollCreationMessageV2(); i != nil {
@@ -1172,7 +1172,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 			bridgedText += html.EscapeString(text)
 		}
 
-		if mentioned := v.Message.GetExtendedTextMessage().GetContextInfo().GetMentionedJid(); mentioned != nil {
+		if mentioned := v.Message.GetExtendedTextMessage().GetContextInfo().GetMentionedJID(); mentioned != nil {
 			for _, jid := range mentioned {
 				parsedJid, _ := utils.WaParseJID(jid)
 				name := utils.WaGetContactName(parsedJid)
@@ -1250,7 +1250,7 @@ func RevokedMessageEventHandler(v *events.Message) {
 		cfg         = state.State.Config
 		tgBot       = state.State.TelegramBot
 		protocolMsg = v.Message.GetProtocolMessage()
-		waMsgId     = protocolMsg.GetKey().GetId()
+		waMsgId     = protocolMsg.GetKey().GetID()
 		waChatId    = v.Info.Chat.String()
 	)
 
@@ -1354,7 +1354,7 @@ func PictureEventHandler(v *events.Picture) {
 				return
 			}
 
-			_, err = tgBot.SendPhoto(cfg.Telegram.TargetChatID, newPictureBytes, &gotgbot.SendPhotoOpts{
+			_, err = tgBot.SendPhoto(cfg.Telegram.TargetChatID, &gotgbot.FileReader{Data: bytes.NewReader(newPictureBytes)}, &gotgbot.SendPhotoOpts{
 				MessageThreadId: tgThreadId,
 				Caption:         fmt.Sprintf("The profile picture was updated by %s", html.EscapeString(changer)),
 			})
@@ -1405,7 +1405,7 @@ func PictureEventHandler(v *events.Picture) {
 				return
 			}
 
-			_, err = tgBot.SendPhoto(cfg.Telegram.TargetChatID, newPictureBytes, &gotgbot.SendPhotoOpts{
+			_, err = tgBot.SendPhoto(cfg.Telegram.TargetChatID, &gotgbot.FileReader{Data: bytes.NewReader(newPictureBytes)}, &gotgbot.SendPhotoOpts{
 				MessageThreadId: tgThreadId,
 				Caption:         "The profile picture was updated",
 			})
@@ -1708,7 +1708,7 @@ func LogoutHandler(v *events.LoggedOut) {
 	)
 	defer logger.Sync()
 
-	updateText := fmt.Sprintf("You have been logged out from WhatsApp:\n\n")
+	updateText := "You have been logged out from WhatsApp:\n\n"
 	updateText += fmt.Sprintf("<b>Reason:</b> %s", html.EscapeString(v.Reason.String()))
 
 	utils.TgSendTextById(tgBot, cfg.Telegram.OwnerID, 0, updateText)

@@ -14,7 +14,7 @@ type parseModeHTMLBotClient struct {
 
 func (b *parseModeHTMLBotClient) RequestWithContext(ctx context.Context,
 	token string, method string, params map[string]string,
-	data map[string]gotgbot.NamedReader,
+	data map[string]gotgbot.FileReader,
 	opts *gotgbot.RequestOpts) (json.RawMessage, error) {
 
 	if strings.HasPrefix(method, "send") || strings.HasPrefix(method, "edit") {
