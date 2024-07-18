@@ -94,7 +94,7 @@ func WebmConvertToWebp(webmStickerData []byte, scale, pad string, updateId int64
 }
 
 func WebpImagePad(inputData []byte, wPad, hPad int, updateId int64) ([]byte, error) {
-	inputImage, err := webp.DecodeRGB(inputData)
+	inputImage, err := webp.DecodeRGBA(inputData)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode web image: %w", err)
 	}
@@ -110,7 +110,7 @@ func WebpImagePad(inputData []byte, wPad, hPad int, updateId int64) ([]byte, err
 	outputImage := image.NewRGBA(image.Rect(0, 0, outputWidth, outputHeight))
 	draw.Draw(outputImage, image.Rect(wOffset, hOffset, outputWidth-wOffset, outputHeight-hOffset), inputImage, image.Point{}, draw.Src)
 
-	outputBytes, err := webp.EncodeRGB(outputImage, 100)
+	outputBytes, err := webp.EncodeRGBA(outputImage, 100)
 	if err != nil {
 		return nil, fmt.Errorf("failed to encode padded data into Webp: %w", err)
 	}
