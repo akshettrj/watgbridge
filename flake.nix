@@ -26,9 +26,11 @@
           nativeBuildInputs = [
             go
             gopls
+            delve
             libwebp
             gomod2nix.packages."${system}".default
           ];
+          hardeningDisable = [ "fortify" ];
         };
 
         packages = rec {
