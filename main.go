@@ -241,7 +241,7 @@ func main() {
 	}
 SKIP_RESTART:
 
-	if !startMessageSuccessful {
+	if !startMessageSuccessful && !cfg.Telegram.SkipStartupMessage {
 		state.State.TelegramBot.SendMessage(cfg.Telegram.OwnerID, "Successfully started WaTgBridge", &gotgbot.SendMessageOpts{})
 	}
 

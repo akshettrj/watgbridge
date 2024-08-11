@@ -33,6 +33,7 @@ type Config struct {
 		SendMyReadReceipts  bool    `yaml:"send_my_read_receipts"`
 		SilentConfirmation  bool    `yaml:"silent_confirmation"`
 		EmojiConfirmation   bool    `yaml:"emoji_confirmation"`
+		SkipStartupMessage  bool    `yaml:"skip_startup_message"`
 	} `yaml:"telegram"`
 
 	WhatsApp struct {
