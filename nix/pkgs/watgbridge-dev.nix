@@ -47,7 +47,7 @@ in buildGoApplication rec {
   meta = with lib; rec {
     description = "A bridge between WhatsApp and Telegram written in Golang";
     homepage = "https://github.com/watgbridge/watgbridge";
-    changelog = "${homepage}/compare/watgbridge-v${version}...main";
+    changelog = "${homepage}/compare/v${version}...main";
     license = licenses.mit;
     mainProgram = "watgbridge";
   };
