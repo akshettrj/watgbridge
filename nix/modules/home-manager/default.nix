@@ -39,11 +39,11 @@ in {
           cfg.commonSettings.maxRuntime
       );
 
-      after = (
-        if settings.after != null then
-          settings.after
+      requires = (
+        if settings.requires != null then
+          settings.requires
         else
-          cfg.commonSettings.after
+          cfg.commonSettings.requires
       );
 
     in {
@@ -54,7 +54,9 @@ in {
         Unit = {
           Description = "WaTgBridge service for '${instanceName}'";
           Documentation = "https://github.com/akshettrj/watbridge";
-          After = [ "network.target" ] ++ lib.optionals (after != null) after;
+          After = [ "network.target" ];
+        } // lib.optionalAttrs (requires != null) {
+          Requires = requires;
         };
 
         Service = {

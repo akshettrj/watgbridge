@@ -16,7 +16,7 @@ in {
     default = "1d";
   };
 
-  commonSettings.after = mkOption {
+  commonSettings.requires = mkOption {
     type = types.nullOr (types.listOf types.str);
     default = null;
   };
@@ -77,7 +77,7 @@ in {
           '';
         };
 
-        after = mkOption {
+        requires = mkOption {
           type = types.nullOf (types.listOf types.str);
           default = null;
           description = ''
