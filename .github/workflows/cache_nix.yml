@@ -4,6 +4,13 @@ on:
   push:
     branches:
       - main
+    paths:
+      - '**.go'
+      - go.mod
+      - go.sum
+      - gomod2nix.toml
+      - flake.nix
+      - nix/packages/*.nix
   workflow_dispatch:
 
 jobs:
