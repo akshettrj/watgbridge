@@ -17,7 +17,7 @@
 *.yaml
 !sample_config.yaml
 
-watgbridge
+/watgbridge
 *.db
 *.db-journal
 watgbridge-build/
