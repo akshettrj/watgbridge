@@ -776,13 +776,11 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			return TgReplyWithErrorByContext(b, c, "Failed to upload document to WhatsApp", err)
 		}
 
-		splitName := strings.Split(msgToForward.Document.FileName, ".")
-		documentFileName := strings.Join(splitName[:len(splitName)-1], ".")
-
 		msgToSend := &waE2E.Message{
 			DocumentMessage: &waE2E.DocumentMessage{
 				Caption:       proto.String(msgToForward.Caption),
-				Title:         proto.String(documentFileName),
+				Title:         proto.String(msgToForward.Document.FileName),
+				FileName:      proto.String(msgToForward.Document.FileName),
 				URL:           proto.String(uploadedDocument.URL),
 				DirectPath:    proto.String(uploadedDocument.DirectPath),
 				MediaKey:      uploadedDocument.MediaKey,
