@@ -76,6 +76,9 @@ schema = 3
   [mod."github.com/rs/zerolog"]
     version = "v1.33.0"
     hash = "sha256-jT/Y/izhZiCdrDbC/ty83FGs8UQavTU+OW03O4vKFkY="
+  [mod."github.com/skip2/go-qrcode"]
+    version = "v0.0.0-20200617195104-da1b6568686e"
+    hash = "sha256-ST9t4/b7WFXUb8wra4ZYVDNZJGrEykw8dkWhLrxp8F0="
   [mod."github.com/watgbridge/tgsconverter"]
     version = "v0.0.0-20240710075117-d1c05581b842"
     hash = "sha256-0S477WzYnjZNofoxiuYMR0Wc/elXu74WDUi7N8QoK0Q="

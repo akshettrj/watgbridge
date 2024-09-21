@@ -1,8 +1,10 @@
 package whatsapp
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"html"
 	"os"
 
 	"watgbridge/state"
@@ -11,6 +13,7 @@ import (
 	_ "github.com/jackc/pgx/v5"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/mdp/qrterminal/v3"
+	"github.com/skip2/go-qrcode"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waCompanionReg"
 	"go.mau.fi/whatsmeow/store"
@@ -107,12 +110,32 @@ func NewWhatsAppClient() error {
 		}
 		for evt := range qrChan {
 			if evt.Event == "code" {
+				// var png []byte
+				// png, _err := qrcode.Encode("aklsdfjasdfaklsdfjlasdfjaskldfjasldfjaklsdfjals", qrcode.Highest, 256)
+				// if _err != nil {
+				// 	panic(_err)
+				// }
+
 				if state.State.TelegramBot != nil {
-					state.State.TelegramBot.SendMessage(
-						state.State.Config.Telegram.OwnerID,
-						"Please check your terminal and scan the QR code to login to WhatsApp.",
-						&gotgbot.SendMessageOpts{},
-					)
+					qrCodePNG, err := qrcode.Encode(evt.Code, qrcode.Highest, 512)
+					if err != nil {
+						state.State.TelegramBot.SendMessage(
+							state.State.Config.Telegram.OwnerID,
+							fmt.Sprintf(
+								"Please check your terminal and scan the QR code to login to WhatsApp. Failed to encode to PNG and send here:\n<code>%s</code>",
+								html.EscapeString(err.Error()),
+							),
+							&gotgbot.SendMessageOpts{},
+						)
+					} else {
+						state.State.TelegramBot.SendPhoto(
+							state.State.Config.Telegram.OwnerID,
+							gotgbot.InputFileByReader("qrcode.png", bytes.NewReader(qrCodePNG)),
+							&gotgbot.SendPhotoOpts{
+								Caption: "Scan the above QR code to login to WhatsApp.",
+							},
+						)
+					}
 				}
 				qrterminal.GenerateHalfBlock(evt.Code, qrterminal.L, os.Stdout)
 			} else {

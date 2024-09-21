@@ -11,6 +11,7 @@ require (
 	github.com/lithammer/fuzzysearch v1.1.8
 	github.com/mattn/go-sqlite3 v1.14.22
 	github.com/mdp/qrterminal/v3 v3.2.0
+	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/watgbridge/tgsconverter v0.0.0-20240710075117-d1c05581b842
 	github.com/watgbridge/webp v0.0.0-20240709143015-99fb5316f772
 	go.mau.fi/whatsmeow v0.0.0-20240816195430-66c6524b93ad
