@@ -9,15 +9,15 @@ require (
 	github.com/go-co-op/gocron v1.37.0
 	github.com/jackc/pgx/v5 v5.7.1
 	github.com/lithammer/fuzzysearch v1.1.8
-	github.com/mattn/go-sqlite3 v1.14.23
+	github.com/mattn/go-sqlite3 v1.14.24
 	github.com/mdp/qrterminal/v3 v3.2.0
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/watgbridge/tgsconverter v0.0.0-20240710075117-d1c05581b842
 	github.com/watgbridge/webp v0.0.0-20240709143015-99fb5316f772
-	go.mau.fi/whatsmeow v0.0.0-20240917093958-061c065cc1ee
+	go.mau.fi/whatsmeow v0.0.0-20241009112614-70d73b690a8d
 	go.uber.org/zap v1.27.0
-	golang.org/x/exp v0.0.0-20240909161429-701f63a606c0
-	google.golang.org/protobuf v1.34.2
+	golang.org/x/exp v0.0.0-20241004190924-225e2abe05e6
+	google.golang.org/protobuf v1.35.1
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/driver/mysql v1.5.7
 	gorm.io/driver/postgres v1.5.9
@@ -47,11 +47,11 @@ require (
 	go.mau.fi/util v0.8.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	golang.org/x/crypto v0.27.0 // indirect
-	golang.org/x/net v0.29.0 // indirect
+	golang.org/x/crypto v0.28.0 // indirect
+	golang.org/x/net v0.30.0 // indirect
 	golang.org/x/sync v0.8.0 // indirect
-	golang.org/x/sys v0.25.0 // indirect
-	golang.org/x/term v0.24.0 // indirect
-	golang.org/x/text v0.18.0 // indirect
+	golang.org/x/sys v0.26.0 // indirect
+	golang.org/x/term v0.25.0 // indirect
+	golang.org/x/text v0.19.0 // indirect
 	rsc.io/qr v0.2.0 // indirect
 )
