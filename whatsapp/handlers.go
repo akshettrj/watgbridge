@@ -48,6 +48,9 @@ func WhatsAppEventHandler(evt interface{}) {
 	case *events.PushName:
 		PushNameEventHandler(v)
 
+	case *events.UserAbout:
+		UserAboutEventHandler(v)
+
 	case *events.CallOffer:
 		CallOfferEventHandler(v)
 
@@ -1243,6 +1246,72 @@ func PushNameEventHandler(v *events.PushName) {
 	)
 
 	database.ContactUpdatePushName(v.JID.User, v.NewPushName)
+}
+
+func UserAboutEventHandler(v *events.UserAbout) {
+	var (
+		cfg    = state.State.Config
+		logger = state.State.Logger
+		tgBot  = state.State.TelegramBot
+	)
+	defer logger.Sync()
+
+	logger.Debug("new user_about update",
+		zap.String("jid", v.JID.String()),
+		zap.String("new_status", v.Status),
+		zap.Time("updated_at", v.Timestamp),
+	)
+
+	tgThreadId, threadFound, err := database.ChatThreadGetTgFromWa(v.JID.ToNonAD().String(), cfg.Telegram.TargetChatID)
+	if err != nil {
+		logger.Warn(
+			"failed to find thread for a WhatsApp chat (handling UserAbout event)",
+			zap.String("chat", v.JID.String()),
+			zap.Error(err),
+		)
+		return
+	}
+	if !threadFound || tgThreadId == 0 {
+		logger.Warn(
+			"no thread found for a WhatsApp chat (handling UserAbout event)",
+			zap.String("chat", v.JID.String()),
+		)
+		if !cfg.WhatsApp.CreateThreadForInfoUpdates {
+			return
+		}
+	}
+
+	tgThreadId, err = utils.TgGetOrMakeThreadFromWa(v.JID.ToNonAD().String(), cfg.Telegram.TargetChatID, utils.WaGetContactName(v.JID.ToNonAD()))
+	if err != nil {
+		logger.Warn(
+			"failed to create a new thread for a WhatsApp chat (handling UserAbout event)",
+			zap.String("chat", v.JID.String()),
+			zap.Error(err),
+		)
+		return
+	}
+
+	updateMessageText := "User's about message was updated"
+	if time.Since(v.Timestamp).Seconds() > 60 {
+		updateMessageText += fmt.Sprintf(
+			"at %s:\n\n",
+			html.EscapeString(
+				v.Timestamp.
+					In(state.State.LocalLocation).
+					Format(cfg.TimeFormat),
+			),
+		)
+	} else {
+		updateMessageText += ":\n\n"
+	}
+
+	updateMessageText += fmt.Sprintf("<code>%s</code>", html.EscapeString(v.Status))
+
+	tgBot.SendMessage(
+		cfg.Telegram.TargetChatID,
+		updateMessageText,
+		&gotgbot.SendMessageOpts{MessageThreadId: tgThreadId},
+	)
 }
 
 func RevokedMessageEventHandler(v *events.Message) {
