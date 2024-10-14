@@ -29,6 +29,7 @@
             delve
             libwebp
             gomod2nix.packages."${system}".default
+            sqlite
           ];
           hardeningDisable = [ "fortify" ];
         };
