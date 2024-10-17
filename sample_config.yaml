@@ -27,6 +27,8 @@ telegram:
   emoji_confirmation: true                # Reacts to the message with a "👍" emoji instead of replying
 
   skip_startup_message: false             # If set to true, then a message will NOT be sent to your Telegram DM when the bot starts
+  
+  spoiler_as_viewonce: True               # If set to true, then all the spoiler files will be sent as view-once messages
 
 whatsapp:
   session_name: watgbridge        # This will appear in your Linked Devices in mobile app
