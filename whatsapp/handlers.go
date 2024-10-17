@@ -499,6 +499,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 				ReplyParameters: &gotgbot.ReplyParameters{
 					MessageId: replyToMsgId,
 				},
+				HasSpoiler:      *imageMsg.ViewOnce,
 				MessageThreadId: threadId,
 			})
 			if sentMsg.MessageId != 0 {
@@ -653,6 +654,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 				ReplyParameters: &gotgbot.ReplyParameters{
 					MessageId: replyToMsgId,
 				},
+				HasSpoiler:      *videoMsg.ViewOnce,
 				MessageThreadId: threadId,
 			})
 			if sentMsg.MessageId != 0 {
