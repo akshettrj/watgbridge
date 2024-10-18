@@ -89,11 +89,11 @@ schema = 3
     version = "v0.1.1"
     hash = "sha256-KegSskYAq2MFiOvB28WG0j0VPzfbXqivapLHwsIEYNc="
   [mod."go.mau.fi/util"]
-    version = "v0.8.0"
-    hash = "sha256-7o1p24OH9w0532nv2dC+jrwjWDX9eeuv0m6OFKcIBNc="
+    version = "v0.8.1"
+    hash = "sha256-uq5JzOuwLpBW4wPbNfZ83L6NVlYlvSZeZdyuEl6udvQ="
   [mod."go.mau.fi/whatsmeow"]
-    version = "v0.0.0-20241009112614-70d73b690a8d"
-    hash = "sha256-jswF1tAks352jA4wtY23aSo5h1p1WN8ZCw8dOOx66Rg="
+    version = "v0.0.0-20241015144315-3fa42c3d6a28"
+    hash = "sha256-IwrPWuMnlKmkssqPOgVvVGohwgJ3R/P1XvZ3j3S5GYs="
   [mod."go.uber.org/atomic"]
     version = "v1.11.0"
     hash = "sha256-TyYws/cSPVqYNffFX0gbDml1bD4bBGcysrUWU7mHPIY="
@@ -107,8 +107,8 @@ schema = 3
     version = "v0.28.0"
     hash = "sha256-AYjr0BcWQMwWY1u8c2hzUprtqHUmAH7RNSxHz2hhnZs="
   [mod."golang.org/x/exp"]
-    version = "v0.0.0-20241004190924-225e2abe05e6"
-    hash = "sha256-zYmrFhcimEd7xhOK5PPb4vmeiK2B0w1c3/zkoPnACzU="
+    version = "v0.0.0-20241009180824-f66d83c29e7c"
+    hash = "sha256-ICL1UU2rrOBespsjNrlvrAhZOFLMcxYWAx8pDQCgAXM="
   [mod."golang.org/x/net"]
     version = "v0.30.0"
     hash = "sha256-i1f6wJHfFq0nKtbuY7twZ7uPyUbRYHVjd3uy0SS06mU="

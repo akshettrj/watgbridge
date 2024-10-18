@@ -14,9 +14,9 @@ require (
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/watgbridge/tgsconverter v0.0.0-20240710075117-d1c05581b842
 	github.com/watgbridge/webp v0.0.0-20240709143015-99fb5316f772
-	go.mau.fi/whatsmeow v0.0.0-20241009112614-70d73b690a8d
+	go.mau.fi/whatsmeow v0.0.0-20241015144315-3fa42c3d6a28
 	go.uber.org/zap v1.27.0
-	golang.org/x/exp v0.0.0-20241004190924-225e2abe05e6
+	golang.org/x/exp v0.0.0-20241009180824-f66d83c29e7c
 	google.golang.org/protobuf v1.35.1
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/driver/mysql v1.5.7
@@ -44,7 +44,7 @@ require (
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/rs/zerolog v1.33.0 // indirect
 	go.mau.fi/libsignal v0.1.1 // indirect
-	go.mau.fi/util v0.8.0 // indirect
+	go.mau.fi/util v0.8.1 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/crypto v0.28.0 // indirect
