@@ -1168,6 +1168,45 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 
 	} else {
 		if text == "" {
+			if reactionMsg := v.Message.GetReactionMessage(); cfg.Telegram.Reactions && reactionMsg != nil {
+				tgChatId, _, tgMsgId, err := database.MsgIdGetTgFromWa(reactionMsg.Key.GetID(), v.Info.Chat.String())
+				if err != nil {
+					logger.Error(
+						"failed to get message ID mapping from database",
+						zap.Error(err),
+						zap.String("stanza_id", reactionMsg.Key.GetID()),
+						zap.String("chat_id", v.Info.Chat.String()),
+					)
+				} else if tgChatId == cfg.Telegram.TargetChatID {
+
+					if *reactionMsg.Text != "" {
+						text = fmt.Sprintf(
+							"<code>Reacted to this message with %s</code>",
+							html.EscapeString(*reactionMsg.Text),
+						)
+					} else {
+						text = "<code>Revoked their reaction to this message</code>"
+					}
+
+					bridgedText += text
+
+					sentMsg, err := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+						ReplyParameters: &gotgbot.ReplyParameters{
+							MessageId: tgMsgId,
+						},
+						MessageThreadId: threadId,
+					})
+					if err != nil {
+						panic(fmt.Errorf("failed to send telegram message: %s", err))
+					}
+					if sentMsg.MessageId != 0 {
+						database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
+							cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
+					}
+				}
+
+			}
+
 			return
 		}
 
