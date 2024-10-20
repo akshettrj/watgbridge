@@ -38,7 +38,7 @@ This project is in no way affiliated with WhatsApp or Telegram. Using this can a
 
 ## Bugs and TODO
 
-- Document naming is messed up and not consistent on Telegram, have to find a way to always send sane names
+- Document naming is messed up and not consistent on Telegram, have to find a way to always send same names
 
 PRs are welcome :)
 
