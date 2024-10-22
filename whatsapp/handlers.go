@@ -1233,7 +1233,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 
 		var sentMsg *gotgbot.Message
 		var err error
-		if isEdited && !cfg.WhatsApp.SendEditdMessageUpdates {
+		if isEdited && !cfg.WhatsApp.SendEditedMessageUpdates {
 			sentMsg, _, err = tgBot.EditMessageText(bridgedText, &gotgbot.EditMessageTextOpts{
 				ChatId:    cfg.Telegram.TargetChatID,
 				MessageId: replyToMsgId,
