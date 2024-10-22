@@ -1230,12 +1230,22 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 				)
 			}
 		}
-		sentMsg, err := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
-			ReplyParameters: &gotgbot.ReplyParameters{
+
+		var sentMsg *gotgbot.Message
+		var err error
+		if isEdited && !cfg.WhatsApp.SendEditdMessageUpdates {
+			sentMsg, _, err = tgBot.EditMessageText(bridgedText, &gotgbot.EditMessageTextOpts{
+				ChatId:    cfg.Telegram.TargetChatID,
 				MessageId: replyToMsgId,
-			},
-			MessageThreadId: threadId,
-		})
+			})
+		} else {
+			sentMsg, err = tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+				ReplyParameters: &gotgbot.ReplyParameters{
+					MessageId: replyToMsgId,
+				},
+				MessageThreadId: threadId,
+			})
+		}
 		if err != nil {
 			panic(fmt.Errorf("failed to send telegram message: %s", err))
 		}

@@ -61,6 +61,7 @@ whatsapp:
   skip_group_settings_updates: false   # This includes joins, leaves, name change, etc.
   skip_chat_details: true
   send_revoked_message_updates: false
+  send_edited_message_updates: true    # If set to true, edited messages will be sent to Telegram as new messages, else they will be updated in the original message
   whatsmeow_debug_mode: false
   send_my_messages_from_other_devices: false      # If set to true, the messages sent by you from other devices will be sent to Telgram as well
   create_thread_for_info_updates: false  # If set to true, new thread will be created (if it doesn't exist) when profile picture changes for group/someone and when group metadata/members changes
