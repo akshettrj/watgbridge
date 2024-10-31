@@ -289,6 +289,11 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 				zap.String("event_id", v.Info.ID),
 			)
 			contextInfo = v.Message.GetVideoMessage().GetContextInfo()
+		} else if v.Message.GetPtvMessage() != nil {
+			logger.Debug("taking context info from PtvMessage",
+				zap.String("event_id", v.Info.ID),
+			)
+			contextInfo = v.Message.GetPtvMessage().GetContextInfo()
 		} else if v.Message.GetAudioMessage() != nil {
 			logger.Debug("taking context info from AudioMessage",
 				zap.String("event_id", v.Info.ID),
@@ -586,9 +591,17 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 			return
 		}
 
-	} else if v.Message.GetVideoMessage() != nil {
+	} else if v.Message.GetVideoMessage() != nil || v.Message.GetPtvMessage() != nil {
 
-		videoMsg := v.Message.GetVideoMessage()
+		var videoMsg *waE2E.VideoMessage = nil
+		isPtvMsg := false
+		if v.Message.GetVideoMessage() != nil {
+			videoMsg = v.Message.GetVideoMessage()
+		} else {
+			videoMsg = v.Message.GetPtvMessage()
+			isPtvMsg = true
+		}
+
 		if videoMsg.GetURL() == "" {
 			return
 		}
@@ -649,14 +662,25 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 				Data: bytes.NewReader(videoBytes),
 			}
 
-			sentMsg, _ := tgBot.SendVideo(cfg.Telegram.TargetChatID, &fileToSend, &gotgbot.SendVideoOpts{
-				Caption: bridgedText,
-				ReplyParameters: &gotgbot.ReplyParameters{
-					MessageId: replyToMsgId,
-				},
-				HasSpoiler:      (videoMsg.ViewOnce != nil && *videoMsg.ViewOnce),
-				MessageThreadId: threadId,
-			})
+			var sentMsg *gotgbot.Message = nil
+			if isPtvMsg {
+				sentMsg, _ = tgBot.SendVideoNote(cfg.Telegram.TargetChatID, &fileToSend, &gotgbot.SendVideoNoteOpts{
+					ReplyMarkup: replyMarkup,
+					ReplyParameters: &gotgbot.ReplyParameters{
+						MessageId: replyToMsgId,
+					},
+					MessageThreadId: threadId,
+				})
+			} else {
+				sentMsg, _ = tgBot.SendVideo(cfg.Telegram.TargetChatID, &fileToSend, &gotgbot.SendVideoOpts{
+					Caption: bridgedText,
+					ReplyParameters: &gotgbot.ReplyParameters{
+						MessageId: replyToMsgId,
+					},
+					HasSpoiler:      (videoMsg.ViewOnce != nil && *videoMsg.ViewOnce),
+					MessageThreadId: threadId,
+				})
+			}
 			if sentMsg.MessageId != 0 {
 				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
