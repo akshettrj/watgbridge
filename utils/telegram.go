@@ -458,7 +458,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		}
 
 		msgToSend := &waE2E.Message{
-			VideoMessage: &waE2E.VideoMessage{
+			PtvMessage: &waE2E.VideoMessage{
 				Caption:       proto.String(msgToForward.Caption),
 				URL:           proto.String(uploadedVideo.URL),
 				DirectPath:    proto.String(uploadedVideo.DirectPath),
@@ -474,15 +474,15 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			},
 		}
 		if isReply {
-			msgToSend.VideoMessage.ContextInfo.StanzaID = proto.String(stanzaId)
-			msgToSend.VideoMessage.ContextInfo.Participant = proto.String(participant)
-			msgToSend.VideoMessage.ContextInfo.QuotedMessage = &waE2E.Message{Conversation: proto.String("")}
+			msgToSend.PtvMessage.ContextInfo.StanzaID = proto.String(stanzaId)
+			msgToSend.PtvMessage.ContextInfo.Participant = proto.String(participant)
+			msgToSend.PtvMessage.ContextInfo.QuotedMessage = &waE2E.Message{Conversation: proto.String("")}
 		}
 		if len(mentions) > 0 {
-			msgToSend.VideoMessage.ContextInfo.MentionedJID = mentions
+			msgToSend.PtvMessage.ContextInfo.MentionedJID = mentions
 		}
 		if isEphemeral {
-			msgToSend.VideoMessage.ContextInfo.Expiration = &ephemeralTimer
+			msgToSend.PtvMessage.ContextInfo.Expiration = &ephemeralTimer
 		}
 
 		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, msgToSend)
