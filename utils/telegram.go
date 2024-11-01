@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"html"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/PaulSonOfLars/gotgbot/v2"
 	"github.com/PaulSonOfLars/gotgbot/v2/ext"
+	goVCard "github.com/emersion/go-vcard"
 	"github.com/forPelevin/gomoji"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waCommon"
@@ -948,6 +950,84 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		if err != nil {
 			return TgReplyWithErrorByContext(b, c, "Failed to add to database", err)
 		}
+	} else if msgToForward.Contact != nil {
+
+		contact := msgToForward.Contact
+
+		var displayName string
+		if contact.FirstName != "" {
+			displayName = contact.FirstName
+			if contact.LastName != "" {
+				displayName += (" " + contact.LastName)
+			}
+		} else {
+			displayName = contact.PhoneNumber
+		}
+
+		var vcard string
+		if contact.Vcard == "" {
+
+			card := goVCard.Card{}
+			card.SetName(&goVCard.Name{
+				FamilyName: contact.LastName,
+				GivenName:  contact.FirstName,
+			})
+			card.SetValue(goVCard.FieldTelephone, contact.PhoneNumber)
+			card.SetValue(goVCard.FieldFormattedName, displayName)
+			card.SetValue(goVCard.FieldVersion, "3.0")
+
+			vcardBytes := bytes.NewBuffer([]byte{})
+			encoder := goVCard.NewEncoder(vcardBytes)
+			encoder.Encode(card)
+
+			vcard = vcardBytes.String()
+		} else {
+			vcard = contact.Vcard
+		}
+
+		msgToSend := &waE2E.Message{
+			ContactMessage: &waE2E.ContactMessage{
+				DisplayName: &displayName,
+				Vcard:       &vcard,
+				ContextInfo: &waE2E.ContextInfo{},
+			},
+		}
+		if isReply {
+			msgToSend.ContactMessage.ContextInfo.StanzaID = proto.String(stanzaId)
+			msgToSend.ContactMessage.ContextInfo.Participant = proto.String(participant)
+			msgToSend.ContactMessage.ContextInfo.QuotedMessage = &waE2E.Message{Conversation: proto.String("")}
+		}
+		if isEphemeral {
+			msgToSend.ContactMessage.ContextInfo.Expiration = &ephemeralTimer
+		}
+
+		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, msgToSend)
+		if err != nil {
+			return TgReplyWithErrorByContext(b, c, "Failed to send sticker to WhatsApp", err)
+		}
+		revokeKeyboard := TgMakeRevokeKeyboard(sentMsg.ID, waChatJID.String(), false)
+		if cfg.Telegram.EmojiConfirmation {
+			b.SetMessageReaction(
+				msgToForward.Chat.Id,
+				msgToForward.MessageId,
+				&gotgbot.SetMessageReactionOpts{Reaction: []gotgbot.ReactionType{gotgbot.ReactionTypeEmoji{Emoji: "👍"}}},
+			)
+		} else {
+			msg, err := TgReplyTextByContext(b, c, "Successfully sent", revokeKeyboard, cfg.Telegram.SilentConfirmation)
+			if err == nil {
+				go func(_b *gotgbot.Bot, _m *gotgbot.Message) {
+					time.Sleep(15 * time.Second)
+					_b.DeleteMessage(_m.Chat.Id, _m.MessageId, &gotgbot.DeleteMessageOpts{})
+				}(b, msg)
+			}
+		}
+
+		err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.String(), waChatJID.String(),
+			cfg.Telegram.TargetChatID, msgToForward.MessageId, msgToForward.MessageThreadId)
+		if err != nil {
+			return TgReplyWithErrorByContext(b, c, "Failed to add to database", err)
+		}
+
 	} else if msgToForward.Text != "" {
 
 		if emojis := gomoji.CollectAll(msgToForward.Text); isReply && len(emojis) == 1 && gomoji.RemoveEmojis(msgToForward.Text) == "" {
