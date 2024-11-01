@@ -80,9 +80,22 @@ func WhatsAppEventHandler(evt interface{}) {
 		}
 
 		text := ""
+		isDocument := false
 		if isEdited {
 			msg := v.Message.GetProtocolMessage().GetEditedMessage()
-			if extendedMessageText := msg.GetExtendedTextMessage().GetText(); extendedMessageText != "" {
+			if msg.GetImageMessage() != nil {
+				imageMsg := msg.GetImageMessage()
+				text = imageMsg.GetCaption()
+				isDocument = true
+			} else if msg.GetVideoMessage() != nil {
+				videoMsg := msg.GetVideoMessage()
+				text = videoMsg.GetCaption()
+				isDocument = true
+			} else if msg.GetDocumentMessage() != nil {
+				documentMsg := msg.GetDocumentMessage()
+				text = documentMsg.GetFileName()
+				isDocument = true
+			} else if extendedMessageText := msg.GetExtendedTextMessage().GetText(); extendedMessageText != "" {
 				text = extendedMessageText
 			} else {
 				text = msg.GetConversation()
@@ -96,15 +109,15 @@ func WhatsAppEventHandler(evt interface{}) {
 		}
 
 		if v.Info.IsFromMe {
-			MessageFromMeEventHandler(text, v, isEdited)
+			MessageFromMeEventHandler(text, v, isEdited, isDocument)
 		} else {
-			MessageFromOthersEventHandler(text, v, isEdited)
+			MessageFromOthersEventHandler(text, v, isEdited, isDocument)
 		}
 	}
 
 }
 
-func MessageFromMeEventHandler(text string, v *events.Message, isEdited bool) {
+func MessageFromMeEventHandler(text string, v *events.Message, isEdited bool, isDocument bool) {
 	logger := state.State.Logger
 	defer logger.Sync()
 
@@ -148,11 +161,11 @@ func MessageFromMeEventHandler(text string, v *events.Message, isEdited bool) {
 	}
 
 	if state.State.Config.WhatsApp.SendMyMessagesFromOtherDevices {
-		MessageFromOthersEventHandler(text, v, isEdited)
+		MessageFromOthersEventHandler(text, v, isEdited, isDocument)
 	}
 }
 
-func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool) {
+func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool, isDocument bool) {
 	var (
 		cfg      = state.State.Config
 		logger   = state.State.Logger
@@ -1234,10 +1247,19 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 		var sentMsg *gotgbot.Message
 		var err error
 		if isEdited && !cfg.WhatsApp.SendEditedMessageUpdates {
-			sentMsg, _, err = tgBot.EditMessageText(bridgedText, &gotgbot.EditMessageTextOpts{
-				ChatId:    cfg.Telegram.TargetChatID,
-				MessageId: replyToMsgId,
-			})
+			if isDocument {
+				sentMsg, _, err = tgBot.EditMessageCaption(&gotgbot.EditMessageCaptionOpts{
+					ChatId:    cfg.Telegram.TargetChatID,
+					MessageId: replyToMsgId,
+					Caption:   bridgedText,
+				})
+			} else {
+				sentMsg, _, err = tgBot.EditMessageText(bridgedText, &gotgbot.EditMessageTextOpts{
+					ChatId:      cfg.Telegram.TargetChatID,
+					MessageId:   replyToMsgId,
+					ReplyMarkup: replyMarkup,
+				})
+			}
 		} else {
 			sentMsg, err = tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
 				ReplyParameters: &gotgbot.ReplyParameters{
