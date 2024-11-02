@@ -4,7 +4,7 @@ go 1.22.3
 
 require (
 	github.com/PaulSonOfLars/gotgbot/v2 v2.0.0-rc.29
-	github.com/emersion/go-vcard v0.0.0-20230815062825-8fda7d206ec9
+	github.com/emersion/go-vcard v0.0.0-20241024213814-c9703dde27ff
 	github.com/forPelevin/gomoji v1.2.0
 	github.com/go-co-op/gocron v1.37.0
 	github.com/jackc/pgx/v5 v5.7.1
@@ -14,7 +14,7 @@ require (
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/watgbridge/tgsconverter v0.0.0-20240710075117-d1c05581b842
 	github.com/watgbridge/webp v0.0.0-20240709143015-99fb5316f772
-	go.mau.fi/whatsmeow v0.0.0-20241015144315-3fa42c3d6a28
+	go.mau.fi/whatsmeow v0.0.0-20241030164414-f98aea1881f6
 	go.uber.org/zap v1.27.0
 	golang.org/x/exp v0.0.0-20241009180824-f66d83c29e7c
 	google.golang.org/protobuf v1.35.1
