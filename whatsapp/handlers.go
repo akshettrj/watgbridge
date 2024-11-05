@@ -1279,9 +1279,8 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 				})
 			} else {
 				sentMsg, _, err = tgBot.EditMessageText(bridgedText, &gotgbot.EditMessageTextOpts{
-					ChatId:      cfg.Telegram.TargetChatID,
-					MessageId:   replyToMsgId,
-					ReplyMarkup: replyMarkup,
+					ChatId:    cfg.Telegram.TargetChatID,
+					MessageId: replyToMsgId,
 				})
 			}
 		} else {
