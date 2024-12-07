@@ -28,7 +28,7 @@ let
 in
 buildGoApplication rec {
   pname = "watgbridge";
-  version = "1.11.0";
+  version = (lib.trim (builtins.readFile ../../state/version.txt));
 
   pwd = localSrc;
   src = localSrc;

@@ -1,6 +1,8 @@
 package state
 
 import (
+	_ "embed"
+	"strings"
 	"time"
 
 	"github.com/PaulSonOfLars/gotgbot/v2"
@@ -10,7 +12,8 @@ import (
 	"gorm.io/gorm"
 )
 
-const WATGBRIDGE_VERSION = "1.11.0"
+//go:embed version.txt
+var WATGBRIDGE_VERSION string
 
 type state struct {
 	Config   *Config
@@ -33,5 +36,6 @@ type state struct {
 var State state
 
 func init() {
+	WATGBRIDGE_VERSION = strings.TrimSpace(WATGBRIDGE_VERSION)
 	State.Config = &Config{Path: "config.yaml"}
 }
