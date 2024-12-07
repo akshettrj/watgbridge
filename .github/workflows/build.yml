@@ -3,7 +3,7 @@ name: Release Prebuilt Binaries
 on:
   push:
     paths:
-      - state/state.go
+      - state/version.txt
     branches:
       - main
   workflow_dispatch:
