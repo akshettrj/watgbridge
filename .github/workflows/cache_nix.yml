@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - '**.go'
+      - state/version.txt
       - go.mod
       - go.sum
       - gomod2nix.toml

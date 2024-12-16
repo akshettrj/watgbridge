@@ -3,7 +3,7 @@ module watgbridge
 go 1.22.3
 
 require (
-	github.com/PaulSonOfLars/gotgbot/v2 v2.0.0-rc.29
+	github.com/PaulSonOfLars/gotgbot/v2 v2.0.0-rc.30
 	github.com/emersion/go-vcard v0.0.0-20241024213814-c9703dde27ff
 	github.com/forPelevin/gomoji v1.2.0
 	github.com/go-co-op/gocron v1.37.0
@@ -14,13 +14,13 @@ require (
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/watgbridge/tgsconverter v0.0.0-20240710075117-d1c05581b842
 	github.com/watgbridge/webp v0.0.0-20240709143015-99fb5316f772
-	go.mau.fi/whatsmeow v0.0.0-20241030164414-f98aea1881f6
+	go.mau.fi/whatsmeow v0.0.0-20241202173457-b2dd543e5721
 	go.uber.org/zap v1.27.0
-	golang.org/x/exp v0.0.0-20241009180824-f66d83c29e7c
-	google.golang.org/protobuf v1.35.1
+	golang.org/x/exp v0.0.0-20241204233417-43b7b7cde48d
+	google.golang.org/protobuf v1.35.2
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/driver/mysql v1.5.7
-	gorm.io/driver/postgres v1.5.9
+	gorm.io/driver/postgres v1.5.11
 	gorm.io/driver/sqlite v1.5.6
 	gorm.io/gorm v1.25.12
 )
@@ -44,14 +44,14 @@ require (
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/rs/zerolog v1.33.0 // indirect
 	go.mau.fi/libsignal v0.1.1 // indirect
-	go.mau.fi/util v0.8.1 // indirect
+	go.mau.fi/util v0.8.2 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	golang.org/x/crypto v0.28.0 // indirect
-	golang.org/x/net v0.30.0 // indirect
-	golang.org/x/sync v0.8.0 // indirect
-	golang.org/x/sys v0.26.0 // indirect
-	golang.org/x/term v0.25.0 // indirect
-	golang.org/x/text v0.19.0 // indirect
+	golang.org/x/crypto v0.30.0 // indirect
+	golang.org/x/net v0.32.0 // indirect
+	golang.org/x/sync v0.10.0 // indirect
+	golang.org/x/sys v0.28.0 // indirect
+	golang.org/x/term v0.27.0 // indirect
+	golang.org/x/text v0.21.0 // indirect
 	rsc.io/qr v0.2.0 // indirect
 )
