@@ -1694,6 +1694,14 @@ func GroupInfoEventHandler(v *events.GroupInfo) {
 		}
 	}
 
+	if slices.Contains(cfg.WhatsApp.IgnoreChats, v.JID.ToNonAD().User) {
+		// Return if the chat is ignored
+		logger.Debug("returning because message from an ignored chat",
+			zap.String("chat_jid", v.JID.String()),
+		)
+		return
+	}
+
 	if len(v.Join) > 0 {
 		var adderName string
 		if v.Sender != nil {
