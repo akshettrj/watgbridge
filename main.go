@@ -34,6 +34,14 @@ func main() {
 		panic(fmt.Errorf("failed to load config file: %s", err))
 	}
 
+	deprecatedOptions := state.GetDeprecatedConfigOptions(cfg)
+	if deprecatedOptions != nil {
+		fmt.Println("The following options have been deprecated/removed:")
+		for num, opt := range deprecatedOptions {
+			fmt.Printf("%d. %s: %s\n", num+1, opt.Name, opt.Description)
+		}
+	}
+
 	if cfg.Telegram.APIURL == "" {
 		cfg.Telegram.APIURL = gotgbot.DefaultAPIURL
 	}

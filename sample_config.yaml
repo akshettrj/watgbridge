@@ -24,7 +24,7 @@ telegram:
   send_my_read_receipts: false            # Setting this to true will mark all unread messages in a chat as read when you send a new message using Telegram
 
   silent_confirmation: true               # Send a silent "Successfully sent" message
-  emoji_confirmation: true                # Reacts to the message with a "👍" emoji instead of replying
+  confirmation_type: "emoji"              # Can have three values: "text", "emoji" or "none"
 
   skip_startup_message: false             # If set to true, then a message will NOT be sent to your Telegram DM when the bot starts
 

@@ -32,7 +32,8 @@ type Config struct {
 		SendMyPresence      bool    `yaml:"send_my_presence"`
 		SendMyReadReceipts  bool    `yaml:"send_my_read_receipts"`
 		SilentConfirmation  bool    `yaml:"silent_confirmation"`
-		EmojiConfirmation   bool    `yaml:"emoji_confirmation"`
+		ConfirmationType    string  `yaml:"confirmation_type"`
+		EmojiConfirmation   *bool   `yaml:"emoji_confirmation"`
 		SkipStartupMessage  bool    `yaml:"skip_startup_message"`
 		SpoilerViewOnce     bool    `yaml:"spoiler_as_viewonce"`
 		Reactions           bool    `yaml:"reactions"`
@@ -123,9 +124,12 @@ func (cfg *Config) SaveConfig() error {
 
 func (cfg *Config) SetDefaults() {
 	cfg.TimeZone = "UTC"
+
 	cfg.WhatsApp.SessionName = "watgbridge"
 	cfg.WhatsApp.LoginDatabase.Type = "sqlite3"
 	cfg.WhatsApp.LoginDatabase.URL = "file:wawebstore.db?foreign_keys=on"
 	cfg.WhatsApp.StickerMetadata.PackName = "WaTgBridge"
 	cfg.WhatsApp.StickerMetadata.AuthorName = "WaTgBridge"
+
+	cfg.Telegram.ConfirmationType = "emoji"
 }
