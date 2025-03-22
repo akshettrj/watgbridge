@@ -1,42 +1,71 @@
+## Date Time infomation
+# https://gosamples.dev/date-time-format-cheatsheet/
 time_zone: SAST
 time_format: Fri, 2025-03-21 @ 14:05:30
+##
 
+## bins
 git_executable: /usr/bin/git
+# latest go build is recommended in this path
 go_executable: /usr/local/go/bin/go
 ffmpeg_executable: /usr/bin/ffmpeg
 debug_mode: false
 
-use_github_binaries: false # Set to true if you want to use pre-built binaries from GitHub
-architecture: # Set it to aarch64 or amd64 based on your machine architecture to update using prebuilt releases
+use_github_binaries: false
+# only required if github_binraries are true -- to match file name with your architecture
+architecture:
+##
 
 telegram:
-  bot_token: 186779
-  #api_url: http://localhost:8082        # Uncomment if you have a local bot API server running (for bypassing file size limits)
+  # SELF-HOSTED-API
+  # use if you have a local bot api -- helpful to uploading larger files
+  api_url: # http://localhost:4887
   self_hosted_api: false
-  owner_id: 704338780
+
+  # REPLACE IDs
+  bot_token: 186969
+  owner_id: 706969696
+  # should only typically be the owner_id -- can include other accounts if they are shared or you want to share your whatsapp chats with another telegram user
   sudo_users_id:
-    - 704338780
-  target_chat_id: -100423424 # This is the chat where messages will be forwarded (note the "100" prefix of a supergroup)
-  skip_video_stickers: false # Setting this as true will stop trying to convert telegram video stickers to webp and sending them
-  skip_setting_commands: false # This will not show you list of commands when you start typing / in telegram
+    - 706969696
+  # The actual group you create - 100 prefix indicates super group
+  target_chat_id: -100696969
 
-  send_my_presence: false # Setting this to true will show your account as online to others whenever you send a message using Telegram
-  send_my_read_receipts: false # Setting this to true will mark all unread messages in a chat as read when you send a new message using Telegram
+  # SETTINGS/CONFIG AS NEEDED
+  # Setting this as true will stop trying to convert telegram video stickers to webp and sending them
+  skip_video_stickers: false
+  # This will not show you list of commands when you start typing / in telegram
+  skip_setting_commands: false
+  # Setting this to true will show your account as online to others whenever you send a message using Telegram
+  send_my_presence: false
+  # Setting this to true will mark all unread messages in a chat as read when you send a new message using Telegram
+  # IMPORTANT NOTE: the message stays unread on the whatsapp desktop client if this is false. So, use that as you'd like. If you want the message notifications to be removed from whatsapp, you will need to set this to true. You can turn off read receipts on the app itself, if you want to remove whatsapp notifications and set this to true
+  send_my_read_receipts: false
 
-  silent_confirmation: true # Send a silent "Successfully sent" message
-  confirmation_type: 'emoji' # Can have three values: "text", "emoji" or "none"
+  # Send a silent "Successfully sent" message
+  # this lets the bot send a message with the confirmation_type as how it will send the message. Default of emoji is cleaner and light weight. "text" will come as a new message, but disappear after a few seconds. With emoji you can see with messages were sent successfully by the bot, long after.
+  silent_confirmation: true
+  # Can have three values: "text", "emoji" or "none"
+  confirmation_type: 'emoji'
 
-  skip_startup_message: false # If set to true, then a message will NOT be sent to your Telegram DM when the bot starts
+  # If set to true, then a message will NOT be sent to your Telegram DM when the bot starts; true is a sensible default if you are restarting the bot regularly with the service file.
+  skip_startup_message: true
+  # If set to true, then all the spoiler files will be sent as view-once messages
+  spoiler_as_viewonce: true
 
-  spoiler_as_viewonce: true # If set to true, then all the spoiler files will be sent as view-once messages
-
-  reactions: true # If set to true, will send you new text messages whenever a user reacts to your message or revokes their reaction.
+  # If set to true, will send you new text messages whenever a user reacts to your message or revokes their reaction.
+  # helpful for message tracing
+  reactions: true
 
 whatsapp:
   session_name: watgbridge # This will appear in your Linked Devices in mobile app
-  # All these values can be obtained by running /findcontacts and /getwagroups commands
+  ####
+  ## Contact specific settings
+  # All these values can be obtained by running /findcontacts and /getwagroups commands - inside the bot's DM, while it is running
   # You have to put only the values preceding the @ character
-  tag_all_allowed_groups: # Members of these groups can tag everyone by sending @all or @everyone
+  ####
+  # Members of these groups can tag everyone by sending @all or @everyone
+  tag_all_allowed_groups:
     - 91xxxxxxxxxx-xxxxxxxxxx
     - 91xxxxxxxxxx-xxxxxxxxxx
     - 91xxxxxxxxxx-xxxxxxxxxx
@@ -47,6 +76,10 @@ whatsapp:
   status_ignored_chats: # Statuses of these people WILL NOT BE FORWARDED to Telegram
     - 91xxxxxxxxxx
     - 1xxxxxxxxxx
+
+  ####
+  ## End contact specific settings
+  ####
   skip_documents: false
   skip_images: false
   skip_gifs: false
@@ -64,15 +97,29 @@ whatsapp:
   whatsmeow_debug_mode: false
   send_my_messages_from_other_devices: false # If set to true, the messages sent by you from other devices will be sent to Telgram as well
   create_thread_for_info_updates: false # If set to true, new thread will be created (if it doesn't exist) when profile picture changes for group/someone and when group metadata/members changes
-  #login_database:               # Uncomment only if you want to use something other than sqlite
-  #  type: sqlite3
-  #  url: file:wawebstore.db?foreign_keys=on
   sticker_metadata: # This will work only if you have webpmux installed on your system
     pack_name: WaTgBridge
     author_name: WaTgBridge
-#Uncomment any on of these sections
-#Using the sqlite database will be easiest as it does not require any hosted database server and stores data in a single file on your device
 
+  ### Login Database
+  ## Login details for the bridge.
+  # Using sqlite for this is pretty much fine
+  # Uncomment only if you want to use something other than sqlite
+  #login_database:
+  #  type: sqlite3
+  #  url: file:wawebstore.db?foreign_keys=on
+
+####
+## Database section
+# This is where all your messages will be stored
+####
+# default sqlite is GOOD-ENOUGH. But recommended to use proper database
+database:
+  type: sqlite
+  path: ./gobot.sqlite.db
+####
+## Database examples
+####
 #database:
 #  type: postgres
 #  host: localhost
