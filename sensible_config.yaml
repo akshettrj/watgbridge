@@ -1,0 +1,95 @@
+time_zone: SAST
+time_format: Fri, 2025-03-21 @ 14:05:30
+
+git_executable: /usr/bin/git
+go_executable: /usr/local/go/bin/go
+ffmpeg_executable: /usr/bin/ffmpeg
+debug_mode: false
+
+use_github_binaries: false # Set to true if you want to use pre-built binaries from GitHub
+architecture: # Set it to aarch64 or amd64 based on your machine architecture to update using prebuilt releases
+
+telegram:
+  bot_token: 186779
+  #api_url: http://localhost:8082        # Uncomment if you have a local bot API server running (for bypassing file size limits)
+  self_hosted_api: false
+  owner_id: 704338780
+  sudo_users_id:
+    - 704338780
+  target_chat_id: -100423424 # This is the chat where messages will be forwarded (note the "100" prefix of a supergroup)
+  skip_video_stickers: false # Setting this as true will stop trying to convert telegram video stickers to webp and sending them
+  skip_setting_commands: false # This will not show you list of commands when you start typing / in telegram
+
+  send_my_presence: false # Setting this to true will show your account as online to others whenever you send a message using Telegram
+  send_my_read_receipts: false # Setting this to true will mark all unread messages in a chat as read when you send a new message using Telegram
+
+  silent_confirmation: true # Send a silent "Successfully sent" message
+  confirmation_type: 'emoji' # Can have three values: "text", "emoji" or "none"
+
+  skip_startup_message: false # If set to true, then a message will NOT be sent to your Telegram DM when the bot starts
+
+  spoiler_as_viewonce: true # If set to true, then all the spoiler files will be sent as view-once messages
+
+  reactions: true # If set to true, will send you new text messages whenever a user reacts to your message or revokes their reaction.
+
+whatsapp:
+  session_name: watgbridge # This will appear in your Linked Devices in mobile app
+  # All these values can be obtained by running /findcontacts and /getwagroups commands
+  # You have to put only the values preceding the @ character
+  tag_all_allowed_groups: # Members of these groups can tag everyone by sending @all or @everyone
+    - 91xxxxxxxxxx-xxxxxxxxxx
+    - 91xxxxxxxxxx-xxxxxxxxxx
+    - 91xxxxxxxxxx-xxxxxxxxxx
+    - 12xxxxxxxxxxxxx669
+  ignore_chats:
+    - 91xxxxxxxxxx
+    - 12xxxxxxxxxxxxx669
+  status_ignored_chats: # Statuses of these people WILL NOT BE FORWARDED to Telegram
+    - 91xxxxxxxxxx
+    - 1xxxxxxxxxx
+  skip_documents: false
+  skip_images: false
+  skip_gifs: false
+  skip_videos: false
+  skip_voice_notes: false
+  skip_audios: false
+  skip_stickers: false
+  skip_status: false
+  skip_contacts: false
+  skip_locations: false
+  skip_profile_picture_updates: false
+  skip_group_settings_updates: false # This includes joins, leaves, name change, etc.
+  skip_chat_details: true
+  send_revoked_message_updates: false
+  whatsmeow_debug_mode: false
+  send_my_messages_from_other_devices: false # If set to true, the messages sent by you from other devices will be sent to Telgram as well
+  create_thread_for_info_updates: false # If set to true, new thread will be created (if it doesn't exist) when profile picture changes for group/someone and when group metadata/members changes
+  #login_database:               # Uncomment only if you want to use something other than sqlite
+  #  type: sqlite3
+  #  url: file:wawebstore.db?foreign_keys=on
+  sticker_metadata: # This will work only if you have webpmux installed on your system
+    pack_name: WaTgBridge
+    author_name: WaTgBridge
+#Uncomment any on of these sections
+#Using the sqlite database will be easiest as it does not require any hosted database server and stores data in a single file on your device
+
+#database:
+#  type: postgres
+#  host: localhost
+#  user: admin
+#  password: password
+#  dbname: gobot
+#  port: 5432
+#  time_zone: Asia/Kolkata
+
+#database:
+#  type: sqlite
+#  path: ./gobot.sqlite.db
+
+#database:
+#  type: mysql
+#  host: localhost
+#  port: 3306
+#  user: admin
+#  password: password
+#  dbname: gobot
