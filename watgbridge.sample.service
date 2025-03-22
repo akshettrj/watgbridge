@@ -1,0 +1,20 @@
+[Unit]
+Description=Bridge between WhatsApp and Telegram
+# prevent too many restarts
+StartLimitBurst=5
+StartLimitIntervalSec=300
+# Only needed if you self host a bot api
+# After=network.target tgbotapi.service
+
+[Service]
+Type=idle
+Restart=always
+#### CHANGE
+User=watgbot
+#### Will do a restart every 6 hours
+RuntimeMaxSec=6h
+#### CHANGE
+ExecStart=/bin/bash -c 'sleep 20 && cd /location/to/your/downloaded/bot/watgbridge && ./watgbridge'
+
+[Install]
+WantedBy=multi-user.target
