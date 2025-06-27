@@ -57,9 +57,9 @@ func WebmConvertToWebp(webmStickerData []byte, scale, pad string, updateId int64
 	cmd := exec.Command(state.State.Config.FfmpegExecutable,
 		"-i", "-",
 		"-fs", "800000",
-		"-c:v", "libwebp",
 		"-compression_level", "6",
 		"-vf", fmt.Sprintf("fps=15,format=rgba,scale=%s,pad=%s:color=#00000000", scale, pad),
+		"-f", "webp",
 		"-",
 	)
 
@@ -149,11 +149,17 @@ func WebpWriteExifData(inputData []byte) ([]byte, error) {
 	)
 	defer logger.Sync()
 
-	exifFile, err := os.CreateTemp("", "exif")
+	exifFile, err := os.CreateTemp("", "raw*.exif")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create exif file: %w", err)
 	}
 	defer os.Remove(exifFile.Name())
+
+	inputFile, err := os.CreateTemp("", "input")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create input data file: %w", err)
+	}
+	defer os.Remove(inputFile.Name())
 
 	if _, err := b.Write(startingBytes); err != nil {
 		return nil, err
@@ -189,14 +195,18 @@ func WebpWriteExifData(inputData []byte) ([]byte, error) {
 	}
 	exifFile.Close()
 
+	if _, err := inputFile.Write(inputData); err != nil {
+		return nil, err
+	}
+	inputFile.Close()
+
 	cmd := exec.Command("webpmux",
-		"-set", "exif",
-		exifFile.Name(), "-",
+		"-set", "exif", exifFile.Name(),
+		inputFile.Name(),
 		"-o", "-",
 	)
 
 	var outputBuf, stderr bytes.Buffer
-	cmd.Stdin = bytes.NewReader(inputData)
 	cmd.Stdout = &outputBuf
 	cmd.Stderr = &stderr
 
