@@ -88,13 +88,13 @@ func NewWhatsAppClient() error {
 		SupportCagReactionsAndPolls:    proto.Bool(false),
 	}
 
-	container, err := sqlstore.New(state.State.Config.WhatsApp.LoginDatabase.Type,
+	container, err := sqlstore.New(context.Background(), state.State.Config.WhatsApp.LoginDatabase.Type,
 		state.State.Config.WhatsApp.LoginDatabase.URL, waDatabaseLogger)
 	if err != nil {
 		return fmt.Errorf("could not initialize sqlstore for Whatsapp : %s", err)
 	}
 
-	deviceStore, err := container.GetFirstDevice()
+	deviceStore, err := container.GetFirstDevice(context.Background())
 	if err != nil {
 		return fmt.Errorf("could not initialize device store for Whatsapp : %s", err)
 	}

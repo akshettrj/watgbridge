@@ -3,6 +3,7 @@ package state
 import (
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 
 	"gopkg.in/yaml.v3"
@@ -95,6 +96,24 @@ func (cfg *Config) LoadConfig() error {
 	err = yaml.Unmarshal(configBody, cfg)
 	if err != nil {
 		return fmt.Errorf("could not parse config file : %s", err)
+	}
+
+	whatsappLoginDB := cfg.WhatsApp.LoginDatabase
+	if whatsappLoginDB.Type == "sqlite3" {
+		parsedUrl, err := url.Parse(whatsappLoginDB.URL)
+		if err != nil {
+			return fmt.Errorf("whatsapp Login Database URL is not a valid URL")
+		}
+		if _, found := parsedUrl.Query()["_foreign_keys"]; !found {
+			q := parsedUrl.Query()
+			q.Set("_foreign_keys", "on")
+			if q.Has("foreign_keys") {
+				q.Del("foreign_keys")
+			}
+			parsedUrl.RawQuery = q.Encode()
+			cfg.WhatsApp.LoginDatabase.URL = parsedUrl.String()
+			cfg.SaveConfig()
+		}
 	}
 
 	return nil

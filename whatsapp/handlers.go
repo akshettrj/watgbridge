@@ -475,7 +475,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 			}
 			return
 		} else {
-			imageBytes, err := waClient.Download(imageMsg)
+			imageBytes, err := waClient.Download(context.Background(), imageMsg)
 			if err != nil {
 				bridgedText += "\n<i>Couldn't download the photo due to some errors</i>"
 				sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
@@ -548,7 +548,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 			}
 			return
 		} else {
-			gifBytes, err := waClient.Download(gifMsg)
+			gifBytes, err := waClient.Download(context.Background(), gifMsg)
 			if err != nil {
 				bridgedText += "\n<i>Couldn't download the GIF due to some errors</i>"
 				sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
@@ -633,7 +633,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 			}
 			return
 		} else {
-			videoBytes, err := waClient.Download(videoMsg)
+			videoBytes, err := waClient.Download(context.Background(), videoMsg)
 			if err != nil {
 				bridgedText += "\n<i>Couldn't download the video due to some errors</i>"
 				sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
@@ -722,7 +722,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 			}
 			return
 		} else {
-			audioBytes, err := waClient.Download(audioMsg)
+			audioBytes, err := waClient.Download(context.Background(), audioMsg)
 			if err != nil {
 				bridgedText += "\n<i>Couldn't download the audio due to some errors</i>"
 				sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
@@ -792,7 +792,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 			}
 			return
 		} else {
-			audioBytes, err := waClient.Download(audioMsg)
+			audioBytes, err := waClient.Download(context.Background(), audioMsg)
 			if err != nil {
 				bridgedText += "\n<i>Couldn't download the audio due to some errors</i>"
 				sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
@@ -862,7 +862,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 			}
 			return
 		} else {
-			documentBytes, err := waClient.Download(documentMsg)
+			documentBytes, err := waClient.Download(context.Background(), documentMsg)
 			if err != nil {
 				bridgedText += "\n<i>Couldn't download the document due to some errors</i>"
 				sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
@@ -939,7 +939,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 			}
 			return
 		} else {
-			stickerBytes, err := waClient.Download(stickerMsg)
+			stickerBytes, err := waClient.Download(context.Background(), stickerMsg)
 			if err != nil {
 				bridgedText += "\n<i>Couldn't download the sticker due to some errors</i>"
 				sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{

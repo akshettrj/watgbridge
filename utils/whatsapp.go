@@ -126,7 +126,7 @@ func WaGetContactName(jid types.JID) string {
 		}
 	} else {
 		waClient := state.State.WhatsAppClient
-		contact, err := waClient.Store.Contacts.GetContact(jid)
+		contact, err := waClient.Store.Contacts.GetContact(context.Background(), jid)
 		if err == nil && contact.Found {
 			if contact.FullName != "" {
 				name = contact.FullName
