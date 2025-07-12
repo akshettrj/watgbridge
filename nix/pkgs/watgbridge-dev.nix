@@ -1,11 +1,8 @@
 {
   lib,
-  buildGoApplication,
+  buildGoModule,
   nix-filter,
-}:
-
-let
-
+}: let
   localSrc = nix-filter {
     name = "watgbridge";
     root = ../../.;
@@ -24,25 +21,27 @@ let
       "LICENSE"
     ];
   };
-
 in
-buildGoApplication rec {
-  pname = "watgbridge";
-  version = (lib.trim (builtins.readFile ../../state/version.txt));
+  buildGoModule rec {
+    pname = "watgbridge";
+    version = lib.trim (builtins.readFile ../../state/version.txt);
 
-  pwd = localSrc;
-  src = localSrc;
+    src = localSrc;
 
-  ldflags = [
-    "-s"
-    "-w"
-  ];
+    vendorHash = "sha256-Zw55N6SHghRH53tBJmB4qTzsNcpNXe1k5U6mzuzeMbs=";
 
-  meta = with lib; rec {
-    description = "A bridge between WhatsApp and Telegram written in Golang";
-    homepage = "https://github.com/watgbridge/watgbridge";
-    changelog = "${homepage}/compare/v${version}...main";
-    license = licenses.mit;
-    mainProgram = "watgbridge";
-  };
-}
+    subPackages = ["."];
+
+    ldflags = [
+      "-s"
+      "-w"
+    ];
+
+    meta = with lib; rec {
+      description = "A bridge between WhatsApp and Telegram written in Golang";
+      homepage = "https://github.com/watgbridge/watgbridge";
+      changelog = "${homepage}/compare/v${version}...main";
+      license = licenses.mit;
+      mainProgram = "watgbridge";
+    };
+  }
