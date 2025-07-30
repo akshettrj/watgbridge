@@ -186,6 +186,29 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 	// Status Update
 	if strings.HasSuffix(waChatID, "@broadcast") {
 		waChatID = participantID
+
+		waChatJID, _ := utils.WaParseJID(participantID)
+		contactName := utils.WaGetContactName(waChatJID)
+
+		contactThreadID, err := utils.TgGetOrMakeThreadFromWa(participantID, c.EffectiveChat.Id, contactName)
+		if err != nil {
+			return utils.TgReplyWithErrorByContext(b, c, "Failed to get or create a thread for the contact", err)
+		}
+
+		forwardedMsg, err := b.ForwardMessage(c.EffectiveChat.Id, c.EffectiveChat.Id, c.EffectiveMessage.MessageId, &gotgbot.ForwardMessageOpts{
+			MessageThreadId: contactThreadID,
+		})
+		if err != nil {
+			return utils.TgReplyWithErrorByContext(b, c, "Failed to forward the message to the contact's thread", err)
+		}
+		
+		msgCopy := *msgToForward
+		msgCopy.MessageId = forwardedMsg.MessageId
+		msgCopy.MessageThreadId = forwardedMsg.MessageThreadId
+
+		finalWaChatJID, _ := utils.WaParseJID(waChatID)
+		return utils.TgSendToWhatsApp(b, c, &msgCopy, msgToReplyTo, finalWaChatJID, participantID, stanzaID, true)
+
 	} else if participantID != "" {
 		participant, _ := utils.WaParseJID(participantID)
 		participantID = participant.ToNonAD().String()
