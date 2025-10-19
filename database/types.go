@@ -32,6 +32,7 @@ type ContactName struct {
 	FullName     string
 	PushName     string
 	BusinessName string
+	Server       string
 }
 
 type ChatEphemeralSettings struct {

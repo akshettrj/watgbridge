@@ -112,9 +112,30 @@ func WaGetContactName(jid types.JID) string {
 	}
 
 	var name string
+	waClient := state.State.WhatsAppClient
 
-	firstName, fullName, pushName, businessName, err := database.ContactNameGet(jid.User)
-	if err == nil {
+	var (
+		pn           types.JID
+		firstName    string
+		fullName     string
+		pushName     string
+		businessName string
+		found        bool
+		err          error
+	)
+
+	if jid.Server == types.HiddenUserServer {
+		pn, err = waClient.Store.LIDs.GetPNForLID(context.Background(), jid)
+		if err == nil {
+			firstName, fullName, pushName, businessName, found, err = database.ContactNameGet(pn.User, pn.Server)
+		}
+	}
+
+	if !found {
+		firstName, fullName, pushName, businessName, found, err = database.ContactNameGet(jid.User, jid.Server)
+	}
+
+	if err == nil && found {
 		if fullName != "" {
 			name = fullName
 		} else if businessName != "" {
@@ -125,7 +146,6 @@ func WaGetContactName(jid types.JID) string {
 			name = firstName + " (" + jid.User + ")"
 		}
 	} else {
-		waClient := state.State.WhatsAppClient
 		contact, err := waClient.Store.Contacts.GetContact(context.Background(), jid)
 		if err == nil && contact.Found {
 			if contact.FullName != "" {
@@ -191,7 +211,7 @@ func WaTagAll(group types.JID, msg *waE2E.Message, msgId, msgSender string, msgI
 	}
 
 	if !msgIsFromMe {
-		tagsThreadId, err := TgGetOrMakeThreadFromWa("mentions", cfg.Telegram.TargetChatID, "Mentions")
+		tagsThreadId, err := TgGetOrMakeThreadFromWa_String("mentions", cfg.Telegram.TargetChatID, "Mentions")
 		if err != nil {
 			TgSendErrorById(tgBot, cfg.Telegram.TargetChatID, 0, "Failed to create/retreive corresponding thread id for status/calls/tags", err)
 			return

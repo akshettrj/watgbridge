@@ -189,7 +189,7 @@ func ChatThreadDropAllPairs() error {
 	return res.Error
 }
 
-func ContactNameAddNew(waUserId, firstName, fullName, pushName, businessName string) error {
+func ContactNameAddNew(waUserId, waUserServer, firstName, fullName, pushName, businessName string) error {
 	db := state.State.Database
 
 	var contact ContactName
@@ -213,6 +213,7 @@ func ContactNameAddNew(waUserId, firstName, fullName, pushName, businessName str
 		FullName:     fullName,
 		PushName:     pushName,
 		BusinessName: businessName,
+		Server:       waUserServer,
 	})
 	return res.Error
 }
@@ -231,6 +232,7 @@ func ContactNameBulkAddOrUpdate(contacts map[types.JID]types.ContactInfo) error 
 			PushName:     v.PushName,
 			BusinessName: v.BusinessName,
 			FullName:     v.FullName,
+			Server:       k.Server,
 		})
 	}
 
@@ -242,14 +244,16 @@ func ContactNameBulkAddOrUpdate(contacts map[types.JID]types.ContactInfo) error 
 	return nil
 }
 
-func ContactNameGet(waUserId string) (string, string, string, string, error) {
+func ContactNameGet(waUserId string, waUserServer string) (string, string, string, string, bool, error) {
 
 	db := state.State.Database
 
 	var contact ContactName
-	res := db.Where("id = ?", waUserId).Find(&contact)
+	res := db.Where("id = ? AND server = ?", waUserId, waUserServer).Find(&contact)
 
-	return contact.FirstName, contact.FullName, contact.PushName, contact.BusinessName, res.Error
+	found := (contact.ID == waUserId && contact.Server == waUserServer)
+
+	return contact.FirstName, contact.FullName, contact.PushName, contact.BusinessName, found, res.Error
 }
 
 func ContactGetAll() (map[string]ContactName, error) {
@@ -266,7 +270,7 @@ func ContactGetAll() (map[string]ContactName, error) {
 	return results, res.Error
 }
 
-func ContactUpdatePushName(waUserId, pushName string) error {
+func ContactUpdatePushName(waUserId, waUserServer, pushName string) error {
 	if pushName == "" {
 		return nil
 	}
@@ -274,14 +278,14 @@ func ContactUpdatePushName(waUserId, pushName string) error {
 	db := state.State.Database
 
 	var contact ContactName
-	res := db.Where("id = ?", waUserId).Find(&contact)
+	res := db.Where("id = ? AND server = ?", waUserId, waUserServer).Find(&contact)
 
 	if res.Error != nil {
 		return res.Error
 	}
 
 	if contact.ID != waUserId {
-		return ContactNameAddNew(waUserId, "", "", pushName, "")
+		return ContactNameAddNew(waUserId, waUserServer, "", "", pushName, "")
 	}
 
 	contact.PushName = pushName
@@ -290,7 +294,7 @@ func ContactUpdatePushName(waUserId, pushName string) error {
 	return res.Error
 }
 
-func ContactUpdateFullName(waUserId, fullName string) error {
+func ContactUpdateFullName(waUserId, waUserServer, fullName string) error {
 	if fullName == "" {
 		return nil
 	}
@@ -298,14 +302,14 @@ func ContactUpdateFullName(waUserId, fullName string) error {
 	db := state.State.Database
 
 	var contact ContactName
-	res := db.Where("id = ?", waUserId).Find(&contact)
+	res := db.Where("id = ? AND server = ?", waUserId, waUserServer).Find(&contact)
 
 	if res.Error != nil {
 		return res.Error
 	}
 
 	if contact.ID != waUserId {
-		return ContactNameAddNew(waUserId, "", fullName, "", "")
+		return ContactNameAddNew(waUserId, waUserServer, "", fullName, "", "")
 	}
 
 	contact.FullName = fullName
@@ -314,7 +318,7 @@ func ContactUpdateFullName(waUserId, fullName string) error {
 	return res.Error
 }
 
-func ContactUpdateBusinessName(waUserId, businessName string) error {
+func ContactUpdateBusinessName(waUserId, waUserServer, businessName string) error {
 	if businessName == "" {
 		return nil
 	}
@@ -322,14 +326,14 @@ func ContactUpdateBusinessName(waUserId, businessName string) error {
 	db := state.State.Database
 
 	var contact ContactName
-	res := db.Where("id = ?", waUserId).Find(&contact)
+	res := db.Where("id = ? AND server = ?", waUserId, waUserServer).Find(&contact)
 
 	if res.Error != nil {
 		return res.Error
 	}
 
 	if contact.ID != waUserId {
-		return ContactNameAddNew(waUserId, "", "", "", businessName)
+		return ContactNameAddNew(waUserId, waUserServer, "", "", "", businessName)
 	}
 
 	contact.BusinessName = businessName

@@ -41,8 +41,8 @@ func TgRegisterBotCommands(b *gotgbot.Bot, commands ...gotgbot.BotCommand) error
 	return err
 }
 
-func TgGetOrMakeThreadFromWa(waChatId string, tgChatId int64, threadName string) (int64, error) {
-	threadId, threadFound, err := database.ChatThreadGetTgFromWa(waChatId, tgChatId)
+func TgGetOrMakeThreadFromWa_String(waChatIdString string, tgChatId int64, threadName string) (int64, error) {
+	threadId, threadFound, err := database.ChatThreadGetTgFromWa(waChatIdString, tgChatId)
 	if err != nil {
 		return 0, err
 	}
@@ -53,7 +53,7 @@ func TgGetOrMakeThreadFromWa(waChatId string, tgChatId int64, threadName string)
 		if err != nil {
 			return 0, err
 		}
-		err = database.ChatThreadAddNewPair(waChatId, tgChatId, newForum.MessageThreadId)
+		err = database.ChatThreadAddNewPair(waChatIdString, tgChatId, newForum.MessageThreadId)
 		if err != nil {
 			return newForum.MessageThreadId, err
 		}
@@ -61,6 +61,19 @@ func TgGetOrMakeThreadFromWa(waChatId string, tgChatId int64, threadName string)
 	}
 
 	return threadId, nil
+}
+
+func TgGetOrMakeThreadFromWa(waChatId waTypes.JID, tgChatId int64, threadName string) (int64, error) {
+	if waChatId.Server == waTypes.HiddenUserServer {
+		waClient := state.State.WhatsAppClient
+		pn, err := waClient.Store.LIDs.GetPNForLID(context.Background(), waChatId)
+		if err != nil {
+			return 0, err
+		}
+		waChatId = pn
+	}
+	waChatIdString := waChatId.ToNonAD().String()
+	return TgGetOrMakeThreadFromWa_String(waChatIdString, tgChatId, threadName)
 }
 
 func TgDownloadByFilePath(b *gotgbot.Bot, filePath string) ([]byte, error) {
