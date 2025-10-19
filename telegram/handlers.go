@@ -201,7 +201,7 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 		if err != nil {
 			return utils.TgReplyWithErrorByContext(b, c, "Failed to forward the message to the contact's thread", err)
 		}
-		
+
 		msgCopy := *msgToForward
 		msgCopy.MessageId = forwardedMsg.MessageId
 		msgCopy.MessageThreadId = forwardedMsg.MessageThreadId
@@ -257,7 +257,7 @@ func GetWhatsAppGroupsHandler(b *gotgbot.Bot, c *ext.Context) error {
 
 	waClient := state.State.WhatsAppClient
 
-	waGroups, err := waClient.GetJoinedGroups()
+	waGroups, err := waClient.GetJoinedGroups(context.Background())
 	if err != nil {
 		return utils.TgReplyWithErrorByContext(b, c, "Failed to retrieve the groups", err)
 	}
