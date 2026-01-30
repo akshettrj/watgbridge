@@ -1196,13 +1196,28 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 	} else {
 		if text == "" {
 			if reactionMsg := v.Message.GetReactionMessage(); cfg.Telegram.Reactions && reactionMsg != nil {
-				tgChatId, _, tgMsgId, err := database.MsgIdGetTgFromWa(reactionMsg.Key.GetID(), v.Info.Chat.String())
+				// Resolve LID to PN for private chats using new WhatsApp LID system
+				waChatIdForLookup := v.Info.Chat.String()
+				if v.Info.Chat.Server == waTypes.HiddenUserServer {
+					pn, err := waClient.Store.LIDs.GetPNForLID(context.Background(), v.Info.Chat.ToNonAD())
+					if err != nil {
+						logger.Warn(
+							"failed to get PN for LID when handling reaction",
+							zap.Error(err),
+							zap.String("lid", v.Info.Chat.String()),
+						)
+					} else {
+						waChatIdForLookup = pn.String()
+					}
+				}
+
+				tgChatId, _, tgMsgId, err := database.MsgIdGetTgFromWa(reactionMsg.Key.GetID(), waChatIdForLookup)
 				if err != nil {
 					logger.Error(
 						"failed to get message ID mapping from database",
 						zap.Error(err),
 						zap.String("stanza_id", reactionMsg.Key.GetID()),
-						zap.String("chat_id", v.Info.Chat.String()),
+						zap.String("chat_id", waChatIdForLookup),
 					)
 				} else if tgChatId == cfg.Telegram.TargetChatID {
 
@@ -1227,7 +1242,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 						panic(fmt.Errorf("failed to send telegram message: %s", err))
 					}
 					if sentMsg.MessageId != 0 {
-						database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
+						database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), waChatIdForLookup,
 							cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 					}
 				}
