@@ -34,11 +34,39 @@ const (
 )
 
 func TgRegisterBotCommands(b *gotgbot.Bot, commands ...gotgbot.BotCommand) error {
-	_, err := b.SetMyCommands(commands, &gotgbot.SetMyCommandsOpts{
+	var (
+		cfg         = state.State.Config
+		groupChatID = cfg.Telegram.TargetChatID
+		sudoUserIDs = cfg.Telegram.SudoUsersID
+	)
+
+	// Set commands for the specific group chat
+	if _, err := b.SetMyCommands(commands, &gotgbot.SetMyCommandsOpts{
 		LanguageCode: "en",
-		Scope:        gotgbot.BotCommandScopeDefault{},
-	})
-	return err
+		Scope:        gotgbot.BotCommandScopeChat{ChatId: groupChatID},
+	}); err != nil {
+		return err
+	}
+
+	// Set commands for sudo users (private chats)
+	for _, userID := range sudoUserIDs {
+		if _, err := b.SetMyCommands(commands, &gotgbot.SetMyCommandsOpts{
+			LanguageCode: "en",
+			Scope:        gotgbot.BotCommandScopeChat{ChatId: userID}, // Corrected scope
+		}); err != nil {
+			return err
+		}
+	}
+
+	// Nullify commands for all other users (private users not in sudo list)
+	if _, err := b.SetMyCommands(nil, &gotgbot.SetMyCommandsOpts{
+		LanguageCode: "en",
+		Scope:        gotgbot.BotCommandScopeAllPrivateChats{},
+	}); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func TgGetOrMakeThreadFromWa_String(waChatIdString string, tgChatId int64, threadName string) (int64, error) {
