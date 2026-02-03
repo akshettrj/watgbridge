@@ -10,8 +10,6 @@ import (
 	"image/draw"
 	"os"
 	"os/exec"
-	"path"
-	"strconv"
 
 	"watgbridge/state"
 
@@ -41,7 +39,7 @@ func TGSConvertToWebp(tgsStickerData []byte, updateId int64) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		} else if len(webpStickerData) < 1024*1024 {
-			if outputDataWithExif, err := WebpWriteExifData(webpStickerData, updateId); err == nil {
+			if outputDataWithExif, err := WebpWriteExifData(webpStickerData); err == nil {
 				return outputDataWithExif, nil
 			}
 			return webpStickerData, nil
@@ -53,44 +51,36 @@ func TGSConvertToWebp(tgsStickerData []byte, updateId int64) ([]byte, error) {
 }
 
 func WebmConvertToWebp(webmStickerData []byte, scale, pad string, updateId int64) ([]byte, error) {
-
-	var (
-		currTime   = strconv.FormatInt(updateId, 10)
-		currPath   = path.Join("downloads", currTime)
-		inputPath  = path.Join(currPath, "input.webm")
-		outputPath = path.Join(currPath, "output.webp")
-	)
-
-	if err := os.MkdirAll(currPath, os.ModePerm); err != nil {
-		return nil, err
-	}
-	defer os.RemoveAll(currPath)
-
-	if err := os.WriteFile(inputPath, webmStickerData, os.ModePerm); err != nil {
-		return nil, err
-	}
+	logger := state.State.Logger
+	defer logger.Sync()
 
 	cmd := exec.Command(state.State.Config.FfmpegExecutable,
-		"-i", inputPath,
+		"-i", "-",
 		"-fs", "800000",
-		"-vf", fmt.Sprintf("fps=15,scale=%s,format=rgba,pad=%s:color=#00000000", scale, pad),
-		outputPath,
+		"-compression_level", "6",
+		"-vf", fmt.Sprintf("fps=15,format=rgba,scale=%s,pad=%s:color=#00000000", scale, pad),
+		"-f", "webp",
+		"-",
 	)
 
-	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("failed to execute ffmpeg command: %s", err)
-	}
+	var outputBuf, stderr bytes.Buffer
+	cmd.Stdin = bytes.NewReader(webmStickerData)
+	cmd.Stdout = &outputBuf
+	cmd.Stderr = &stderr
 
-	outputData, err := os.ReadFile(outputPath)
-	if err != nil {
+	if err := cmd.Run(); err != nil {
+		logger.Debug("ffmpeg command failed",
+			zap.Error(err),
+			zap.String("stderr", stderr.String()),
+		)
 		return nil, err
 	}
 
-	if outputDataWithExif, err := WebpWriteExifData(outputData, updateId); err == nil {
+	if outputDataWithExif, err := WebpWriteExifData(outputBuf.Bytes()); err == nil {
 		return outputDataWithExif, nil
 	}
 
-	return outputData, nil
+	return outputBuf.Bytes(), nil
 }
 
 func WebpImagePad(inputData []byte, wPad, hPad int, updateId int64) ([]byte, error) {
@@ -115,7 +105,7 @@ func WebpImagePad(inputData []byte, wPad, hPad int, updateId int64) ([]byte, err
 		return nil, fmt.Errorf("failed to encode padded data into Webp: %w", err)
 	}
 
-	if outputData, err := WebpWriteExifData(outputBytes, updateId); err == nil {
+	if outputData, err := WebpWriteExifData(outputBytes); err == nil {
 		return outputData, nil
 	}
 
@@ -123,62 +113,59 @@ func WebpImagePad(inputData []byte, wPad, hPad int, updateId int64) ([]byte, err
 }
 
 func AnimatedWebpConvertToGif(inputData []byte, updateId string) ([]byte, error) {
-	var (
-		logger = state.State.Logger
-
-		currPath   = path.Join("downloads", updateId)
-		inputPath  = path.Join(currPath, "input.webp")
-		outputPath = path.Join(currPath, "output.gif")
-	)
+	logger := state.State.Logger
 	defer logger.Sync()
 
-	if err := os.MkdirAll(currPath, os.ModePerm); err != nil {
-		return nil, err
-	}
-	defer os.RemoveAll(currPath)
-
-	if err := os.WriteFile(inputPath, inputData, os.ModePerm); err != nil {
-		return nil, err
-	}
-
 	cmd := exec.Command("convert",
-		inputPath,
+		"webp:-",
 		"-loop", "0",
 		"-dispose", "previous",
-		outputPath,
+		"gif:-",
 	)
 
+	var outputBuf, stderr bytes.Buffer
+	cmd.Stdin = bytes.NewReader(inputData)
+	cmd.Stdout = &outputBuf
+	cmd.Stderr = &stderr
+
 	if err := cmd.Run(); err != nil {
-		logger.Debug("failed to run convert command",
+		logger.Debug("convert command failed",
 			zap.Error(err),
+			zap.String("stderr", stderr.String()),
 		)
 		return nil, err
 	}
 
-	return os.ReadFile(outputPath)
+	return outputBuf.Bytes(), nil
 }
 
-func WebpWriteExifData(inputData []byte, updateId int64) ([]byte, error) {
+func WebpWriteExifData(inputData []byte) ([]byte, error) {
 	var (
 		cfg           = state.State.Config
 		logger        = state.State.Logger
 		startingBytes = []byte{0x49, 0x49, 0x2A, 0x00, 0x08, 0x00, 0x00, 0x00, 0x01, 0x00, 0x41, 0x57, 0x07, 0x00}
 		endingBytes   = []byte{0x16, 0x00, 0x00, 0x00}
 		b             bytes.Buffer
-
-		currUpdateId = strconv.FormatInt(updateId, 10)
-		currPath     = path.Join("downloads", currUpdateId)
-		inputPath    = path.Join(currPath, "input_exif.webm")
-		outputPath   = path.Join(currPath, "output_exif.webp")
-		exifDataPath = path.Join(currPath, "raw.exif")
 	)
 	defer logger.Sync()
+
+	exifFile, err := os.CreateTemp("", "raw*.exif")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create exif file: %w", err)
+	}
+	defer os.Remove(exifFile.Name())
+
+	inputFile, err := os.CreateTemp("", "input")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create input data file: %w", err)
+	}
+	defer os.Remove(inputFile.Name())
 
 	if _, err := b.Write(startingBytes); err != nil {
 		return nil, err
 	}
 
-	jsonData := map[string]interface{}{
+	jsonData := map[string]any{
 		"sticker-pack-id":        "watgbridge.akshettrj.com.github.",
 		"sticker-pack-name":      cfg.WhatsApp.StickerMetadata.PackName,
 		"sticker-pack-publisher": cfg.WhatsApp.StickerMetadata.AuthorName,
@@ -203,30 +190,33 @@ func WebpWriteExifData(inputData []byte, updateId int64) ([]byte, error) {
 		return nil, err
 	}
 
-	if err := os.MkdirAll(currPath, os.ModePerm); err != nil {
+	if _, err := exifFile.Write(b.Bytes()); err != nil {
 		return nil, err
 	}
-	defer os.RemoveAll(currPath)
+	exifFile.Close()
 
-	if err := os.WriteFile(inputPath, inputData, os.ModePerm); err != nil {
+	if _, err := inputFile.Write(inputData); err != nil {
 		return nil, err
 	}
-	if err := os.WriteFile(exifDataPath, b.Bytes(), os.ModePerm); err != nil {
-		return nil, err
-	}
+	inputFile.Close()
 
 	cmd := exec.Command("webpmux",
-		"-set", "exif",
-		exifDataPath, inputPath,
-		"-o", outputPath,
+		"-set", "exif", exifFile.Name(),
+		inputFile.Name(),
+		"-o", "-",
 	)
+
+	var outputBuf, stderr bytes.Buffer
+	cmd.Stdout = &outputBuf
+	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
 		logger.Debug("failed to run webpmux command",
 			zap.Error(err),
+			zap.String("stderr", stderr.String()),
 		)
 		return nil, err
 	}
 
-	return os.ReadFile(outputPath)
+	return outputBuf.Bytes(), nil
 }
