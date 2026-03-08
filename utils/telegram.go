@@ -789,7 +789,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 
 			stickerBytes, err = WebmConvertToWebp(stickerBytes, scale, pad, c.UpdateId)
 			if err != nil {
-				return TgReplyWithErrorByContext(b, c, "Failed to convert WEBM sticker to GIF", err)
+				return TgReplyWithErrorByContext(b, c, "Failed to convert WEBM sticker to WEBP sticker", err)
 			}
 		} else if !msgToForward.Sticker.IsAnimated || !msgToForward.Sticker.IsVideo {
 
