@@ -10,69 +10,69 @@ import (
 )
 
 type Config struct {
-	Path             string `yaml:"-"`
-	TimeZone         string `yaml:"time_zone"`
-	TimeFormat       string `yaml:"time_format"`
-	GitExecutable    string `yaml:"git_executable"`
-	GoExecutable     string `yaml:"go_executable"`
-	FfmpegExecutable string `yaml:"ffmpeg_executable"`
-	DebugMode        bool   `yaml:"debug_mode"`
+	Path             string `yaml:"-" mapstructure:"-"`
+	TimeZone         string `yaml:"time_zone" mapstructure:"time_zone"`
+	TimeFormat       string `yaml:"time_format" mapstructure:"time_format"`
+	GitExecutable    string `yaml:"git_executable" mapstructure:"git_executable"`
+	GoExecutable     string `yaml:"go_executable" mapstructure:"go_executable"`
+	FfmpegExecutable string `yaml:"ffmpeg_executable" mapstructure:"ffmpeg_executable"`
+	DebugMode        bool   `yaml:"debug_mode" mapstructure:"debug_mode"`
 
-	UseGithHubBinaries bool   `yaml:"use_github_binaries"`
-	Architecture       string `yaml:"architecture"`
+	UseGithHubBinaries bool   `yaml:"use_github_binaries" mapstructure:"use_github_binaries"`
+	Architecture       string `yaml:"architecture" mapstructure:"architecture"`
 
 	Telegram struct {
-		BotToken            string  `yaml:"bot_token"`
-		APIURL              string  `yaml:"api_url"`
-		SudoUsersID         []int64 `yaml:"sudo_users_id"`
-		OwnerID             int64   `yaml:"owner_id"`
-		TargetChatID        int64   `yaml:"target_chat_id"`
-		SelfHostedAPI       bool    `yaml:"self_hosted_api"`
-		SkipVideoStickers   bool    `yaml:"skip_video_stickers"`
-		SkipSettingCommands bool    `yaml:"skip_setting_commands"`
-		SendMyPresence      bool    `yaml:"send_my_presence"`
-		SendMyReadReceipts  bool    `yaml:"send_my_read_receipts"`
-		SilentConfirmation  bool    `yaml:"silent_confirmation"`
-		ConfirmationType    string  `yaml:"confirmation_type"`
-		EmojiConfirmation   *bool   `yaml:"emoji_confirmation"`
-		SkipStartupMessage  bool    `yaml:"skip_startup_message"`
-		SpoilerViewOnce     bool    `yaml:"spoiler_as_viewonce"`
-		Reactions           bool    `yaml:"reactions"`
-	} `yaml:"telegram"`
+		BotToken            string  `yaml:"bot_token" mapstructure:"bot_token"`
+		APIURL              string  `yaml:"api_url" mapstructure:"api_url"`
+		SudoUsersID         []int64 `yaml:"sudo_users_id" mapstructure:"sudo_users_id"`
+		OwnerID             int64   `yaml:"owner_id" mapstructure:"owner_id"`
+		TargetChatID        int64   `yaml:"target_chat_id" mapstructure:"target_chat_id"`
+		SelfHostedAPI       bool    `yaml:"self_hosted_api" mapstructure:"self_hosted_api"`
+		SkipVideoStickers   bool    `yaml:"skip_video_stickers" mapstructure:"skip_video_stickers"`
+		SkipSettingCommands bool    `yaml:"skip_setting_commands" mapstructure:"skip_setting_commands"`
+		SendMyPresence      bool    `yaml:"send_my_presence" mapstructure:"send_my_presence"`
+		SendMyReadReceipts  bool    `yaml:"send_my_read_receipts" mapstructure:"send_my_read_receipts"`
+		SilentConfirmation  bool    `yaml:"silent_confirmation" mapstructure:"silent_confirmation"`
+		ConfirmationType    string  `yaml:"confirmation_type" mapstructure:"confirmation_type"`
+		EmojiConfirmation   *bool   `yaml:"emoji_confirmation" mapstructure:"emoji_confirmation"`
+		SkipStartupMessage  bool    `yaml:"skip_startup_message" mapstructure:"skip_startup_message"`
+		SpoilerViewOnce     bool    `yaml:"spoiler_as_viewonce" mapstructure:"spoiler_as_viewonce"`
+		Reactions           bool    `yaml:"reactions" mapstructure:"reactions"`
+	} `yaml:"telegram" mapstructure:"telegram"`
 
 	WhatsApp struct {
 		LoginDatabase struct {
-			Type string `yaml:"type"`
-			URL  string `yaml:"url"`
-		} `yaml:"login_database"`
+			Type string `yaml:"type" mapstructure:"type"`
+			URL  string `yaml:"url" mapstructure:"url"`
+		} `yaml:"login_database" mapstructure:"login_database"`
 		StickerMetadata struct {
-			PackName   string `yaml:"pack_name"`
-			AuthorName string `yaml:"author_name"`
-		} `yaml:"sticker_metadata"`
-		SessionName                    string   `yaml:"session_name"`
-		TagAllAllowedGroups            []string `yaml:"tag_all_allowed_groups"`
-		IgnoreChats                    []string `yaml:"ignore_chats"`
-		StatusIgnoredChats             []string `yaml:"status_ignored_chats"`
-		SkipDocuments                  bool     `yaml:"skip_documents"`
-		SkipImages                     bool     `yaml:"skip_images"`
-		SkipGIFs                       bool     `yaml:"skip_gifs"`
-		SkipVideos                     bool     `yaml:"skip_videos"`
-		SkipVoiceNotes                 bool     `yaml:"skip_voice_notes"`
-		SkipAudios                     bool     `yaml:"skip_audios"`
-		SkipStatus                     bool     `yaml:"skip_status"`
-		SkipStickers                   bool     `yaml:"skip_stickers"`
-		SkipContacts                   bool     `yaml:"skip_contacts"`
-		SkipLocations                  bool     `yaml:"skip_locations"`
-		SkipProfilePictureUpdates      bool     `yaml:"skip_profile_picture_updates"`
-		SkipGroupSettingsUpdates       bool     `yaml:"skip_group_settings_updates"`
-		SkipChatDetails                bool     `yaml:"skip_chat_details"`
-		SendRevokedMessageUpdates      bool     `yaml:"send_revoked_message_updates"`
-		WhatsmeowDebugMode             bool     `yaml:"whatsmeow_debug_mode"`
-		SendMyMessagesFromOtherDevices bool     `yaml:"send_my_messages_from_other_devices"`
-		CreateThreadForInfoUpdates     bool     `yaml:"create_thread_for_info_updates"`
-	} `yaml:"whatsapp"`
+			PackName   string `yaml:"pack_name" mapstructure:"pack_name"`
+			AuthorName string `yaml:"author_name" mapstructure:"author_name"`
+		} `yaml:"sticker_metadata" mapstructure:"sticker_metadata"`
+		SessionName                    string   `yaml:"session_name" mapstructure:"session_name"`
+		TagAllAllowedGroups            []string `yaml:"tag_all_allowed_groups" mapstructure:"tag_all_allowed_groups"`
+		IgnoreChats                    []string `yaml:"ignore_chats" mapstructure:"ignore_chats"`
+		StatusIgnoredChats             []string `yaml:"status_ignored_chats" mapstructure:"status_ignored_chats"`
+		SkipDocuments                  bool     `yaml:"skip_documents" mapstructure:"skip_documents"`
+		SkipImages                     bool     `yaml:"skip_images" mapstructure:"skip_images"`
+		SkipGIFs                       bool     `yaml:"skip_gifs" mapstructure:"skip_gifs"`
+		SkipVideos                     bool     `yaml:"skip_videos" mapstructure:"skip_videos"`
+		SkipVoiceNotes                 bool     `yaml:"skip_voice_notes" mapstructure:"skip_voice_notes"`
+		SkipAudios                     bool     `yaml:"skip_audios" mapstructure:"skip_audios"`
+		SkipStatus                     bool     `yaml:"skip_status" mapstructure:"skip_status"`
+		SkipStickers                   bool     `yaml:"skip_stickers" mapstructure:"skip_stickers"`
+		SkipContacts                   bool     `yaml:"skip_contacts" mapstructure:"skip_contacts"`
+		SkipLocations                  bool     `yaml:"skip_locations" mapstructure:"skip_locations"`
+		SkipProfilePictureUpdates      bool     `yaml:"skip_profile_picture_updates" mapstructure:"skip_profile_picture_updates"`
+		SkipGroupSettingsUpdates       bool     `yaml:"skip_group_settings_updates" mapstructure:"skip_group_settings_updates"`
+		SkipChatDetails                bool     `yaml:"skip_chat_details" mapstructure:"skip_chat_details"`
+		SendRevokedMessageUpdates      bool     `yaml:"send_revoked_message_updates" mapstructure:"send_revoked_message_updates"`
+		WhatsmeowDebugMode             bool     `yaml:"whatsmeow_debug_mode" mapstructure:"whatsmeow_debug_mode"`
+		SendMyMessagesFromOtherDevices bool     `yaml:"send_my_messages_from_other_devices" mapstructure:"send_my_messages_from_other_devices"`
+		CreateThreadForInfoUpdates     bool     `yaml:"create_thread_for_info_updates" mapstructure:"create_thread_for_info_updates"`
+	} `yaml:"whatsapp" mapstructure:"whatsapp"`
 
-	Database map[string]string `yaml:"database"`
+	Database map[string]string `yaml:"database" mapstructure:"database"`
 }
 
 func (cfg *Config) LoadConfig() error {

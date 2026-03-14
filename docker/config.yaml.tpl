@@ -1,6 +1,6 @@
-time_zone: ${TIME_ZONE:-UTC}
-time_format: ${TIME_FORMAT:-02 Jan, 2006 - Mon @ 15:04}
-debug_mode: ${DEBUG_MODE:-false}
+time_zone: ${TIME_ZONE}
+time_format: ${TIME_FORMAT}
+debug_mode: ${DEBUG_MODE}
 
 telegram:
   bot_token: "${TELEGRAM_BOT_TOKEN}"
@@ -8,13 +8,13 @@ telegram:
   target_chat_id: ${TELEGRAM_TARGET_CHAT_ID}
   sudo_users_id:
     - ${TELEGRAM_OWNER_ID}
-  skip_setting_commands: ${TELEGRAM_SKIP_SETTING_COMMANDS:-false}
-  skip_startup_message: ${TELEGRAM_SKIP_STARTUP_MESSAGE:-false}
-  silent_confirmation: ${TELEGRAM_SILENT_CONFIRMATION:-true}
-  confirmation_type: "${TELEGRAM_CONFIRMATION_TYPE:-emoji}"
+  skip_setting_commands: ${TELEGRAM_SKIP_SETTING_COMMANDS}
+  skip_startup_message: ${TELEGRAM_SKIP_STARTUP_MESSAGE}
+  silent_confirmation: ${TELEGRAM_SILENT_CONFIRMATION}
+  confirmation_type: "${TELEGRAM_CONFIRMATION_TYPE}"
 
 whatsapp:
-  session_name: ${WHATSAPP_SESSION_NAME:-watgbridge}
+  session_name: ${WHATSAPP_SESSION_NAME}
   login_database:
     type: sqlite3
     url: file:/data/wawebstore.db?foreign_keys=on

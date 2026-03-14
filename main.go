@@ -18,21 +18,53 @@ import (
 
 	"github.com/PaulSonOfLars/gotgbot/v2"
 	"github.com/go-co-op/gocron"
+	"github.com/spf13/pflag"
 	"go.uber.org/zap"
 )
 
 func main() {
-	// Load configuration file
-	cfg := state.State.Config
-	cfg.SetDefaults()
+	// Flags (override config file and env)
+	configPath := pflag.StringP("config", "c", "config.yaml", "config file path")
+	pflag.String("telegram-bot-token", "", "Telegram bot token")
+	pflag.Int64("telegram-owner-id", 0, "Telegram owner user ID")
+	pflag.Int64("telegram-target-chat-id", 0, "Telegram target chat/group ID")
+	pflag.Bool("debug", false, "enable debug mode")
+	pflag.String("time-zone", "UTC", "time zone")
+	pflag.String("time-format", "02 Jan, 2006 - Mon @ 15:04", "time format")
+	pflag.String("whatsapp-session-name", "watgbridge", "WhatsApp session name")
+	pflag.Bool("telegram-skip-startup-message", false, "skip sending startup message to owner")
+	pflag.Bool("telegram-skip-setting-commands", false, "skip setting bot commands list")
+	pflag.Bool("telegram-silent-confirmation", true, "send silent confirmation when message is sent")
+	pflag.String("telegram-confirmation-type", "emoji", "confirmation type: text, emoji, or none")
+	pflag.Parse()
 
-	if len(os.Args) > 1 {
-		cfg.Path = os.Args[1]
+	// Config path: positional arg overrides --config for backward compat
+	if pflag.NArg() > 0 {
+		*configPath = pflag.Arg(0)
 	}
 
-	err := cfg.LoadConfig()
-	if err != nil {
-		panic(fmt.Errorf("failed to load config file: %s", err))
+	bindings := []state.FlagBinding{
+		{"telegram.bot_token", pflag.Lookup("telegram-bot-token")},
+		{"telegram.owner_id", pflag.Lookup("telegram-owner-id")},
+		{"telegram.target_chat_id", pflag.Lookup("telegram-target-chat-id")},
+		{"debug_mode", pflag.Lookup("debug")},
+		{"time_zone", pflag.Lookup("time-zone")},
+		{"time_format", pflag.Lookup("time-format")},
+		{"whatsapp.session_name", pflag.Lookup("whatsapp-session-name")},
+		{"telegram.skip_startup_message", pflag.Lookup("telegram-skip-startup-message")},
+		{"telegram.skip_setting_commands", pflag.Lookup("telegram-skip-setting-commands")},
+		{"telegram.silent_confirmation", pflag.Lookup("telegram-silent-confirmation")},
+		{"telegram.confirmation_type", pflag.Lookup("telegram-confirmation-type")},
+	}
+
+	var err error
+	if err = state.InitConfig(*configPath, bindings); err != nil {
+		panic(fmt.Errorf("failed to load config: %w", err))
+	}
+
+	cfg := state.State.Config
+	if cfg.Telegram.BotToken == "" || cfg.Telegram.OwnerID == 0 || cfg.Telegram.TargetChatID == 0 {
+		panic(fmt.Errorf("telegram.bot_token, telegram.owner_id and telegram.target_chat_id are required (set in config file, env TELEGRAM_BOT_TOKEN/TELEGRAM_OWNER_ID/TELEGRAM_TARGET_CHAT_ID, or flags --telegram-bot-token/--telegram-owner-id/--telegram-target-chat-id)"))
 	}
 
 	deprecatedOptions := state.GetDeprecatedConfigOptions(cfg)
