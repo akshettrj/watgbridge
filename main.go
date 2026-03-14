@@ -194,6 +194,8 @@ func main() {
 	}
 	_ = logger.Sync()
 
+	telegram.CheckTargetGroupPermissions()
+
 	err = whatsapp.NewWhatsAppClient()
 	if err != nil {
 		panic(err)
