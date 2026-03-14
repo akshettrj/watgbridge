@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -138,6 +139,22 @@ func AddTelegramHandlers() {
 		waTgBridgeCommand{
 			handlers.NewCommand("check", CheckCommandHandler),
 			"Check if a phone number is on WhatsApp; opens Chat to create topic",
+		},
+		waTgBridgeCommand{
+			handlers.NewCommand("add", AddContactCommandHandler),
+			"Add/update contact name (in WA topic): /add FirstName [LastName] [Company]",
+		},
+		waTgBridgeCommand{
+			handlers.NewCommand("remove_contact", RemoveContactCommandHandler),
+			"Remove contact from contact list (in topic or /remove_contact <jid>)",
+		},
+		waTgBridgeCommand{
+			handlers.NewCommand("remove", RemoveTopicCommandHandler),
+			"Unlink and close current topic",
+		},
+		waTgBridgeCommand{
+			handlers.NewCommand("list_contacts", ListContactsCommandHandler),
+			"List all WA contacts (General topic only)",
 		},
 	)
 
@@ -301,6 +318,58 @@ func GetWhatsAppGroupsHandler(b *gotgbot.Bot, c *ext.Context) error {
 
 	if len(outputString) > 0 {
 		_, err = utils.TgReplyTextByContext(b, c, outputString, nil, false)
+		return err
+	}
+	return nil
+}
+
+func ListContactsCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
+	if !utils.TgUpdateIsAuthorized(b, c) {
+		return nil
+	}
+	if c.EffectiveMessage.IsTopicMessage && c.EffectiveMessage.MessageThreadId != 0 {
+		_, err := utils.TgReplyTextByContext(b, c, "Use this command only in the General topic (no specific topic).", nil, false)
+		return err
+	}
+	contacts, err := database.ContactGetAll()
+	if err != nil {
+		return utils.TgReplyWithErrorByContext(b, c, "Failed to load contacts", err)
+	}
+	if len(contacts) == 0 {
+		_, err := utils.TgReplyTextByContext(b, c, "No contacts in the list.", nil, false)
+		return err
+	}
+	ids := make([]string, 0, len(contacts))
+	for id := range contacts {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	var bld strings.Builder
+	bld.WriteString(fmt.Sprintf("WA contacts (%d):\n\n", len(ids)))
+	for _, id := range ids {
+		contact := contacts[id]
+		name := contact.FullName
+		if name == "" {
+			name = contact.FirstName
+		}
+		if name == "" {
+			name = contact.PushName
+		}
+		if name == "" {
+			name = contact.BusinessName
+		}
+		if name == "" {
+			name = id
+		}
+		bld.WriteString(fmt.Sprintf("- %s [ <code>%s</code> ]\n", html.EscapeString(name), html.EscapeString(id)))
+		if bld.Len() >= 3500 {
+			_, _ = utils.TgReplyTextByContext(b, c, bld.String(), nil, false)
+			time.Sleep(500 * time.Millisecond)
+			bld.Reset()
+		}
+	}
+	if bld.Len() > 0 {
+		_, err = utils.TgReplyTextByContext(b, c, bld.String(), nil, false)
 		return err
 	}
 	return nil
@@ -749,6 +818,120 @@ func StatusIgnoreListHandler(b *gotgbot.Bot, c *ext.Context) error {
 		bld.WriteString(fmt.Sprintf("• %s\n", html.EscapeString(name)))
 	}
 	_, err := utils.TgReplyTextByContext(b, c, bld.String(), nil, false)
+	return err
+}
+
+func AddContactCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
+	if !utils.TgUpdateIsAuthorized(b, c) {
+		return nil
+	}
+	usageString := "Usage (in a contact topic): <code>" + html.EscapeString("/add FirstName [LastName] [Company]") + "</code>\nNo spaces inside arguments."
+	if !c.EffectiveMessage.IsTopicMessage || c.EffectiveMessage.MessageThreadId == 0 {
+		_, err := utils.TgReplyTextByContext(b, c, "Use this command inside a WhatsApp contact topic.", nil, false)
+		return err
+	}
+	waChatId, err := database.ChatThreadGetWaFromTg(c.EffectiveChat.Id, c.EffectiveMessage.MessageThreadId)
+	if err != nil || waChatId == "" {
+		_, err := utils.TgReplyTextByContext(b, c, "This topic is not linked to a WhatsApp contact.", nil, false)
+		return err
+	}
+	jid, ok := utils.WaParseJID(waChatId)
+	if !ok {
+		_, err := utils.TgReplyTextByContext(b, c, "Invalid WhatsApp chat ID for this topic.", nil, false)
+		return err
+	}
+	args := c.Args()
+	if len(args) < 2 {
+		_, err := utils.TgReplyTextByContext(b, c, usageString, nil, false)
+		return err
+	}
+	firstName := args[1]
+	var fullName, company string
+	if len(args) >= 3 {
+		fullName = args[1] + " " + args[2]
+	} else {
+		fullName = args[1]
+	}
+	if len(args) >= 4 {
+		company = args[3]
+	}
+	_, _, pushName, _, found, _ := database.ContactNameGet(jid.User, jid.Server)
+	if !found {
+		pushName = ""
+	}
+	err = database.ContactNameAddNew(jid.User, jid.Server, firstName, fullName, pushName, company)
+	if err != nil {
+		return utils.TgReplyWithErrorByContext(b, c, "Failed to save contact", err)
+	}
+	_, err = utils.TgReplyTextByContext(b, c, "Contact updated.", nil, false)
+	return err
+}
+
+func RemoveContactCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
+	if !utils.TgUpdateIsAuthorized(b, c) {
+		return nil
+	}
+	usageString := "Usage: in a contact topic, or <code>/remove_contact &lt;jid&gt;</code>"
+	var jid waTypes.JID
+	var ok bool
+	args := c.Args()
+	if len(args) > 1 {
+		jid, ok = utils.WaParseJID(args[1])
+		if !ok {
+			_, err := utils.TgReplyTextByContext(b, c, "Invalid JID. "+usageString, nil, false)
+			return err
+		}
+	} else if c.EffectiveMessage.IsTopicMessage && c.EffectiveMessage.MessageThreadId != 0 {
+		waChatId, err := database.ChatThreadGetWaFromTg(c.EffectiveChat.Id, c.EffectiveMessage.MessageThreadId)
+		if err != nil || waChatId == "" {
+			_, err := utils.TgReplyTextByContext(b, c, "This topic is not linked to a WhatsApp contact. "+usageString, nil, false)
+			return err
+		}
+		jid, ok = utils.WaParseJID(waChatId)
+		if !ok {
+			_, err := utils.TgReplyTextByContext(b, c, "Invalid WhatsApp chat for this topic.", nil, false)
+			return err
+		}
+	} else {
+		_, err := utils.TgReplyTextByContext(b, c, usageString, nil, false)
+		return err
+	}
+	err := database.ContactNameDelete(jid.User, jid.Server)
+	if err != nil {
+		return utils.TgReplyWithErrorByContext(b, c, "Failed to remove contact", err)
+	}
+	_, err = utils.TgReplyTextByContext(b, c, "Contact removed from list.", nil, false)
+	return err
+}
+
+func RemoveTopicCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
+	if !utils.TgUpdateIsAuthorized(b, c) {
+		return nil
+	}
+	if !c.EffectiveMessage.IsTopicMessage || c.EffectiveMessage.MessageThreadId == 0 {
+		_, err := utils.TgReplyTextByContext(b, c, "Use this command inside a topic.", nil, false)
+		return err
+	}
+	tgChatId := c.EffectiveChat.Id
+	tgThreadId := c.EffectiveMessage.MessageThreadId
+	waChatId, err := database.ChatThreadGetWaFromTg(tgChatId, tgThreadId)
+	if err != nil {
+		return utils.TgReplyWithErrorByContext(b, c, "Failed to get thread pairing", err)
+	}
+	if waChatId == "" {
+		_, err := utils.TgReplyTextByContext(b, c, "No linked WhatsApp chat for this topic.", nil, false)
+		return err
+	}
+	err = database.ChatThreadDropPairByTg(tgChatId, tgThreadId)
+	if err != nil {
+		return utils.TgReplyWithErrorByContext(b, c, "Failed to unlink topic", err)
+	}
+	_, err = b.CloseForumTopic(tgChatId, tgThreadId, nil)
+	if err != nil {
+		_, _ = utils.TgReplyTextByContext(b, c, "Unlinked but failed to close topic: "+err.Error(), nil, false)
+		return err
+	}
+	_, err = utils.TgReplyTextByContext(b, c, "Topic removed.", nil, false)
 	return err
 }
 

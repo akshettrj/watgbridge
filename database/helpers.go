@@ -342,6 +342,12 @@ func ContactUpdateBusinessName(waUserId, waUserServer, businessName string) erro
 	return res.Error
 }
 
+func ContactNameDelete(waUserId, waUserServer string) error {
+	db := state.State.Database
+	res := db.Where("id = ? AND server = ?", waUserId, waUserServer).Delete(&ContactName{})
+	return res.Error
+}
+
 func UpdateEphemeralSettings(waChatId string, isEphemeral bool, ephemeralTimer uint32) error {
 	db := state.State.Database
 
