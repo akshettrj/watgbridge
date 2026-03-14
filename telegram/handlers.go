@@ -135,6 +135,10 @@ func AddTelegramHandlers() {
 			handlers.NewCommand("statusignorelist", StatusIgnoreListHandler),
 			"List contacts whose statuses are not forwarded",
 		},
+		waTgBridgeCommand{
+			handlers.NewCommand("check", CheckCommandHandler),
+			"Check if a phone number is on WhatsApp; opens Chat to create topic",
+		},
 	)
 
 	for _, command := range commands {
@@ -153,6 +157,10 @@ func AddTelegramHandlers() {
 		func(cq *gotgbot.CallbackQuery) bool {
 			return strings.HasPrefix(cq.Data, "revoke")
 		}, RevokeCallbackHandler), DispatcherCallbackHandlerGroup)
+	dispatcher.AddHandlerToGroup(handlers.NewCallback(
+		func(cq *gotgbot.CallbackQuery) bool {
+			return strings.HasPrefix(cq.Data, "check_chat_")
+		}, CheckChatCallbackHandler), DispatcherCallbackHandlerGroup)
 }
 
 func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
@@ -744,6 +752,42 @@ func StatusIgnoreListHandler(b *gotgbot.Bot, c *ext.Context) error {
 	return err
 }
 
+func CheckCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
+	if !utils.TgUpdateIsAuthorized(b, c) {
+		return nil
+	}
+	usageString := "Usage: <code>" + html.EscapeString("/check <phone number>") + "</code>"
+	args := c.Args()
+	if len(args) <= 1 {
+		_, err := utils.TgReplyTextByContext(b, c, usageString, nil, false)
+		return err
+	}
+	phoneInput := strings.TrimSpace(strings.Join(args[1:], " "))
+	jid, ok := utils.WaParseJID(phoneInput)
+	if !ok || jid.User == "" {
+		_, err := utils.TgReplyTextByContext(b, c, "Invalid phone number. "+usageString, nil, false)
+		return err
+	}
+	waClient := state.State.WhatsAppClient
+	responses, err := waClient.IsOnWhatsApp(context.Background(), []string{jid.User})
+	if err != nil {
+		return utils.TgReplyWithErrorByContext(b, c, "Failed to check WhatsApp", err)
+	}
+	if len(responses) == 0 || !responses[0].IsIn {
+		_, err := utils.TgReplyTextByContext(b, c, "Phone number is not registered at WhatsApp.", nil, false)
+		return err
+	}
+	canonicalJID := responses[0].JID.ToNonAD().String()
+	chatKeyboard := &gotgbot.InlineKeyboardMarkup{
+		InlineKeyboard: [][]gotgbot.InlineKeyboardButton{{{
+			Text:         "Chat",
+			CallbackData: "check_chat_" + canonicalJID,
+		}}},
+	}
+	_, err = utils.TgReplyTextByContext(b, c, "Phone number exists, click on `Chat` button to start messaging", chatKeyboard, false)
+	return err
+}
+
 func SetTargetPrivateChatHandler(b *gotgbot.Bot, c *ext.Context) error {
 	if !utils.TgUpdateIsAuthorized(b, c) {
 		return nil
@@ -1030,15 +1074,15 @@ func RevokeCallbackHandler(b *gotgbot.Bot, c *ext.Context) error {
 				return err
 			}
 
-		} else {
+	} else {
 
-			_, err := cq.Answer(b, &gotgbot.AnswerCallbackQueryOpts{
-				Text:      "Invalid callback query",
-				ShowAlert: true,
-				CacheTime: 60,
-			})
-			return err
-		}
+		_, err := cq.Answer(b, &gotgbot.AnswerCallbackQueryOpts{
+			Text:      "Invalid callback query",
+			ShowAlert: true,
+			CacheTime: 60,
+		})
+		return err
+	}
 
 	} else {
 
@@ -1049,4 +1093,40 @@ func RevokeCallbackHandler(b *gotgbot.Bot, c *ext.Context) error {
 		})
 		return err
 	}
+}
+
+func CheckChatCallbackHandler(b *gotgbot.Bot, c *ext.Context) error {
+	if !utils.TgUpdateIsAuthorized(b, c) {
+		return nil
+	}
+	cfg := state.State.Config
+	cq := c.CallbackQuery
+	jidString := strings.TrimPrefix(cq.Data, "check_chat_")
+	if jidString == "" {
+		_, _ = cq.Answer(b, &gotgbot.AnswerCallbackQueryOpts{Text: "Invalid callback", ShowAlert: true})
+		return nil
+	}
+	jid, ok := utils.WaParseJID(jidString)
+	if !ok {
+		_, _ = cq.Answer(b, &gotgbot.AnswerCallbackQueryOpts{Text: "Invalid JID", ShowAlert: true})
+		return nil
+	}
+	waChatIdString := jid.ToNonAD().String()
+	threadName := utils.WaGetContactName(jid)
+	_, err := utils.TgGetOrMakeThreadFromWa_String(waChatIdString, cfg.Telegram.TargetChatID, threadName)
+	if err != nil {
+		_, _ = cq.Answer(b, &gotgbot.AnswerCallbackQueryOpts{
+			Text:      "Failed to create topic: " + err.Error(),
+			ShowAlert: true,
+			CacheTime: 60,
+		})
+		return err
+	}
+	_, _ = cq.Answer(b, &gotgbot.AnswerCallbackQueryOpts{Text: "Topic created. You can chat in the new topic."})
+	_, _, _ = b.EditMessageText("Phone number exists. Use the new topic to chat.", &gotgbot.EditMessageTextOpts{
+		ChatId:      c.EffectiveChat.Id,
+		MessageId:   c.EffectiveMessage.MessageId,
+		ReplyMarkup: gotgbot.InlineKeyboardMarkup{InlineKeyboard: [][]gotgbot.InlineKeyboardButton{}},
+	})
+	return nil
 }
