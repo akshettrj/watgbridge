@@ -56,3 +56,29 @@ PRs are welcome :)
 - It is recommended to restart the bot after every few hours becuase WhatsApp likes to disconnect a lot. So a sample Systemd service file has been provided (`watgbridge.service.sample`). Edit the `User` and `ExecStart` according to your setup:
     - If you do not have local bot API server, remove `tgbotapi.service` from the `After` key in `Unit` section.
     - This service file will restart the bot every 24 hours
+
+## Docker Compose
+
+Run with Docker Compose; credentials are passed via environment variables (file or CLI).
+
+1. Copy env example and set required vars:
+   ```bash
+   cp .env.example .env
+   # Edit .env: TELEGRAM_BOT_TOKEN, TELEGRAM_OWNER_ID, TELEGRAM_TARGET_CHAT_ID
+   ```
+
+2. Launch:
+   ```bash
+   docker compose up -d
+   ```
+
+3. Pass creds via CLI (overrides `.env`):
+   ```bash
+   TELEGRAM_BOT_TOKEN=xxx TELEGRAM_OWNER_ID=123 TELEGRAM_TARGET_CHAT_ID=-1001234567890 docker compose up -d
+   ```
+   Or with a custom env file:
+   ```bash
+   docker compose --env-file .env.production up -d
+   ```
+
+Config is generated at runtime from env; session and config are stored in the `watgbridge_data` volume.

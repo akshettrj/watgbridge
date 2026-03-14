@@ -32,3 +32,6 @@ watgbridge.service
 # Nix
 /result
 .direnv/
+
+# Docker Compose secrets
+.env

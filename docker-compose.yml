@@ -1,0 +1,25 @@
+# Pass creds via CLI: TELEGRAM_BOT_TOKEN=xxx TELEGRAM_OWNER_ID=123 TELEGRAM_TARGET_CHAT_ID=-100… docker compose up -d
+# Or use a file: docker compose --env-file .env up -d
+services:
+  watgbridge:
+    build: .
+    image: watgbridge:latest
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_OWNER_ID=${TELEGRAM_OWNER_ID}
+      - TELEGRAM_TARGET_CHAT_ID=${TELEGRAM_TARGET_CHAT_ID}
+      - TELEGRAM_SKIP_SETTING_COMMANDS=${TELEGRAM_SKIP_SETTING_COMMANDS:-}
+      - TELEGRAM_SKIP_STARTUP_MESSAGE=${TELEGRAM_SKIP_STARTUP_MESSAGE:-}
+      - TELEGRAM_SILENT_CONFIRMATION=${TELEGRAM_SILENT_CONFIRMATION:-}
+      - TELEGRAM_CONFIRMATION_TYPE=${TELEGRAM_CONFIRMATION_TYPE:-}
+      - WHATSAPP_SESSION_NAME=${WHATSAPP_SESSION_NAME:-}
+      - TIME_ZONE=${TIME_ZONE:-}
+      - TIME_FORMAT=${TIME_FORMAT:-}
+      - DEBUG_MODE=${DEBUG_MODE:-}
+      - CONFIG_PATH=${CONFIG_PATH:-}
+    volumes:
+      - watgbridge_data:/data
+    restart: unless-stopped
+
+volumes:
+  watgbridge_data:
