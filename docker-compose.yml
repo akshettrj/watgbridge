@@ -28,6 +28,7 @@ services:
       - TIME_FORMAT=${TIME_FORMAT:-}
       - DEBUG_MODE=${DEBUG_MODE:-}
       - CONFIG_PATH=${CONFIG_PATH:-}
+      - WATGBRIDGE_VERSION=${WATGBRIDGE_VERSION:-}
     volumes:
       - sqlite_data:/data
     restart: unless-stopped

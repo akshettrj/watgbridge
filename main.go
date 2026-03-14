@@ -62,6 +62,10 @@ func main() {
 		panic(fmt.Errorf("failed to load config: %w", err))
 	}
 
+	if v := os.Getenv("WATGBRIDGE_VERSION"); v != "" {
+		state.WATGBRIDGE_VERSION = v
+	}
+
 	cfg := state.State.Config
 	if cfg.Telegram.BotToken == "" || cfg.Telegram.OwnerID == 0 || cfg.Telegram.TargetChatID == 0 {
 		panic(fmt.Errorf("telegram.bot_token, telegram.owner_id and telegram.target_chat_id are required (set in config file, env TELEGRAM_BOT_TOKEN/TELEGRAM_OWNER_ID/TELEGRAM_TARGET_CHAT_ID, or flags --telegram-bot-token/--telegram-owner-id/--telegram-target-chat-id)"))
@@ -268,6 +272,8 @@ SKIP_RESTART:
 	if !startMessageSuccessful && !cfg.Telegram.SkipStartupMessage {
 		state.State.TelegramBot.SendMessage(cfg.Telegram.OwnerID, "Successfully started WaTgBridge", &gotgbot.SendMessageOpts{})
 	}
+
+	telegram.LogVersionToBotMetaTopic()
 
 	state.State.TelegramUpdater.Idle()
 }

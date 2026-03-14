@@ -26,6 +26,7 @@ Optional:
   --time-format FORMAT
   --debug true|false
   --config-path PATH
+  --version VERSION    Version string (e.g. git tag or short sha) for "Bot's meta" topic. Default: git describe --tags --always or short HEAD
 
   --build    Run 'docker compose up -d --build' (rebuild image)
   --help     Show this help
@@ -84,6 +85,10 @@ while [[ $# -gt 0 ]]; do
       export CONFIG_PATH="$2"
       shift 2
       ;;
+    --version)
+      export WATGBRIDGE_VERSION="$2"
+      shift 2
+      ;;
     --build)
       BUILD_FLAG="--build"
       shift
@@ -102,6 +107,10 @@ done
 if [[ -z "$TELEGRAM_BOT_TOKEN" || -z "$TELEGRAM_OWNER_ID" || -z "$TELEGRAM_TARGET_CHAT_ID" ]]; then
   echo "Error: --telegram-bot-token, --telegram-owner-id and --telegram-target-chat-id are required." >&2
   exit 1
+fi
+
+if [[ -z "$WATGBRIDGE_VERSION" ]]; then
+  export WATGBRIDGE_VERSION=$(git describe --tags --always 2>/dev/null || git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 fi
 
 exec docker compose up -d $BUILD_FLAG
