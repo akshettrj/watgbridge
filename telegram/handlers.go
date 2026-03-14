@@ -156,6 +156,10 @@ func AddTelegramHandlers() {
 			handlers.NewCommand("list_contacts", ListContactsCommandHandler),
 			"List all WA contacts (General topic only)",
 		},
+		waTgBridgeCommand{
+			handlers.NewCommand("archive", ArchiveChatCommandHandler),
+			"Archive the WhatsApp chat linked to this topic",
+		},
 	)
 
 	for _, command := range commands {
@@ -901,6 +905,33 @@ func RemoveContactCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
 		return utils.TgReplyWithErrorByContext(b, c, "Failed to remove contact", err)
 	}
 	_, err = utils.TgReplyTextByContext(b, c, "Contact removed from list.", nil, false)
+	return err
+}
+
+func ArchiveChatCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
+	if !utils.TgUpdateIsAuthorized(b, c) {
+		return nil
+	}
+	if !c.EffectiveMessage.IsTopicMessage || c.EffectiveMessage.MessageThreadId == 0 {
+		_, err := utils.TgReplyTextByContext(b, c, "Use this command inside a topic linked to a WhatsApp chat.", nil, false)
+		return err
+	}
+	waChatId, err := database.ChatThreadGetWaFromTg(c.EffectiveChat.Id, c.EffectiveMessage.MessageThreadId)
+	if err != nil || waChatId == "" {
+		_, err := utils.TgReplyTextByContext(b, c, "No linked WhatsApp chat for this topic.", nil, false)
+		return err
+	}
+	jid, ok := utils.WaParseJID(waChatId)
+	if !ok {
+		_, err := utils.TgReplyTextByContext(b, c, "Invalid WhatsApp chat for this topic.", nil, false)
+		return err
+	}
+	waClient := state.State.WhatsAppClient
+	patch := appstate.BuildArchive(jid.ToNonAD(), true, time.Time{}, nil)
+	if err := waClient.SendAppState(context.Background(), patch); err != nil {
+		return utils.TgReplyWithErrorByContext(b, c, "Failed to archive chat", err)
+	}
+	_, err = utils.TgReplyTextByContext(b, c, "Chat archived.", nil, false)
 	return err
 }
 
