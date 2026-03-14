@@ -127,45 +127,26 @@ func main() {
 		_ = logger.Sync()
 	}
 
+	// Git/go are optional; only used for /updateandrestart (build from source). Leave empty in Docker.
 	if cfg.GitExecutable == "" {
-		gitPath, err := exec.LookPath("git")
-		if err != nil && !errors.Is(err, exec.ErrDot) {
-			logger.Fatal("failed to set git executable path",
-				zap.Error(err),
-			)
-		}
-
-		cfg.GitExecutable = gitPath
-		logger.Info("setting path to git executable",
-			zap.String("path", gitPath),
-		)
-		_ = logger.Sync()
-
-		if err = cfg.SaveConfig(); err != nil {
-			logger.Fatal("failed to save config file",
-				zap.Error(err),
-			)
+		if gitPath, err := exec.LookPath("git"); err == nil {
+			cfg.GitExecutable = gitPath
+			logger.Info("setting path to git executable", zap.String("path", gitPath))
+			_ = logger.Sync()
+			_ = cfg.SaveConfig()
+		} else {
+			logger.Debug("git not found in PATH; /updateandrestart will not be available")
 		}
 	}
 
 	if cfg.GoExecutable == "" {
-		goPath, err := exec.LookPath("go")
-		if err != nil && !errors.Is(err, exec.ErrDot) {
-			logger.Fatal("failed to set go executable path",
-				zap.Error(err),
-			)
-		}
-
-		cfg.GoExecutable = goPath
-		logger.Info("setting path to go executable",
-			zap.String("path", goPath),
-		)
-		_ = logger.Sync()
-
-		if err = cfg.SaveConfig(); err != nil {
-			logger.Fatal("failed to save config file",
-				zap.Error(err),
-			)
+		if goPath, err := exec.LookPath("go"); err == nil {
+			cfg.GoExecutable = goPath
+			logger.Info("setting path to go executable", zap.String("path", goPath))
+			_ = logger.Sync()
+			_ = cfg.SaveConfig()
+		} else {
+			logger.Debug("go not found in PATH; /updateandrestart will not be available")
 		}
 	}
 

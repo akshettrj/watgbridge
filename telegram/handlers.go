@@ -359,6 +359,9 @@ func UpdateAndRestartHandler(b *gotgbot.Bot, c *ext.Context) error {
 		utils.TgReplyTextByContext(b, c, "Successfully downloaded and prepared the release, now restarting...", nil, false)
 
 	} else {
+		if cfg.GitExecutable == "" || cfg.GoExecutable == "" {
+			return utils.TgReplyTextByContext(b, c, "Update and restart (build from source) is not available: git and/or go are not installed in this environment. Use Docker image rebuild or set use_github_binaries in config.", nil, false)
+		}
 		gitPullCmd := exec.Command(cfg.GitExecutable, "pull", "--rebase")
 		err := gitPullCmd.Run()
 		if err != nil {
