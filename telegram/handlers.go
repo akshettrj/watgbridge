@@ -365,7 +365,8 @@ func ListContactsCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
 		if name == "" {
 			name = id
 		}
-		bld.WriteString(fmt.Sprintf("- %s [ <code>%s</code> ]\n", html.EscapeString(name), html.EscapeString(id)))
+		phone := "+" + id
+		bld.WriteString(fmt.Sprintf("- %s — <code>%s</code>\n", html.EscapeString(name), html.EscapeString(phone)))
 		if bld.Len() >= 3500 {
 			_, _ = utils.TgReplyTextByContext(b, c, bld.String(), nil, false)
 			time.Sleep(500 * time.Millisecond)
