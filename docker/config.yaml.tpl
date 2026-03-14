@@ -34,3 +34,7 @@ whatsapp:
   sticker_metadata:
     pack_name: WaTgBridge
     author_name: WaTgBridge
+
+database:
+  type: sqlite
+  path: /data/gobot.sqlite.db

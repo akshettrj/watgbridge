@@ -1,9 +1,20 @@
 # Pass creds via CLI: TELEGRAM_BOT_TOKEN=xxx TELEGRAM_OWNER_ID=123 TELEGRAM_TARGET_CHAT_ID=-100… docker compose up -d
 # Or use a file: docker compose --env-file .env up -d
 services:
+  # SQLite is file-based (no server). This container holds the DB volume; the app reads/writes
+  # the same files. There is no "sqlite" server image—unlike Postgres/MySQL, SQLite is embedded.
+  db:
+    image: alpine:3.22
+    command: ["sleep", "infinity"]
+    volumes:
+      - sqlite_data:/data
+    restart: unless-stopped
+
   watgbridge:
     build: .
     image: watgbridge:latest
+    depends_on:
+      - db
     environment:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - TELEGRAM_OWNER_ID=${TELEGRAM_OWNER_ID}
@@ -18,8 +29,8 @@ services:
       - DEBUG_MODE=${DEBUG_MODE:-}
       - CONFIG_PATH=${CONFIG_PATH:-}
     volumes:
-      - watgbridge_data:/data
+      - sqlite_data:/data
     restart: unless-stopped
 
 volumes:
-  watgbridge_data:
+  sqlite_data:
