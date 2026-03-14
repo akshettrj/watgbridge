@@ -81,4 +81,44 @@ Run with Docker Compose; credentials are passed via environment variables (file 
    docker compose --env-file .env.production up -d
    ```
 
-Config is generated at runtime from env; session and config are stored in the `watgbridge_data` volume.
+Config is generated at runtime from env; session and config are stored in the `sqlite_data` volume.
+
+## Code structure
+
+```
+watgbridge/
+├── main.go                 # Entry: flags, viper config, logger, DB, Telegram, WhatsApp, cron, Idle()
+├── state/                  # Global state + config
+├── database/               # GORM + chat/msg/contact persistence
+├── telegram/               # Telegram bot client + commands + startup check
+├── whatsapp/               # WhatsApp (whatsmeow) client + event handling
+├── utils/                  # Shared helpers (TG, WA, stickers, net)
+├── modules/                # Pluggable handlers (Telegram + WA)
+├── docker/                 # Docker entrypoint + config template
+├── docker-compose.yml
+├── run.sh
+├── sample_config.yaml
+└── .github/workflows/       # CI (build, release, nix cache)
+```
+
+| Package | Role |
+|--------|------|
+| **main** | Parses flags (pflag), loads config via **state.InitConfig** (viper: file → env → flags), builds logger, connects DB, starts **telegram.NewTelegramClient()**, runs **telegram.CheckTargetGroupPermissions()**, starts **whatsapp.NewWhatsAppClient()**, registers handlers, optional startup message, then **updater.Idle()**. |
+| **state** | Single **State** (config, logger, DB, Telegram bot/dispatcher/updater, WhatsApp client, modules list, start time, location). **config.go**: Config struct, Load/Save YAML, SetDefaults. **viper.go**: InitConfig (defaults → file → env → flag bindings), unmarshal into State.Config. **state.go**: State struct + init. |
+| **database** | **connect.go**: Connect() by type (postgres/sqlite/mysql). **types.go**: GORM models + AutoMigrate. **helpers.go**: MsgId pairs (WA↔TG), ChatThread pairs (WA chat ↔ TG topic), contacts, ephemeral settings. |
+| **telegram** | **client.go**: NewTelegramClient() — create bot, middlewares, dispatcher, updater, StartPolling. **handlers.go**: All bot commands (start, getwagroups, findcontact, settargetgroupchat, settargetprivatechat, unlinkthread, send, help, updateandrestart, etc.). **check_target.go**: CheckTargetGroupPermissions() — GetChat (forum?), GetChatMember (admin + Manage topics), log + send to target group and owner on failure. **middlewares/**: rate limit, parse HTML, disable preview, send without reply. **constants.go**: handler group IDs. |
+| **whatsapp** | **client.go**: NewWhatsAppClient() (whatsmeow, sqlstore, QR if needed), AddEventHandler(WhatsAppEventHandler). **handlers.go**: One big **WhatsAppEventHandler** that switches on event type (messages, status, reactions, presence, etc.), resolves WA chat → TG topic via DB, calls **utils.TgSendToWhatsApp** for replies and **utils** for sending to WA. |
+| **utils** | **telegram.go**: TgGetOrMakeThreadFromWa, TgReplyTextByContext, TgSendErrorById, **TgSendToWhatsApp** (main “reply from TG to WA” flow), revoke keyboard, etc. **whatsapp.go**: WaParseJID, WaFuzzyFindContacts, WaGetContactName, WaSendText, WaTagAll. **stickers.go**: TGS→WebP, WebM→WebP, animated WebP→GIF. **net.go**: Download by URL. **go.go**: SubString. |
+| **modules** | **load.go**: Registers optional Telegram and WhatsApp handlers from **TelegramHandlers** map and **WhatsAppHandlers** slice; called after telegram/whatsapp handlers so modules can extend both sides. Default build has no modules (empty maps). |
+
+**Data flow**
+
+- **Config**: Viper (defaults → YAML → env → flags) → **state.State.Config**.
+- **WA → TG**: WhatsApp event in **whatsapp/handlers.go** → DB (ChatThreadGetTgFromWa, MsgIdAddNewPair, etc.) → **utils** (TgSend*, CreateForumTopic) → send to **State.Config.Telegram.TargetChatID** in the right topic.
+- **TG → WA**: User reply in Telegram → **telegram/handlers** (SendToWhatsAppHandler) → DB (MsgIdGetWaFromTg, ChatThreadGetWaFromTg) → **utils.TgSendToWhatsApp** → whatsmeow send.
+
+**Docker / deploy**
+
+- **docker/entrypoint.sh**: Envsubst from **config.yaml.tpl** → `/data/config.yaml`, then `./watgbridge /data/config.yaml`.
+- **docker-compose.yml**: `db` (Alpine, volume) + `watgbridge` (build ., env vars, shared volume `sqlite_data` at `/data`).
+- **run.sh**: Parses named args, exports env, runs `docker compose up -d` (optionally `--build`).
