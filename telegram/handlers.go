@@ -119,6 +119,22 @@ func AddTelegramHandlers() {
 			handlers.NewCommand("unblock", UnblockCommandHandler),
 			"Unblock a user in WhatsApp",
 		},
+		waTgBridgeCommand{
+			handlers.NewCommand("statusforward", StatusForwardHandler),
+			"Toggle forwarding of WhatsApp statuses to Telegram (global)",
+		},
+		waTgBridgeCommand{
+			handlers.NewCommand("statusignore", StatusIgnoreHandler),
+			"Stop forwarding statuses from a contact (in topic or /statusignore <jid>)",
+		},
+		waTgBridgeCommand{
+			handlers.NewCommand("statusunignore", StatusUnignoreHandler),
+			"Resume forwarding statuses from a contact",
+		},
+		waTgBridgeCommand{
+			handlers.NewCommand("statusignorelist", StatusIgnoreListHandler),
+			"List contacts whose statuses are not forwarded",
+		},
 	)
 
 	for _, command := range commands {
@@ -598,6 +614,134 @@ func BlockCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
 
 func UnblockCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
 	return handleBlockUnblockUser(b, c, events.BlocklistChangeActionUnblock)
+}
+
+func StatusForwardHandler(b *gotgbot.Bot, c *ext.Context) error {
+	if !utils.TgUpdateIsAuthorized(b, c) {
+		return nil
+	}
+	cfg := state.State.Config
+	cfg.WhatsApp.SkipStatus = !cfg.WhatsApp.SkipStatus
+	if err := cfg.SaveConfig(); err != nil {
+		return utils.TgReplyWithErrorByContext(b, c, "Failed to save config", err)
+	}
+	status := "on"
+	if cfg.WhatsApp.SkipStatus {
+		status = "off"
+	}
+	_, err := utils.TgReplyTextByContext(b, c, fmt.Sprintf("WhatsApp status forwarding is now <b>%s</b>.", status), nil, false)
+	return err
+}
+
+func StatusIgnoreHandler(b *gotgbot.Bot, c *ext.Context) error {
+	if !utils.TgUpdateIsAuthorized(b, c) {
+		return nil
+	}
+	cfg := state.State.Config
+	var user string
+	args := c.Args()
+	if len(args) > 1 {
+		jid, ok := utils.WaParseJID(args[1])
+		if !ok {
+			_, err := utils.TgReplyTextByContext(b, c, "Invalid JID. Usage: <code>/statusignore</code> (in a contact topic) or <code>/statusignore &lt;jid&gt;</code>", nil, false)
+			return err
+		}
+		user = jid.User
+	} else if c.EffectiveMessage.IsTopicMessage && c.EffectiveMessage.MessageThreadId != 0 {
+		waChatId, err := database.ChatThreadGetWaFromTg(c.EffectiveChat.Id, c.EffectiveMessage.MessageThreadId)
+		if err != nil || waChatId == "" {
+			_, err := utils.TgReplyTextByContext(b, c, "Could not get WhatsApp chat for this topic. Use <code>/statusignore &lt;jid&gt;</code> with the contact's JID (e.g. from /findcontact).", nil, false)
+			return err
+		}
+		jid, _ := utils.WaParseJID(waChatId)
+		user = jid.User
+	} else {
+		_, err := utils.TgReplyTextByContext(b, c, "Send this command in a contact's topic, or use <code>/statusignore &lt;jid&gt;</code>", nil, false)
+		return err
+	}
+	for _, u := range cfg.WhatsApp.StatusIgnoredChats {
+		if u == user {
+			_, err := utils.TgReplyTextByContext(b, c, "That contact is already in the status-ignore list.", nil, false)
+			return err
+		}
+	}
+	if cfg.WhatsApp.StatusIgnoredChats == nil {
+		cfg.WhatsApp.StatusIgnoredChats = []string{}
+	}
+	cfg.WhatsApp.StatusIgnoredChats = append(cfg.WhatsApp.StatusIgnoredChats, user)
+	if err := cfg.SaveConfig(); err != nil {
+		return utils.TgReplyWithErrorByContext(b, c, "Failed to save config", err)
+	}
+	name := utils.WaGetContactName(waTypes.NewJID(user, waTypes.DefaultUserServer))
+	_, err := utils.TgReplyTextByContext(b, c, fmt.Sprintf("Statuses from <b>%s</b> will no longer be forwarded.", html.EscapeString(name)), nil, false)
+	return err
+}
+
+func StatusUnignoreHandler(b *gotgbot.Bot, c *ext.Context) error {
+	if !utils.TgUpdateIsAuthorized(b, c) {
+		return nil
+	}
+	cfg := state.State.Config
+	var user string
+	args := c.Args()
+	if len(args) > 1 {
+		jid, ok := utils.WaParseJID(args[1])
+		if !ok {
+			_, err := utils.TgReplyTextByContext(b, c, "Invalid JID. Usage: <code>/statusunignore</code> (in a contact topic) or <code>/statusunignore &lt;jid&gt;</code>", nil, false)
+			return err
+		}
+		user = jid.User
+	} else if c.EffectiveMessage.IsTopicMessage && c.EffectiveMessage.MessageThreadId != 0 {
+		waChatId, err := database.ChatThreadGetWaFromTg(c.EffectiveChat.Id, c.EffectiveMessage.MessageThreadId)
+		if err != nil || waChatId == "" {
+			_, err := utils.TgReplyTextByContext(b, c, "Could not get WhatsApp chat for this topic. Use <code>/statusunignore &lt;jid&gt;</code>.", nil, false)
+			return err
+		}
+		jid, _ := utils.WaParseJID(waChatId)
+		user = jid.User
+	} else {
+		_, err := utils.TgReplyTextByContext(b, c, "Send this command in a contact's topic, or use <code>/statusunignore &lt;jid&gt;</code>", nil, false)
+		return err
+	}
+	newList := make([]string, 0, len(cfg.WhatsApp.StatusIgnoredChats))
+	found := false
+	for _, u := range cfg.WhatsApp.StatusIgnoredChats {
+		if u != user {
+			newList = append(newList, u)
+		} else {
+			found = true
+		}
+	}
+	if !found {
+		_, err := utils.TgReplyTextByContext(b, c, "That contact was not in the status-ignore list.", nil, false)
+		return err
+	}
+	cfg.WhatsApp.StatusIgnoredChats = newList
+	if err := cfg.SaveConfig(); err != nil {
+		return utils.TgReplyWithErrorByContext(b, c, "Failed to save config", err)
+	}
+	name := utils.WaGetContactName(waTypes.NewJID(user, waTypes.DefaultUserServer))
+	_, err := utils.TgReplyTextByContext(b, c, fmt.Sprintf("Statuses from <b>%s</b> will be forwarded again.", html.EscapeString(name)), nil, false)
+	return err
+}
+
+func StatusIgnoreListHandler(b *gotgbot.Bot, c *ext.Context) error {
+	if !utils.TgUpdateIsAuthorized(b, c) {
+		return nil
+	}
+	cfg := state.State.Config
+	if len(cfg.WhatsApp.StatusIgnoredChats) == 0 {
+		_, err := utils.TgReplyTextByContext(b, c, "No contacts in the status-ignore list. Use /statusignore in a contact topic or with a JID to add.", nil, false)
+		return err
+	}
+	var bld strings.Builder
+	bld.WriteString("Contacts whose statuses are <b>not</b> forwarded:\n\n")
+	for _, user := range cfg.WhatsApp.StatusIgnoredChats {
+		name := utils.WaGetContactName(waTypes.NewJID(user, waTypes.DefaultUserServer))
+		bld.WriteString(fmt.Sprintf("• %s\n", html.EscapeString(name)))
+	}
+	_, err := utils.TgReplyTextByContext(b, c, bld.String(), nil, false)
+	return err
 }
 
 func SetTargetPrivateChatHandler(b *gotgbot.Bot, c *ext.Context) error {
