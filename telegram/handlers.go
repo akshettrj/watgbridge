@@ -161,8 +161,8 @@ func AddTelegramHandlers() {
 			"Archive the WhatsApp chat linked to this topic",
 		},
 		waTgBridgeCommand{
-			handlers.NewCommand("redis_invalidate", RedisInvalidateCommandHandler),
-			"Invalidate Redis LID→phone cache (for /list_contacts)",
+			handlers.NewCommand("cache_clear", CacheClearCommandHandler),
+			"Clear Redis LID→phone cache (for /list_contacts)",
 		},
 	)
 
@@ -913,7 +913,7 @@ func RemoveContactCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
 	return err
 }
 
-func RedisInvalidateCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
+func CacheClearCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
 	if !utils.TgUpdateIsAuthorized(b, c) {
 		return nil
 	}
