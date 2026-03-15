@@ -106,6 +106,20 @@ func WaGetGroupName(jid types.JID) string {
 	return groupInfo.Name
 }
 
+// WaGetPhoneForDisplay returns the phone number string for listing (e.g. +77001234567).
+// Resolves LID to phone number when contact is stored with HiddenUserServer.
+func WaGetPhoneForDisplay(id, server string) string {
+	if server == types.HiddenUserServer {
+		waClient := state.State.WhatsAppClient
+		jid := types.NewJID(id, server)
+		pn, err := waClient.Store.LIDs.GetPNForLID(context.Background(), jid)
+		if err == nil {
+			return "+" + pn.User
+		}
+	}
+	return "+" + id
+}
+
 func WaGetContactName(jid types.JID) string {
 	if jid.ToNonAD() == state.State.WhatsAppClient.Store.ID.ToNonAD() {
 		return "You"
