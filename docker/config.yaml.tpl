@@ -38,8 +38,3 @@ whatsapp:
 database:
   type: sqlite
   path: /data/gobot.sqlite.db
-
-redis:
-  addr: ${REDIS_ADDR:-}
-  password: ${REDIS_PASSWORD:-}
-  db: ${REDIS_DB:-0}

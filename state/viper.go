@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strconv"
 
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
@@ -54,6 +55,15 @@ func InitConfig(configPath string, bindings []FlagBinding) error {
 	}
 
 	State.Config.Path = configPath
+
+	// Redis from env (e.g. Docker: REDIS_ADDR=redis:6379) so template doesn't need it
+	if State.Config.Redis.Addr == "" && os.Getenv("REDIS_ADDR") != "" {
+		State.Config.Redis.Addr = os.Getenv("REDIS_ADDR")
+		State.Config.Redis.Password = os.Getenv("REDIS_PASSWORD")
+		if n, err := strconv.Atoi(os.Getenv("REDIS_DB")); err == nil {
+			State.Config.Redis.DB = n
+		}
+	}
 
 	// WhatsApp login DB URL fix (same as LoadConfig)
 	if State.Config.WhatsApp.LoginDatabase.Type == "sqlite3" {
