@@ -10,11 +10,20 @@ services:
       - sqlite_data:/data
     restart: unless-stopped
 
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # optional: persist data
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+
   watgbridge:
     build: .
     image: watgbridge:latest
     depends_on:
       - db
+      - redis
     environment:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - TELEGRAM_OWNER_ID=${TELEGRAM_OWNER_ID}
@@ -29,6 +38,7 @@ services:
       - DEBUG_MODE=${DEBUG_MODE:-}
       - CONFIG_PATH=${CONFIG_PATH:-}
       - WATGBRIDGE_VERSION=${WATGBRIDGE_VERSION:-}
+      - REDIS_ADDR=redis:6379
     volumes:
       - sqlite_data:/data
     restart: unless-stopped

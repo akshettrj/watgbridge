@@ -7,6 +7,7 @@ import (
 
 	"github.com/PaulSonOfLars/gotgbot/v2"
 	"github.com/PaulSonOfLars/gotgbot/v2/ext"
+	"github.com/redis/go-redis/v9"
 	"go.mau.fi/whatsmeow"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -26,6 +27,7 @@ type state struct {
 	TelegramCommands   []gotgbot.BotCommand
 
 	WhatsAppClient *whatsmeow.Client
+	RedisClient    *redis.Client
 
 	Modules []string
 

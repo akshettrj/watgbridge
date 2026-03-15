@@ -108,16 +108,31 @@ func WaGetGroupName(jid types.JID) string {
 
 // WaGetPhoneForDisplay returns the phone number string for listing (e.g. +77001234567).
 // Resolves LID to phone number when contact is stored with HiddenUserServer.
+// Uses Redis cache when configured to avoid spamming WhatsApp.
 func WaGetPhoneForDisplay(id, server string) string {
-	if server == types.HiddenUserServer {
-		waClient := state.State.WhatsAppClient
-		jid := types.NewJID(id, server)
-		pn, err := waClient.Store.LIDs.GetPNForLID(context.Background(), jid)
+	if server != types.HiddenUserServer {
+		return "+" + id
+	}
+	ctx := context.Background()
+	rdb := state.State.RedisClient
+	if rdb != nil {
+		key := state.LIDToPhoneKeyPrefix + id
+		phone, err := rdb.Get(ctx, key).Result()
 		if err == nil {
-			return "+" + pn.User
+			return "+" + phone
 		}
 	}
-	return "+" + id
+	waClient := state.State.WhatsAppClient
+	jid := types.NewJID(id, server)
+	pn, err := waClient.Store.LIDs.GetPNForLID(ctx, jid)
+	if err != nil {
+		return "+" + id
+	}
+	if rdb != nil {
+		key := state.LIDToPhoneKeyPrefix + id
+		_ = rdb.Set(ctx, key, pn.User, 0).Err()
+	}
+	return "+" + pn.User
 }
 
 func WaGetContactName(jid types.JID) string {

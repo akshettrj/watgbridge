@@ -190,6 +190,16 @@ func main() {
 		)
 	}
 
+	if cfg.Redis.Addr != "" {
+		state.State.RedisClient = state.NewRedisClient(cfg)
+		if err := state.State.RedisClient.Ping(context.Background()).Err(); err != nil {
+			logger.Fatal("redis ping failed", zap.String("addr", cfg.Redis.Addr), zap.Error(err))
+		}
+		logger.Info("redis connected", zap.String("addr", cfg.Redis.Addr))
+	} else {
+		logger.Debug("redis not configured; LID→phone resolution will not be cached")
+	}
+
 	err = telegram.NewTelegramClient()
 	if err != nil {
 		logger.Fatal("failed to initialize telegram client",

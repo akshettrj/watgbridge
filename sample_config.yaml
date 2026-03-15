@@ -95,3 +95,10 @@ whatsapp:
 #  user: admin
 #  password: password
 #  dbname: gobot
+
+# Optional: Redis caches LID→phone resolution so /list_contacts does not spam WhatsApp.
+# If omitted, resolution is uncached (one WA request per LID per list).
+#redis:
+#  addr: localhost:6379
+#  password: ""
+#  db: 0

@@ -73,6 +73,13 @@ type Config struct {
 	} `yaml:"whatsapp" mapstructure:"whatsapp"`
 
 	Database map[string]string `yaml:"database" mapstructure:"database"`
+
+	// Redis is optional; used to cache LID→phone resolution to avoid spamming WhatsApp.
+	Redis struct {
+		Addr     string `yaml:"addr" mapstructure:"addr"`         // e.g. "localhost:6379"
+		Password string `yaml:"password" mapstructure:"password"`
+		DB       int    `yaml:"db" mapstructure:"db"`
+	} `yaml:"redis" mapstructure:"redis"`
 }
 
 func (cfg *Config) LoadConfig() error {
