@@ -13,7 +13,9 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    # optional: persist data
+    # Avoid "Memory overcommit must be enabled" warning when using AOF (host kernel setting)
+    sysctls:
+      vm.overcommit_memory: "1"
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes
