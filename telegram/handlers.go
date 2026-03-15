@@ -160,6 +160,10 @@ func AddTelegramHandlers() {
 			handlers.NewCommand("archive", ArchiveChatCommandHandler),
 			"Archive the WhatsApp chat linked to this topic",
 		},
+		waTgBridgeCommand{
+			handlers.NewCommand("redis_invalidate", RedisInvalidateCommandHandler),
+			"Invalidate Redis LID→phone cache (for /list_contacts)",
+		},
 	)
 
 	for _, command := range commands {
@@ -906,6 +910,31 @@ func RemoveContactCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
 		return utils.TgReplyWithErrorByContext(b, c, "Failed to remove contact", err)
 	}
 	_, err = utils.TgReplyTextByContext(b, c, "Contact removed from list.", nil, false)
+	return err
+}
+
+func RedisInvalidateCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
+	if !utils.TgUpdateIsAuthorized(b, c) {
+		return nil
+	}
+	rdb := state.State.RedisClient
+	if rdb == nil {
+		_, err := utils.TgReplyTextByContext(b, c, "Redis is not configured.", nil, false)
+		return err
+	}
+	ctx := context.Background()
+	keys, err := rdb.Keys(ctx, state.LIDToPhoneKeyPrefix+"*").Result()
+	if err != nil {
+		return utils.TgReplyWithErrorByContext(b, c, "Failed to list Redis keys", err)
+	}
+	if len(keys) == 0 {
+		_, err := utils.TgReplyTextByContext(b, c, "LID→phone cache is already empty.", nil, false)
+		return err
+	}
+	if err := rdb.Del(ctx, keys...).Err(); err != nil {
+		return utils.TgReplyWithErrorByContext(b, c, "Failed to delete cache keys", err)
+	}
+	_, err = utils.TgReplyTextByContext(b, c, fmt.Sprintf("Invalidated %d LID→phone cache entries.", len(keys)), nil, false)
 	return err
 }
 

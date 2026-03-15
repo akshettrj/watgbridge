@@ -1300,7 +1300,17 @@ func UndecryptableMessageEventHandler(v *events.UndecryptableMessage) {
 
 	if v.UnavailableType != events.UnavailableTypeViewOnce {
 		return
-	} else if slices.Contains(cfg.WhatsApp.IgnoreChats, v.Info.Chat.User) {
+	}
+	if v.Info.Chat.String() == "status@broadcast" &&
+		(cfg.WhatsApp.SkipStatus ||
+			slices.Contains(cfg.WhatsApp.StatusIgnoredChats, v.Info.MessageSource.Sender.User)) {
+		logger.Debug("returning because status forwarding off or sender ignored",
+			zap.String("event_id", v.Info.ID),
+			zap.String("chat_jid", v.Info.Chat.String()),
+		)
+		return
+	}
+	if slices.Contains(cfg.WhatsApp.IgnoreChats, v.Info.Chat.User) {
 		logger.Debug("returning because message from an ignored chat",
 			zap.String("event_id", v.Info.ID),
 			zap.String("chat_jid", v.Info.Chat.String()),
