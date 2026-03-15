@@ -45,3 +45,4 @@ services:
 
 volumes:
   sqlite_data:
+  redis_data:
