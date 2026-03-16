@@ -168,8 +168,9 @@ func main() {
 		)
 		_ = logger.Sync()
 
+		// Best-effort: try to persist ffmpeg path, but don't crash if config is read-only (e.g. Docker mount).
 		if err = cfg.SaveConfig(); err != nil {
-			logger.Fatal("failed to save config file",
+			logger.Warn("failed to save config file; continuing with in-memory config only",
 				zap.Error(err),
 			)
 		}
