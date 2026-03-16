@@ -1114,11 +1114,16 @@ func SendMessageConfirmation(
 	msgToForward *gotgbot.Message,
 	revokeKeyboard *gotgbot.InlineKeyboardMarkup,
 ) {
-	switch cfg.Telegram.ConfirmationType {
+	// Normalize: empty or "emoji" (case-insensitive) → use emoji reaction
+	confType := strings.TrimSpace(strings.ToLower(cfg.Telegram.ConfirmationType))
+	if confType == "" {
+		confType = "emoji"
+	}
+	switch confType {
 	case "emoji":
-		emoji := cfg.Telegram.ConfirmationEmoji
+		emoji := strings.TrimSpace(cfg.Telegram.ConfirmationEmoji)
 		if emoji == "" {
-			emoji = "👍" // safe default; complex ZWJ emoji may be rejected by Telegram
+			emoji = "👍"
 		}
 		reaction := []gotgbot.ReactionType{gotgbot.ReactionTypeEmoji{Emoji: emoji}}
 		reactionJSON, err := json.Marshal(reaction)
@@ -1126,21 +1131,18 @@ func SendMessageConfirmation(
 			state.State.Logger.Warn("failed to marshal reaction", zap.Error(err))
 			return
 		}
+		// setMessageReaction does NOT support message_thread_id; sending it can cause 400.
 		params := map[string]string{
 			"chat_id":    strconv.FormatInt(msgToForward.Chat.Id, 10),
 			"message_id": strconv.FormatInt(msgToForward.MessageId, 10),
 			"reaction":   string(reactionJSON),
 		}
-		if msgToForward.MessageThreadId != 0 {
-			params["message_thread_id"] = strconv.FormatInt(msgToForward.MessageThreadId, 10)
-		}
 		_, err = b.RequestWithContext(context.Background(), "setMessageReaction", params, nil, nil)
 		if err != nil {
-			state.State.Logger.Debug("setMessageReaction failed (confirmation emoji)",
+			state.State.Logger.Warn("setMessageReaction failed (confirmation emoji)",
 				zap.Error(err),
 				zap.Int64("chat_id", msgToForward.Chat.Id),
 				zap.Int64("message_id", msgToForward.MessageId),
-				zap.Int64("message_thread_id", msgToForward.MessageThreadId),
 			)
 		}
 	case "text":

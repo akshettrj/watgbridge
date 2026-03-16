@@ -41,7 +41,7 @@ services:
     volumes:
       - sqlite_data:/data
       # Mount pre-generated config from host; entrypoint will just use it.
-      - ./config.yaml:/data/config.yaml:ro
+      - ./config.yaml:/data/config.yaml
     restart: unless-stopped
 
 volumes:
