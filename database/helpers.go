@@ -2,6 +2,7 @@ package database
 
 import (
 	"database/sql"
+	"strings"
 
 	"watgbridge/state"
 
@@ -390,4 +391,102 @@ func GetEphemeralSettings(waChatId string) (bool, uint32, bool, error) {
 	}
 
 	return settings.IsEphemeral, settings.EphemeralTimer, true, nil
+}
+
+// tagNormalize returns lowercase trimmed tag name for storage.
+func tagNormalize(name string) string {
+	return strings.ToLower(strings.TrimSpace(name))
+}
+
+// TagGetOrCreate finds a tag by normalized name or creates it. Returns tag ID.
+func TagGetOrCreate(name string) (uint, error) {
+	db := state.State.Database
+	n := tagNormalize(name)
+	if n == "" {
+		return 0, nil
+	}
+	var tag Tag
+	res := db.Where("name = ?", n).First(&tag)
+	if res.Error == nil && tag.Name == n {
+		return tag.ID, nil
+	}
+	tag = Tag{Name: n}
+	res = db.Create(&tag)
+	return tag.ID, res.Error
+}
+
+// TagsGetAll returns all tag names sorted.
+func TagsGetAll() ([]string, error) {
+	db := state.State.Database
+	var tags []Tag
+	res := db.Order("name").Find(&tags)
+	if res.Error != nil {
+		return nil, res.Error
+	}
+	names := make([]string, 0, len(tags))
+	for _, t := range tags {
+		names = append(names, t.Name)
+	}
+	return names, nil
+}
+
+// ContactTagsSet sets the tags for a contact (replaces existing). tagNames are normalized.
+func ContactTagsSet(waContactId string, tagNames []string) error {
+	db := state.State.Database
+	res := db.Where("wa_contact_id = ?", waContactId).Delete(&ContactTag{})
+	if res.Error != nil {
+		return res.Error
+	}
+	for _, name := range tagNames {
+		n := tagNormalize(name)
+		if n == "" {
+			continue
+		}
+		tagId, err := TagGetOrCreate(n)
+		if err != nil || tagId == 0 {
+			continue
+		}
+		res = db.Create(&ContactTag{WaContactId: waContactId, TagId: tagId})
+		if res.Error != nil {
+			return res.Error
+		}
+	}
+	return nil
+}
+
+// ContactTagsGetWaIdsByTags returns wa_contact_ids that have ALL of the given tags (AND semantics).
+func ContactTagsGetWaIdsByTags(tagNames []string) ([]string, error) {
+	db := state.State.Database
+	var tagIds []uint
+	for _, name := range tagNames {
+		n := tagNormalize(name)
+		if n == "" {
+			continue
+		}
+		var tag Tag
+		res := db.Where("name = ?", n).First(&tag)
+		if res.Error == nil && tag.Name == n {
+			tagIds = append(tagIds, tag.ID)
+		}
+	}
+	if len(tagIds) == 0 {
+		return nil, nil
+	}
+	var results []struct {
+		WaContactId string
+	}
+	// Subquery: contact_tags rows for our tags; group by wa_contact_id having count(distinct tag_id) = len(tagIds)
+	res := db.Model(&ContactTag{}).Select("wa_contact_id").
+		Where("tag_id IN ?", tagIds).
+		Group("wa_contact_id").
+		Having("COUNT(DISTINCT tag_id) = ?", len(tagIds)).
+		Find(&results)
+	if res.Error != nil {
+		return nil, res.Error
+	}
+	ids := make([]string, 0, len(results))
+	for _, r := range results {
+		ids = append(ids, r.WaContactId)
+	}
+	return ids, nil
 }

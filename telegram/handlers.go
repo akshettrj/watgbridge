@@ -157,6 +157,18 @@ func AddTelegramHandlers() {
 			"List all WA contacts (General topic only)",
 		},
 		waTgBridgeCommand{
+			handlers.NewCommand("tag", TagCommandHandler),
+			"Set tags for this contact (in contact thread only): /tag a,b,c",
+		},
+		waTgBridgeCommand{
+			handlers.NewCommand("list_tags", ListTagsCommandHandler),
+			"List all tags",
+		},
+		waTgBridgeCommand{
+			handlers.NewCommand("list_contacts_by_tags", ListContactsByTagsCommandHandler),
+			"List contacts that have all given tags: /list_contacts_by_tags a,b,c",
+		},
+		waTgBridgeCommand{
 			handlers.NewCommand("archive", ArchiveChatCommandHandler),
 			"Archive the WhatsApp chat linked to this topic",
 		},
@@ -372,6 +384,122 @@ func ListContactsCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
 		if name == "" {
 			name = jid.User
 		}
+		phone := utils.WaGetPhoneForDisplay(jid.User, jid.Server)
+		bld.WriteString(fmt.Sprintf("- %s — <code>%s</code>\n", html.EscapeString(name), html.EscapeString(phone)))
+		if bld.Len() >= 3500 {
+			_, _ = utils.TgReplyTextByContext(b, c, bld.String(), nil, false)
+			time.Sleep(500 * time.Millisecond)
+			bld.Reset()
+		}
+	}
+	if bld.Len() > 0 {
+		_, err = utils.TgReplyTextByContext(b, c, bld.String(), nil, false)
+		return err
+	}
+	return nil
+}
+
+func TagCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
+	if !utils.TgUpdateIsAuthorized(b, c) {
+		return nil
+	}
+	if !c.EffectiveMessage.IsTopicMessage || c.EffectiveMessage.MessageThreadId == 0 {
+		_, err := utils.TgReplyTextByContext(b, c, "Use this command inside a contact topic (a thread linked to a WA contact).", nil, false)
+		return err
+	}
+	waChatId, err := database.ChatThreadGetWaFromTg(c.EffectiveChat.Id, c.EffectiveMessage.MessageThreadId)
+	if err != nil || waChatId == "" {
+		_, err := utils.TgReplyTextByContext(b, c, "This topic is not linked to a WhatsApp contact.", nil, false)
+		return err
+	}
+	if strings.Contains(waChatId, "g.us") || waChatId == "status@broadcast" || waChatId == "calls" || waChatId == "mentions" {
+		_, err := utils.TgReplyTextByContext(b, c, "Use this command in a private contact thread only (not groups or status).", nil, false)
+		return err
+	}
+	args := c.Args()
+	if len(args) < 2 {
+		_, err := utils.TgReplyTextByContext(b, c, "Usage: <code>/tag a,b,c</code> — comma-separated tags (spaces allowed around commas).", nil, false)
+		return err
+	}
+	raw := strings.Join(args[1:], " ")
+	var tagNames []string
+	for _, s := range strings.Split(raw, ",") {
+		t := strings.TrimSpace(s)
+		if t != "" {
+			tagNames = append(tagNames, t)
+		}
+	}
+	if len(tagNames) == 0 {
+		_, err := utils.TgReplyTextByContext(b, c, "Provide at least one tag.", nil, false)
+		return err
+	}
+	err = database.ContactTagsSet(waChatId, tagNames)
+	if err != nil {
+		return utils.TgReplyWithErrorByContext(b, c, "Failed to set tags", err)
+	}
+	normalized := make([]string, 0, len(tagNames))
+	for _, n := range tagNames {
+		normalized = append(normalized, strings.ToLower(strings.TrimSpace(n)))
+	}
+	_, err = utils.TgReplyTextByContext(b, c, "Tags set: "+strings.Join(normalized, ", "), nil, false)
+	return err
+}
+
+func ListTagsCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
+	if !utils.TgUpdateIsAuthorized(b, c) {
+		return nil
+	}
+	tags, err := database.TagsGetAll()
+	if err != nil {
+		return utils.TgReplyWithErrorByContext(b, c, "Failed to load tags", err)
+	}
+	if len(tags) == 0 {
+		_, err := utils.TgReplyTextByContext(b, c, "No tags yet. Use /tag in a contact topic to add tags.", nil, false)
+		return err
+	}
+	_, err = utils.TgReplyTextByContext(b, c, fmt.Sprintf("Tags (%d):\n\n%s", len(tags), strings.Join(tags, ", ")), nil, false)
+	return err
+}
+
+func ListContactsByTagsCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
+	if !utils.TgUpdateIsAuthorized(b, c) {
+		return nil
+	}
+	args := c.Args()
+	if len(args) < 2 {
+		_, err := utils.TgReplyTextByContext(b, c, "Usage: <code>/list_contacts_by_tags a,b,c</code> — list contacts that have all these tags.", nil, false)
+		return err
+	}
+	raw := strings.Join(args[1:], " ")
+	var tagNames []string
+	for _, s := range strings.Split(raw, ",") {
+		t := strings.TrimSpace(s)
+		if t != "" {
+			tagNames = append(tagNames, t)
+		}
+	}
+	if len(tagNames) == 0 {
+		_, err := utils.TgReplyTextByContext(b, c, "Provide at least one tag.", nil, false)
+		return err
+	}
+	waIds, err := database.ContactTagsGetWaIdsByTags(tagNames)
+	if err != nil {
+		return utils.TgReplyWithErrorByContext(b, c, "Failed to list contacts by tags", err)
+	}
+	if len(waIds) == 0 {
+		_, err := utils.TgReplyTextByContext(b, c, "No contacts have all of these tags.", nil, false)
+		return err
+	}
+	sort.Strings(waIds)
+	var bld strings.Builder
+	bld.WriteString(fmt.Sprintf("Contacts with tags [%s] (%d):\n\n", strings.Join(tagNames, ", "), len(waIds)))
+	for _, waId := range waIds {
+		jid, err := waTypes.ParseJID(waId)
+		if err != nil {
+			bld.WriteString(fmt.Sprintf("- %s\n", html.EscapeString(waId)))
+			continue
+		}
+		name := utils.WaGetContactName(jid)
 		phone := utils.WaGetPhoneForDisplay(jid.User, jid.Server)
 		bld.WriteString(fmt.Sprintf("- %s — <code>%s</code>\n", html.EscapeString(name), html.EscapeString(phone)))
 		if bld.Len() >= 3500 {

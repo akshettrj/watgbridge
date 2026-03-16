@@ -13,7 +13,6 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    # To silence Redis "Memory overcommit" warning, set on host: sysctl vm.overcommit_memory=1
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes

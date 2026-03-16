@@ -41,6 +41,18 @@ type ChatEphemeralSettings struct {
 	EphemeralTimer uint32
 }
 
+// Tag is a label for contacts (Telegram-level only). Name is stored normalized (lowercase, trimmed).
+type Tag struct {
+	ID   uint   `gorm:"primaryKey;autoIncrement"`
+	Name string `gorm:"uniqueIndex;size:191;not null"`
+}
+
+// ContactTag links a WA contact (private chat JID) to a tag.
+type ContactTag struct {
+	WaContactId string `gorm:"primaryKey;size:191;not null"` // WA chat JID (private)
+	TagId       uint   `gorm:"primaryKey;not null"`
+}
+
 func AutoMigrate() error {
 	db := state.State.Database
 	return db.AutoMigrate(
@@ -48,5 +60,7 @@ func AutoMigrate() error {
 		&ChatThreadPair{},
 		&ContactName{},
 		&ChatEphemeralSettings{},
+		&Tag{},
+		&ContactTag{},
 	)
 }
