@@ -1114,10 +1114,14 @@ func SendMessageConfirmation(
 ) {
 	switch cfg.Telegram.ConfirmationType {
 	case "emoji":
+		emoji := cfg.Telegram.ConfirmationEmoji
+		if emoji == "" {
+			emoji = "🏌️‍♂️"
+		}
 		b.SetMessageReaction(
 			msgToForward.Chat.Id,
 			msgToForward.MessageId,
-			&gotgbot.SetMessageReactionOpts{Reaction: []gotgbot.ReactionType{gotgbot.ReactionTypeEmoji{Emoji: "🏌️‍♂️"}}},
+			&gotgbot.SetMessageReactionOpts{Reaction: []gotgbot.ReactionType{gotgbot.ReactionTypeEmoji{Emoji: emoji}}},
 		)
 	case "text":
 		msg, err := TgReplyTextByContext(b, c, "Successfully sent", revokeKeyboard, cfg.Telegram.SilentConfirmation)

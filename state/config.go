@@ -34,6 +34,7 @@ type Config struct {
 		SendMyReadReceipts  bool    `yaml:"send_my_read_receipts" mapstructure:"send_my_read_receipts"`
 		SilentConfirmation  bool    `yaml:"silent_confirmation" mapstructure:"silent_confirmation"`
 		ConfirmationType    string  `yaml:"confirmation_type" mapstructure:"confirmation_type"`
+		ConfirmationEmoji   string  `yaml:"confirmation_emoji" mapstructure:"confirmation_emoji"`
 		EmojiConfirmation   *bool   `yaml:"emoji_confirmation" mapstructure:"emoji_confirmation"`
 		SkipStartupMessage  bool    `yaml:"skip_startup_message" mapstructure:"skip_startup_message"`
 		SpoilerViewOnce     bool    `yaml:"spoiler_as_viewonce" mapstructure:"spoiler_as_viewonce"`
@@ -158,4 +159,5 @@ func (cfg *Config) SetDefaults() {
 	cfg.WhatsApp.StickerMetadata.AuthorName = "WaTgBridge"
 
 	cfg.Telegram.ConfirmationType = "emoji"
+	cfg.Telegram.ConfirmationEmoji = "🏌️‍♂️"
 }

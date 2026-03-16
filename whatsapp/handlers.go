@@ -85,15 +85,13 @@ func WhatsAppEventHandler(evt interface{}) {
 		text := ""
 		if isEdited {
 			msg := v.Message.GetProtocolMessage().GetEditedMessage()
-			if extendedMessageText := msg.GetExtendedTextMessage().GetText(); extendedMessageText != "" {
-				text = extendedMessageText
-			} else {
+			text = getMessageText(msg)
+			if text == "" {
 				text = msg.GetConversation()
 			}
 		} else {
-			if extendedMessageText := v.Message.GetExtendedTextMessage().GetText(); extendedMessageText != "" {
-				text = extendedMessageText
-			} else {
+			text = getMessageText(v.Message)
+			if text == "" {
 				text = v.Message.GetConversation()
 			}
 		}
@@ -105,6 +103,102 @@ func WhatsAppEventHandler(evt interface{}) {
 		}
 	}
 
+}
+
+// getMessageText extracts displayable text from a WA message for bridging.
+// Handles ExtendedText, Conversation, TemplateMessage (business/template), ButtonsMessage, ListMessage, HighlyStructuredMessage.
+func getMessageText(msg *waE2E.Message) string {
+	if msg == nil {
+		return ""
+	}
+	if t := msg.GetExtendedTextMessage().GetText(); t != "" {
+		return t
+	}
+	if t := msg.GetConversation(); t != "" {
+		return t
+	}
+	// Business / template messages (e.g. verification codes from business accounts)
+	if tm := msg.GetTemplateMessage(); tm != nil {
+		var parts []string
+		if h := tm.GetHydratedTemplate(); h != nil {
+			if s := h.GetHydratedTitleText(); s != "" {
+				parts = append(parts, s)
+			}
+			if s := h.GetHydratedContentText(); s != "" {
+				parts = append(parts, s)
+			}
+			if s := h.GetHydratedFooterText(); s != "" {
+				parts = append(parts, s)
+			}
+		}
+		if h := tm.GetHydratedFourRowTemplate(); h != nil {
+			if s := h.GetHydratedTitleText(); s != "" {
+				parts = append(parts, s)
+			}
+			if s := h.GetHydratedContentText(); s != "" {
+				parts = append(parts, s)
+			}
+			if s := h.GetHydratedFooterText(); s != "" {
+				parts = append(parts, s)
+			}
+		}
+		if len(parts) > 0 {
+			return strings.Join(parts, "\n")
+		}
+	}
+	if bm := msg.GetButtonsMessage(); bm != nil {
+		var parts []string
+		if s := bm.GetText(); s != "" {
+			parts = append(parts, s)
+		}
+		if s := bm.GetContentText(); s != "" {
+			parts = append(parts, s)
+		}
+		if s := bm.GetFooterText(); s != "" {
+			parts = append(parts, s)
+		}
+		if len(parts) > 0 {
+			return strings.Join(parts, "\n")
+		}
+	}
+	if lm := msg.GetListMessage(); lm != nil {
+		var parts []string
+		if s := lm.GetTitle(); s != "" {
+			parts = append(parts, s)
+		}
+		if s := lm.GetDescription(); s != "" {
+			parts = append(parts, s)
+		}
+		if s := lm.GetFooterText(); s != "" {
+			parts = append(parts, s)
+		}
+		if len(parts) > 0 {
+			return strings.Join(parts, "\n")
+		}
+	}
+	if hsm := msg.GetHighlyStructuredMessage(); hsm != nil {
+		if th := hsm.GetHydratedHsm(); th != nil {
+			if h := th.GetHydratedTemplate(); h != nil {
+				var parts []string
+				if s := h.GetHydratedTitleText(); s != "" {
+					parts = append(parts, s)
+				}
+				if s := h.GetHydratedContentText(); s != "" {
+					parts = append(parts, s)
+				}
+				if s := h.GetHydratedFooterText(); s != "" {
+					parts = append(parts, s)
+				}
+				if len(parts) > 0 {
+					return strings.Join(parts, "\n")
+				}
+			}
+		}
+		if len(hsm.GetParams()) > 0 {
+			return strings.Join(hsm.GetParams(), " ")
+		}
+	}
+	return ""
 }
 
 func MessageFromMeEventHandler(text string, v *events.Message, isEdited bool) {

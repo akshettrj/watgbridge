@@ -12,6 +12,7 @@ telegram:
   skip_startup_message: ${TELEGRAM_SKIP_STARTUP_MESSAGE}
   silent_confirmation: ${TELEGRAM_SILENT_CONFIRMATION}
   confirmation_type: "${TELEGRAM_CONFIRMATION_TYPE}"
+  confirmation_emoji: "${TELEGRAM_CONFIRMATION_EMOJI:-🏌️‍♂️}"
 
 whatsapp:
   session_name: ${WHATSAPP_SESSION_NAME}
