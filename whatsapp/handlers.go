@@ -277,11 +277,11 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 		}
 	}
 
-	if v.Info.Chat.String() == "status@broadcast" &&
+	if v.Info.Chat.ToNonAD().String() == "status@broadcast" &&
 		(cfg.WhatsApp.SkipStatus ||
 			slices.Contains(cfg.WhatsApp.StatusIgnoredChats, v.Info.MessageSource.Sender.User)) {
-		// Return if status is from ignored chat
-		logger.Debug("returning because status from a ignored chat",
+		// Return if status forwarding is disabled or sender is ignored
+		logger.Debug("returning because status forwarding off or sender ignored",
 			zap.String("event_id", v.Info.ID),
 			zap.String("chat_jid", v.Info.Chat.String()),
 		)
@@ -1388,7 +1388,7 @@ func UndecryptableMessageEventHandler(v *events.UndecryptableMessage) {
 	if v.UnavailableType != events.UnavailableTypeViewOnce {
 		return
 	}
-	if v.Info.Chat.String() == "status@broadcast" &&
+	if v.Info.Chat.ToNonAD().String() == "status@broadcast" &&
 		(cfg.WhatsApp.SkipStatus ||
 			slices.Contains(cfg.WhatsApp.StatusIgnoredChats, v.Info.MessageSource.Sender.User)) {
 		logger.Debug("returning because status forwarding off or sender ignored",
