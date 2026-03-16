@@ -339,37 +339,40 @@ func ListContactsCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
 		_, err := utils.TgReplyTextByContext(b, c, "Use this command only in the General topic (no specific topic).", nil, false)
 		return err
 	}
-	contacts, err := database.ContactGetAll()
+	// List from WhatsApp store (same source as "Contacts on WhatsApp"); DB is only for name overrides
+	waClient := state.State.WhatsAppClient
+	storeContacts, err := waClient.Store.Contacts.GetAllContacts(context.Background())
 	if err != nil {
-		return utils.TgReplyWithErrorByContext(b, c, "Failed to load contacts", err)
+		return utils.TgReplyWithErrorByContext(b, c, "Failed to load contacts from WhatsApp", err)
 	}
-	if len(contacts) == 0 {
-		_, err := utils.TgReplyTextByContext(b, c, "No contacts in the list.", nil, false)
+	if len(storeContacts) == 0 {
+		_, err := utils.TgReplyTextByContext(b, c, "No contacts in the list. Run /synccontacts to sync from WhatsApp.", nil, false)
 		return err
 	}
-	ids := make([]string, 0, len(contacts))
-	for id := range contacts {
-		ids = append(ids, id)
+	// Sort by JID string for stable order
+	jids := make([]waTypes.JID, 0, len(storeContacts))
+	for jid := range storeContacts {
+		jids = append(jids, jid)
 	}
-	sort.Strings(ids)
+	sort.Slice(jids, func(i, j int) bool { return jids[i].String() < jids[j].String() })
 	var bld strings.Builder
-	bld.WriteString(fmt.Sprintf("WA contacts (%d):\n\n", len(ids)))
-	for _, id := range ids {
-		contact := contacts[id]
-		name := contact.FullName
+	bld.WriteString(fmt.Sprintf("WA contacts (%d):\n\n", len(jids)))
+	for _, jid := range jids {
+		info := storeContacts[jid]
+		name := info.FullName
 		if name == "" {
-			name = contact.FirstName
+			name = info.FirstName
 		}
 		if name == "" {
-			name = contact.PushName
+			name = info.PushName
 		}
 		if name == "" {
-			name = contact.BusinessName
+			name = info.BusinessName
 		}
 		if name == "" {
-			name = id
+			name = jid.User
 		}
-		phone := utils.WaGetPhoneForDisplay(contact.ID, contact.Server)
+		phone := utils.WaGetPhoneForDisplay(jid.User, jid.Server)
 		bld.WriteString(fmt.Sprintf("- %s — <code>%s</code>\n", html.EscapeString(name), html.EscapeString(phone)))
 		if bld.Len() >= 3500 {
 			_, _ = utils.TgReplyTextByContext(b, c, bld.String(), nil, false)
@@ -504,7 +507,8 @@ func SyncContactsHandler(b *gotgbot.Bot, c *ext.Context) error {
 
 	waClient := state.State.WhatsAppClient
 
-	err := waClient.FetchAppState(context.Background(), appstate.WAPatchCriticalUnblockLow, false, false)
+	// fullSync=true to fetch full "Contacts on WhatsApp" list from server (not just delta)
+	err := waClient.FetchAppState(context.Background(), appstate.WAPatchCriticalUnblockLow, true, false)
 	if err != nil {
 		return utils.TgReplyWithErrorByContext(b, c, "Failed to sync contacts", err)
 	}
@@ -512,9 +516,12 @@ func SyncContactsHandler(b *gotgbot.Bot, c *ext.Context) error {
 	contacts, err := waClient.Store.Contacts.GetAllContacts(context.Background())
 	if err == nil {
 		database.ContactNameBulkAddOrUpdate(contacts)
+		if rdb := state.State.RedisClient; rdb != nil {
+			_ = rdb.Set(context.Background(), state.ContactsSyncKey, time.Now().UTC().Format(time.RFC3339), 0).Err()
+		}
 	}
 
-	_, err = utils.TgReplyTextByContext(b, c, "Successfully synced the contact list", nil, false)
+	_, err = utils.TgReplyTextByContext(b, c, "Successfully synced the contact list.", nil, false)
 	return err
 }
 
