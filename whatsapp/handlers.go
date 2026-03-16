@@ -1220,30 +1220,23 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 						zap.String("chat_id", waChatIdForLookup),
 					)
 				} else if tgChatId == cfg.Telegram.TargetChatID {
-
-					if *reactionMsg.Text != "" {
-						text = fmt.Sprintf(
-							"<code>Reacted to this message with %s</code>",
-							html.EscapeString(*reactionMsg.Text),
-						)
-					} else {
-						text = "<code>Revoked their reaction to this message</code>"
+					// Forward as native Telegram reaction on the bridged message (bot sets the emoji)
+					var reaction []gotgbot.ReactionType
+					if reactionMsg.Text != nil && *reactionMsg.Text != "" {
+						reaction = []gotgbot.ReactionType{gotgbot.ReactionTypeEmoji{Emoji: *reactionMsg.Text}}
 					}
-
-					bridgedText += text
-
-					sentMsg, err := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
-						ReplyParameters: &gotgbot.ReplyParameters{
-							MessageId: tgMsgId,
-						},
-						MessageThreadId: threadId,
+					_, err = tgBot.SetMessageReaction(cfg.Telegram.TargetChatID, tgMsgId, &gotgbot.SetMessageReactionOpts{
+						Reaction: reaction,
 					})
 					if err != nil {
-						panic(fmt.Errorf("failed to send telegram message: %s", err))
-					}
-					if sentMsg.MessageId != 0 {
-						database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), waChatIdForLookup,
-							cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
+						emoji := ""
+						if reactionMsg.Text != nil {
+							emoji = *reactionMsg.Text
+						}
+						logger.Debug("failed to set Telegram reaction (may be unsupported emoji), skipping",
+							zap.Error(err),
+							zap.String("emoji", emoji),
+						)
 					}
 				}
 
