@@ -1117,7 +1117,7 @@ func SendMessageConfirmation(
 		b.SetMessageReaction(
 			msgToForward.Chat.Id,
 			msgToForward.MessageId,
-			&gotgbot.SetMessageReactionOpts{Reaction: []gotgbot.ReactionType{gotgbot.ReactionTypeEmoji{Emoji: "👍"}}},
+			&gotgbot.SetMessageReactionOpts{Reaction: []gotgbot.ReactionType{gotgbot.ReactionTypeEmoji{Emoji: "🏌️‍♂️"}}},
 		)
 	case "text":
 		msg, err := TgReplyTextByContext(b, c, "Successfully sent", revokeKeyboard, cfg.Telegram.SilentConfirmation)
