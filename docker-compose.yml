@@ -35,11 +35,13 @@ services:
       - TIME_ZONE=${TIME_ZONE:-}
       - TIME_FORMAT=${TIME_FORMAT:-}
       - DEBUG_MODE=${DEBUG_MODE:-}
-      - CONFIG_PATH=${CONFIG_PATH:-}
+      - CONFIG_PATH=/data/config.yaml
       - WATGBRIDGE_VERSION=${WATGBRIDGE_VERSION:-}
       - REDIS_ADDR=redis:6379
     volumes:
       - sqlite_data:/data
+      # Mount pre-generated config from host; entrypoint will just use it.
+      - ./config.yaml:/data/config.yaml:ro
     restart: unless-stopped
 
 volumes:

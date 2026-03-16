@@ -113,4 +113,22 @@ if [[ -z "$WATGBRIDGE_VERSION" ]]; then
   export WATGBRIDGE_VERSION=$(git describe --tags --always 2>/dev/null || git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 fi
 
+# Prebake config.yaml from docker/config.yaml.tpl using current env before starting stack.
+TEMPLATE="./docker/config.yaml.tpl"
+OUT="./config.yaml"
+
+if ! command -v envsubst >/dev/null 2>&1; then
+  echo "Error: envsubst not found. Install gettext (e.g. 'brew install gettext' on your system)." >&2
+  exit 1
+fi
+
+if [[ ! -f "$TEMPLATE" ]]; then
+  echo "Error: template $TEMPLATE not found." >&2
+  exit 1
+fi
+
+echo "Generating $OUT from $TEMPLATE ..."
+envsubst < "$TEMPLATE" > "$OUT"
+echo "Wrote $OUT"
+
 exec docker compose up -d $BUILD_FLAG

@@ -9,9 +9,9 @@ COPY . ./
 RUN go build
 
 FROM alpine:3.22
-RUN apk --no-cache add tzdata libwebp-tools ffmpeg imagemagick gettext
+RUN apk --no-cache add tzdata libwebp-tools ffmpeg imagemagick
 WORKDIR /go/src/watgbridge
 COPY --from=build /go/src/watgbridge/watgbridge .
-COPY docker/entrypoint.sh docker/config.yaml.tpl /docker/
+COPY docker/entrypoint.sh /docker/
 RUN chmod +x /docker/entrypoint.sh
 ENTRYPOINT ["/docker/entrypoint.sh"]
