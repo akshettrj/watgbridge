@@ -1366,7 +1366,18 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 			MessageThreadId: threadId,
 		})
 		if err != nil {
-			panic(fmt.Errorf("failed to send telegram message: %s", err))
+			logger.Error("failed to send telegram message",
+				zap.Error(err),
+				zap.Int64("tg_chat_id", cfg.Telegram.TargetChatID),
+				zap.Int64("tg_thread_id", threadId),
+				zap.String("wa_chat_id", v.Info.Chat.String()),
+				zap.String("wa_msg_id", msgId),
+			)
+			// If the topic was deleted/closed on Telegram, drop the mapping so it can be recreated on next message.
+			if strings.Contains(err.Error(), "message thread not found") {
+				_ = database.ChatThreadDropPairByTg(cfg.Telegram.TargetChatID, threadId)
+			}
+			return
 		}
 		if sentMsg.MessageId != 0 {
 			database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
