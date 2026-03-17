@@ -158,7 +158,4 @@ func (cfg *Config) SetDefaults() {
 	cfg.WhatsApp.StickerMetadata.PackName = "WaTgBridge"
 	cfg.WhatsApp.StickerMetadata.AuthorName = "WaTgBridge"
 	cfg.WhatsApp.SkipStatus = true
-
-	cfg.Telegram.ConfirmationType = "emoji"
-	cfg.Telegram.ConfirmationEmoji = "🏌️‍♂️"
 }

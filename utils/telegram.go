@@ -1112,48 +1112,8 @@ func SendMessageConfirmation(
 	msgToForward *gotgbot.Message,
 	revokeKeyboard *gotgbot.InlineKeyboardMarkup,
 ) {
-	logger := state.State.Logger
-	// Normalize: empty or "emoji" (case-insensitive) → use emoji reaction
-	confType := strings.TrimSpace(strings.ToLower(cfg.Telegram.ConfirmationType))
-	if confType == "" {
-		confType = "emoji"
-	}
-	switch confType {
-	case "emoji":
-		emoji := strings.TrimSpace(cfg.Telegram.ConfirmationEmoji)
-		if emoji == "" {
-			emoji = "👍"
-		}
-		chatId := msgToForward.Chat.Id
-		messageId := msgToForward.MessageId
-		logger.Info("setting confirmation emoji on message",
-			zap.Int64("chat_id", chatId),
-			zap.Int64("message_id", messageId),
-			zap.String("emoji", emoji),
-		)
-		ok, err := b.SetMessageReaction(chatId, messageId, &gotgbot.SetMessageReactionOpts{
-			Reaction: []gotgbot.ReactionType{gotgbot.ReactionTypeEmoji{Emoji: emoji}},
-		})
-		if err != nil {
-			logger.Warn("setMessageReaction failed (confirmation emoji)",
-				zap.Error(err),
-				zap.Int64("chat_id", chatId),
-				zap.Int64("message_id", messageId),
-			)
-			return
-		}
-		if !ok {
-			logger.Warn("setMessageReaction returned false", zap.Int64("chat_id", chatId), zap.Int64("message_id", messageId))
-			return
-		}
-		logger.Info("confirmation emoji set successfully", zap.Int64("message_id", messageId))
-	case "text":
-		msg, err := TgReplyTextByContext(b, c, "Successfully sent", revokeKeyboard, cfg.Telegram.SilentConfirmation)
-		if err == nil {
-			go func(_b *gotgbot.Bot, _m *gotgbot.Message) {
-				time.Sleep(15 * time.Second)
-				_b.DeleteMessage(_m.Chat.Id, _m.MessageId, &gotgbot.DeleteMessageOpts{})
-			}(b, msg)
-		}
-	}
+	// Fixed default emoji (non-configurable).
+	_, _ = b.SetMessageReaction(msgToForward.Chat.Id, msgToForward.MessageId, &gotgbot.SetMessageReactionOpts{
+		Reaction: []gotgbot.ReactionType{gotgbot.ReactionTypeEmoji{Emoji: "👍"}},
+	})
 }
