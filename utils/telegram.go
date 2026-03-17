@@ -3,13 +3,11 @@ package utils
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"html"
 	"io"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -1114,6 +1112,7 @@ func SendMessageConfirmation(
 	msgToForward *gotgbot.Message,
 	revokeKeyboard *gotgbot.InlineKeyboardMarkup,
 ) {
+	logger := state.State.Logger
 	// Normalize: empty or "emoji" (case-insensitive) → use emoji reaction
 	confType := strings.TrimSpace(strings.ToLower(cfg.Telegram.ConfirmationType))
 	if confType == "" {
@@ -1125,26 +1124,29 @@ func SendMessageConfirmation(
 		if emoji == "" {
 			emoji = "👍"
 		}
-		reaction := []gotgbot.ReactionType{gotgbot.ReactionTypeEmoji{Emoji: emoji}}
-		reactionJSON, err := json.Marshal(reaction)
+		chatId := msgToForward.Chat.Id
+		messageId := msgToForward.MessageId
+		logger.Info("setting confirmation emoji on message",
+			zap.Int64("chat_id", chatId),
+			zap.Int64("message_id", messageId),
+			zap.String("emoji", emoji),
+		)
+		ok, err := b.SetMessageReaction(chatId, messageId, &gotgbot.SetMessageReactionOpts{
+			Reaction: []gotgbot.ReactionType{gotgbot.ReactionTypeEmoji{Emoji: emoji}},
+		})
 		if err != nil {
-			state.State.Logger.Warn("failed to marshal reaction", zap.Error(err))
+			logger.Warn("setMessageReaction failed (confirmation emoji)",
+				zap.Error(err),
+				zap.Int64("chat_id", chatId),
+				zap.Int64("message_id", messageId),
+			)
 			return
 		}
-		// setMessageReaction does NOT support message_thread_id; sending it can cause 400.
-		params := map[string]string{
-			"chat_id":    strconv.FormatInt(msgToForward.Chat.Id, 10),
-			"message_id": strconv.FormatInt(msgToForward.MessageId, 10),
-			"reaction":   string(reactionJSON),
+		if !ok {
+			logger.Warn("setMessageReaction returned false", zap.Int64("chat_id", chatId), zap.Int64("message_id", messageId))
+			return
 		}
-		_, err = b.RequestWithContext(context.Background(), "setMessageReaction", params, nil, nil)
-		if err != nil {
-			state.State.Logger.Warn("setMessageReaction failed (confirmation emoji)",
-				zap.Error(err),
-				zap.Int64("chat_id", msgToForward.Chat.Id),
-				zap.Int64("message_id", msgToForward.MessageId),
-			)
-		}
+		logger.Info("confirmation emoji set successfully", zap.Int64("message_id", messageId))
 	case "text":
 		msg, err := TgReplyTextByContext(b, c, "Successfully sent", revokeKeyboard, cfg.Telegram.SilentConfirmation)
 		if err == nil {

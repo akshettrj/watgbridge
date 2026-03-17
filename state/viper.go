@@ -33,6 +33,7 @@ func InitConfig(configPath string, bindings []FlagBinding) error {
 	v.SetDefault("whatsapp.login_database.url", "file:wawebstore.db?foreign_keys=on")
 	v.SetDefault("whatsapp.sticker_metadata.pack_name", "WaTgBridge")
 	v.SetDefault("whatsapp.sticker_metadata.author_name", "WaTgBridge")
+	v.SetDefault("whatsapp.skip_status", true)
 	v.SetDefault("telegram.confirmation_type", "emoji")
 	v.SetDefault("telegram.confirmation_emoji", "🏌️‍♂️")
 

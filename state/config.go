@@ -157,6 +157,7 @@ func (cfg *Config) SetDefaults() {
 	cfg.WhatsApp.LoginDatabase.URL = "file:wawebstore.db?foreign_keys=on"
 	cfg.WhatsApp.StickerMetadata.PackName = "WaTgBridge"
 	cfg.WhatsApp.StickerMetadata.AuthorName = "WaTgBridge"
+	cfg.WhatsApp.SkipStatus = true
 
 	cfg.Telegram.ConfirmationType = "emoji"
 	cfg.Telegram.ConfirmationEmoji = "🏌️‍♂️"
