@@ -114,6 +114,9 @@ if [[ -z "$WATGBRIDGE_VERSION" ]]; then
 fi
 
 # Prebake config.yaml from docker/config.yaml.tpl using current env before starting stack.
+# Export defaults so envsubst never writes empty/invalid values for booleans.
+export WHATSAPP_SKIP_STATUS="${WHATSAPP_SKIP_STATUS:-true}"
+
 TEMPLATE="./docker/config.yaml.tpl"
 OUT="./config.yaml"
 

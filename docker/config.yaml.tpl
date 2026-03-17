@@ -26,7 +26,7 @@ whatsapp:
   skip_voice_notes: false
   skip_audios: false
   skip_stickers: false
-  skip_status: ${WHATSAPP_SKIP_STATUS:-true}
+  skip_status: ${WHATSAPP_SKIP_STATUS}
   skip_contacts: false
   skip_locations: false
   skip_profile_picture_updates: false
