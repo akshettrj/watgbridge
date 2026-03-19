@@ -1515,7 +1515,9 @@ func CallOfferEventHandler(v *events.CallOffer) {
 	)
 
 	// TODO : Check and handle group calls
-	callerName := utils.WaGetContactName(v.CallCreator)
+	// Keep a single "Calls" topic (special WA chat id "calls" thread mapping).
+	// Show caller *phone number* (not just a display name).
+	callerPhone := utils.WaGetPhoneForDisplay(v.CallCreator.User, v.CallCreator.Server)
 
 	callThreadId, err := utils.TgGetOrMakeThreadFromWa_String("calls", cfg.Telegram.TargetChatID, "Calls")
 	if err != nil {
@@ -1523,8 +1525,11 @@ func CallOfferEventHandler(v *events.CallOffer) {
 		return
 	}
 
-	bridgeText := fmt.Sprintf("#calls\n\n🧑: <b>%s</b>\n🕛: <b>%s</b>\n\n<i>You received a new call</i>",
-		html.EscapeString(callerName), html.EscapeString(v.Timestamp.In(state.State.LocalLocation).Format(cfg.TimeFormat)))
+	bridgeText := fmt.Sprintf(
+		"#calls\n\n📞: <b>%s</b>\n🕛: <b>%s</b>\n\n<i>You received a new call</i>",
+		html.EscapeString(callerPhone),
+		html.EscapeString(v.Timestamp.In(state.State.LocalLocation).Format(cfg.TimeFormat)),
+	)
 
 	utils.TgSendTextById(tgBot, cfg.Telegram.TargetChatID, callThreadId, bridgeText)
 }
