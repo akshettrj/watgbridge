@@ -507,11 +507,9 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 			}
 		} else if v.Info.IsIncomingBroadcast() {
 			if (v.Info.MessageSource.AddressingMode == waTypes.AddressingModePN) || v.Info.MessageSource.SenderAlt.IsEmpty() {
-				threadId, err = utils.TgGetOrMakeThreadFromWa(v.Info.MessageSource.Sender.ToNonAD(), cfg.Telegram.TargetChatID,
-					utils.WaGetContactName(v.Info.MessageSource.Sender.ToNonAD()))
+				threadId, err = utils.TgGetOrMakeThreadFromWa(v.Info.MessageSource.Sender.ToNonAD(), cfg.Telegram.TargetChatID, "")
 			} else {
-				threadId, err = utils.TgGetOrMakeThreadFromWa(v.Info.MessageSource.SenderAlt.ToNonAD(), cfg.Telegram.TargetChatID,
-					utils.WaGetContactName(v.Info.MessageSource.SenderAlt.ToNonAD()))
+				threadId, err = utils.TgGetOrMakeThreadFromWa(v.Info.MessageSource.SenderAlt.ToNonAD(), cfg.Telegram.TargetChatID, "")
 			}
 			if err != nil {
 				utils.TgSendErrorById(tgBot, cfg.Telegram.TargetChatID, 0, fmt.Sprintf("failed to create/find thread id for '%s'",
@@ -529,7 +527,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 		} else {
 			target_chat_jid := v.Info.Chat.ToNonAD()
 
-			threadId, err = utils.TgGetOrMakeThreadFromWa(target_chat_jid, cfg.Telegram.TargetChatID, utils.WaGetContactName(target_chat_jid))
+			threadId, err = utils.TgGetOrMakeThreadFromWa(target_chat_jid, cfg.Telegram.TargetChatID, "")
 			if err != nil {
 				utils.TgSendErrorById(tgBot, cfg.Telegram.TargetChatID, 0, fmt.Sprintf("failed to create/find thread id for '%s'",
 					target_chat_jid.String()), err)
@@ -1465,11 +1463,9 @@ func UndecryptableMessageEventHandler(v *events.UndecryptableMessage) {
 		}
 	} else if v.Info.IsIncomingBroadcast() {
 		if (v.Info.MessageSource.AddressingMode == waTypes.AddressingModePN) || v.Info.MessageSource.SenderAlt.IsEmpty() {
-			threadId, err = utils.TgGetOrMakeThreadFromWa(v.Info.MessageSource.Sender.ToNonAD(), cfg.Telegram.TargetChatID,
-				utils.WaGetContactName(v.Info.MessageSource.Sender.ToNonAD()))
+			threadId, err = utils.TgGetOrMakeThreadFromWa(v.Info.MessageSource.Sender.ToNonAD(), cfg.Telegram.TargetChatID, "")
 		} else {
-			threadId, err = utils.TgGetOrMakeThreadFromWa(v.Info.MessageSource.SenderAlt.ToNonAD(), cfg.Telegram.TargetChatID,
-				utils.WaGetContactName(v.Info.MessageSource.SenderAlt.ToNonAD()))
+			threadId, err = utils.TgGetOrMakeThreadFromWa(v.Info.MessageSource.SenderAlt.ToNonAD(), cfg.Telegram.TargetChatID, "")
 		}
 
 		if err != nil {
@@ -1488,7 +1484,7 @@ func UndecryptableMessageEventHandler(v *events.UndecryptableMessage) {
 	} else {
 		target_chat_jid := v.Info.Chat.ToNonAD()
 
-		threadId, err = utils.TgGetOrMakeThreadFromWa(target_chat_jid, cfg.Telegram.TargetChatID, utils.WaGetContactName(target_chat_jid))
+		threadId, err = utils.TgGetOrMakeThreadFromWa(target_chat_jid, cfg.Telegram.TargetChatID, "")
 		if err != nil {
 			utils.TgSendErrorById(tgBot, cfg.Telegram.TargetChatID, 0, fmt.Sprintf("failed to create/find thread id for '%s'",
 				target_chat_jid.String()), err)
@@ -1531,7 +1527,20 @@ func CallOfferEventHandler(v *events.CallOffer) {
 		html.EscapeString(v.Timestamp.In(state.State.LocalLocation).Format(cfg.TimeFormat)),
 	)
 
-	utils.TgSendTextById(tgBot, cfg.Telegram.TargetChatID, callThreadId, bridgeText)
+	if err := utils.TgSendTextById(tgBot, cfg.Telegram.TargetChatID, callThreadId, bridgeText); err != nil {
+		utils.TgSendErrorById(tgBot, cfg.Telegram.TargetChatID, 0, "Failed to send call notification to Calls topic", err)
+	}
+
+	// Same notification in the contact's forum topic (not only global Calls).
+	callerJID := v.CallCreator.ToNonAD()
+	contactThreadId, err := utils.TgGetOrMakeThreadFromWa(callerJID, cfg.Telegram.TargetChatID, "")
+	if err != nil {
+		utils.TgSendErrorById(tgBot, cfg.Telegram.TargetChatID, 0, fmt.Sprintf("Failed to resolve thread for call from %s", html.EscapeString(callerJID.String())), err)
+		return
+	}
+	if contactThreadId != callThreadId {
+		_ = utils.TgSendTextById(tgBot, cfg.Telegram.TargetChatID, contactThreadId, bridgeText)
+	}
 }
 
 func ReceiptEventHandler(v *events.Receipt) {
@@ -1603,7 +1612,7 @@ func UserAboutEventHandler(v *events.UserAbout) {
 		}
 	}
 
-	tgThreadId, err = utils.TgGetOrMakeThreadFromWa(v.JID.ToNonAD(), cfg.Telegram.TargetChatID, utils.WaGetContactName(v.JID.ToNonAD()))
+	tgThreadId, err = utils.TgGetOrMakeThreadFromWa(v.JID.ToNonAD(), cfg.Telegram.TargetChatID, "")
 	if err != nil {
 		logger.Warn(
 			"failed to create a new thread for a WhatsApp chat (handling UserAbout event)",
@@ -1770,7 +1779,7 @@ func PictureEventHandler(v *events.Picture) {
 			}
 		}
 	} else if v.JID.Server == waTypes.DefaultUserServer {
-		tgThreadId, err = utils.TgGetOrMakeThreadFromWa(v.JID.ToNonAD(), cfg.Telegram.TargetChatID, utils.WaGetContactName(v.JID.ToNonAD()))
+		tgThreadId, err = utils.TgGetOrMakeThreadFromWa(v.JID.ToNonAD(), cfg.Telegram.TargetChatID, "")
 		if err != nil {
 			logger.Warn(
 				"failed to create a new thread for a WhatsApp chat (handling Picture event)",

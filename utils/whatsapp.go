@@ -135,6 +135,79 @@ func WaGetPhoneForDisplay(id, server string) string {
 	return "+" + pn.User
 }
 
+// waContactBaseLabel returns a human-readable name without appending raw WA user id
+// (avoids "Bruh (52352010694781)"-style titles when that id is an opaque LID).
+func waContactBaseLabel(jid types.JID) string {
+	if jid.ToNonAD() == state.State.WhatsAppClient.Store.ID.ToNonAD() {
+		return "You"
+	}
+	waClient := state.State.WhatsAppClient
+	lookupJID := jid.ToNonAD()
+	var firstName, fullName, pushName, businessName string
+	var found bool
+	var err error
+	if jid.Server == types.HiddenUserServer {
+		pn, e := waClient.Store.LIDs.GetPNForLID(context.Background(), jid)
+		if e != nil {
+			return ""
+		}
+		lookupJID = pn.ToNonAD()
+		firstName, fullName, pushName, businessName, found, err = database.ContactNameGet(pn.User, pn.Server)
+	} else {
+		firstName, fullName, pushName, businessName, found, err = database.ContactNameGet(jid.User, jid.Server)
+	}
+	if err == nil && found {
+		if fullName != "" {
+			return fullName
+		}
+		if businessName != "" {
+			return businessName
+		}
+		if pushName != "" {
+			return pushName
+		}
+		if firstName != "" {
+			return firstName
+		}
+	}
+	contact, err := waClient.Store.Contacts.GetContact(context.Background(), lookupJID)
+	if err == nil && contact.Found {
+		if contact.FullName != "" {
+			return contact.FullName
+		}
+		if contact.BusinessName != "" {
+			return contact.BusinessName
+		}
+		if contact.PushName != "" {
+			return contact.PushName
+		}
+		if contact.FirstName != "" {
+			return contact.FirstName
+		}
+	}
+	return ""
+}
+
+// WaGetForumTopicName is used for Telegram forum topic titles for private chats:
+// "DisplayName (+phone)" using resolved phone (LID→PN when possible).
+func WaGetForumTopicName(jid types.JID) string {
+	if jid.Server == types.GroupServer {
+		return WaGetGroupName(jid)
+	}
+	if jid.ToNonAD() == state.State.WhatsAppClient.Store.ID.ToNonAD() {
+		return "You"
+	}
+	phone := WaGetPhoneForDisplay(jid.User, jid.Server)
+	base := waContactBaseLabel(jid)
+	if base == "" {
+		return phone
+	}
+	if strings.TrimPrefix(phone, "+") == base || phone == base {
+		return phone
+	}
+	return fmt.Sprintf("%s (%s)", base, phone)
+}
+
 func WaGetContactName(jid types.JID) string {
 	if jid.ToNonAD() == state.State.WhatsAppClient.Store.ID.ToNonAD() {
 		return "You"

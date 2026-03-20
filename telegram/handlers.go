@@ -249,9 +249,8 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 		waChatID = participantID
 
 		waChatJID, _ := utils.WaParseJID(participantID)
-		contactName := utils.WaGetContactName(waChatJID)
 
-		contactThreadID, err := utils.TgGetOrMakeThreadFromWa(waChatJID, c.EffectiveChat.Id, contactName)
+		contactThreadID, err := utils.TgGetOrMakeThreadFromWa(waChatJID, c.EffectiveChat.Id, "")
 		if err != nil {
 			return utils.TgReplyWithErrorByContext(b, c, "Failed to get or create a thread for the contact", err)
 		}
@@ -1287,7 +1286,7 @@ func SyncTopicNamesHandler(b *gotgbot.Bot, c *ext.Context) error {
 		if waChatJid.Server == waTypes.GroupServer {
 			newName = utils.WaGetGroupName(waChatJid)
 		} else {
-			newName = utils.WaGetContactName(waChatJid)
+			newName = utils.WaGetForumTopicName(waChatJid)
 		}
 
 		b.EditForumTopic(c.EffectiveChat.Id, tgThreadId, &gotgbot.EditForumTopicOpts{
