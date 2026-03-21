@@ -105,9 +105,82 @@ func WhatsAppEventHandler(evt interface{}) {
 
 }
 
+// unwrapInnerMessage peels ephemeral/view-once/device-sent wrappers so body text is visible.
+func unwrapInnerMessage(msg *waE2E.Message) *waE2E.Message {
+	for depth := 0; depth < 8 && msg != nil; depth++ {
+		switch {
+		case msg.GetDeviceSentMessage().GetMessage() != nil:
+			msg = msg.GetDeviceSentMessage().GetMessage()
+		case msg.GetBotInvokeMessage().GetMessage() != nil:
+			msg = msg.GetBotInvokeMessage().GetMessage()
+		case msg.GetEphemeralMessage().GetMessage() != nil:
+			msg = msg.GetEphemeralMessage().GetMessage()
+		case msg.GetViewOnceMessage().GetMessage() != nil:
+			msg = msg.GetViewOnceMessage().GetMessage()
+		case msg.GetViewOnceMessageV2().GetMessage() != nil:
+			msg = msg.GetViewOnceMessageV2().GetMessage()
+		case msg.GetViewOnceMessageV2Extension().GetMessage() != nil:
+			msg = msg.GetViewOnceMessageV2Extension().GetMessage()
+		case msg.GetDocumentWithCaptionMessage().GetMessage() != nil:
+			msg = msg.GetDocumentWithCaptionMessage().GetMessage()
+		default:
+			return msg
+		}
+	}
+	return msg
+}
+
+// interactiveMessageText extracts copy/body text from business interactive messages (OTP flows, copy-code buttons).
+func interactiveMessageText(im *waE2E.InteractiveMessage) string {
+	if im == nil {
+		return ""
+	}
+	var parts []string
+	if h := im.GetHeader(); h != nil {
+		if s := h.GetTitle(); s != "" {
+			parts = append(parts, s)
+		}
+		if s := h.GetSubtitle(); s != "" {
+			parts = append(parts, s)
+		}
+	}
+	if b := im.GetBody(); b != nil {
+		if s := b.GetText(); s != "" {
+			parts = append(parts, s)
+		}
+	}
+	if f := im.GetFooter(); f != nil {
+		if s := f.GetText(); s != "" {
+			parts = append(parts, s)
+		}
+	}
+	if nfm := im.GetNativeFlowMessage(); nfm != nil {
+		if j := strings.TrimSpace(nfm.GetMessageParamsJSON()); j != "" {
+			parts = append(parts, j)
+		}
+		for _, btn := range nfm.GetButtons() {
+			if btn == nil {
+				continue
+			}
+			if n := strings.TrimSpace(btn.GetName()); n != "" {
+				parts = append(parts, n)
+			}
+			if j := strings.TrimSpace(btn.GetButtonParamsJSON()); j != "" {
+				parts = append(parts, j)
+			}
+		}
+	}
+	return strings.Join(parts, "\n")
+}
+
 // getMessageText extracts displayable text from a WA message for bridging.
-// Handles ExtendedText, Conversation, TemplateMessage (business/template), ButtonsMessage, ListMessage, HighlyStructuredMessage.
+// Handles ExtendedText, Conversation, InteractiveMessage, TemplateMessage (incl. interactive template),
+// ButtonsMessage, ListMessage, HighlyStructuredMessage.
 func getMessageText(msg *waE2E.Message) string {
+	if msg == nil {
+		return ""
+	}
+	msg = unwrapInnerMessage(msg)
 	if msg == nil {
 		return ""
 	}
@@ -117,9 +190,19 @@ func getMessageText(msg *waE2E.Message) string {
 	if t := msg.GetConversation(); t != "" {
 		return t
 	}
+	if im := msg.GetInteractiveMessage(); im != nil {
+		if s := interactiveMessageText(im); s != "" {
+			return s
+		}
+	}
 	// Business / template messages (e.g. verification codes from business accounts)
 	if tm := msg.GetTemplateMessage(); tm != nil {
 		var parts []string
+		if im := tm.GetInteractiveMessageTemplate(); im != nil {
+			if s := interactiveMessageText(im); s != "" {
+				return s
+			}
+		}
 		if h := tm.GetHydratedTemplate(); h != nil {
 			if s := h.GetHydratedTitleText(); s != "" {
 				parts = append(parts, s)
@@ -156,6 +239,16 @@ func getMessageText(msg *waE2E.Message) string {
 		}
 		if s := bm.GetFooterText(); s != "" {
 			parts = append(parts, s)
+		}
+		for _, btn := range bm.GetButtons() {
+			if btn == nil {
+				continue
+			}
+			if bt := btn.GetButtonText(); bt != nil {
+				if s := bt.GetDisplayText(); s != "" {
+					parts = append(parts, s)
+				}
+			}
 		}
 		if len(parts) > 0 {
 			return strings.Join(parts, "\n")
@@ -441,6 +534,21 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 				zap.String("event_id", v.Info.ID),
 			)
 			contextInfo = v.Message.GetPollCreationMessageV3().GetContextInfo()
+		} else if v.Message.GetInteractiveMessage() != nil {
+			logger.Debug("taking context info from InteractiveMessage",
+				zap.String("event_id", v.Info.ID),
+			)
+			contextInfo = v.Message.GetInteractiveMessage().GetContextInfo()
+		} else if tm := v.Message.GetTemplateMessage(); tm != nil {
+			logger.Debug("taking context info from TemplateMessage",
+				zap.String("event_id", v.Info.ID),
+			)
+			contextInfo = tm.GetContextInfo()
+		} else if v.Message.GetButtonsMessage() != nil {
+			logger.Debug("taking context info from ButtonsMessage",
+				zap.String("event_id", v.Info.ID),
+			)
+			contextInfo = v.Message.GetButtonsMessage().GetContextInfo()
 		} else {
 			logger.Debug("no context info found in any kind of messages",
 				zap.String("event_id", v.Info.ID),
