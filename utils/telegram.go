@@ -65,17 +65,20 @@ func TgGetOrMakeThreadFromWa_String(waChatIdString string, tgChatId int64, threa
 
 const maxForumTopicNameLen = 128
 
-func syncForumTopicTitleForPrivateChat(tgChatId, threadId int64, waJID waTypes.JID) {
+// TgSyncForumTopicTitleFromWa sets the forum topic title to WaGetForumTopicName (WA display + phone).
+// Call from /synccontactname only — do not invoke on every message, so users can rename topics freely.
+func TgSyncForumTopicTitleFromWa(tgChatId, threadId int64, waJID waTypes.JID) error {
 	title := WaGetForumTopicName(waJID)
 	if len(title) > maxForumTopicNameLen {
 		title = title[:maxForumTopicNameLen-3] + "..."
 	}
 	tgBot := state.State.TelegramBot
-	_, _ = tgBot.EditForumTopic(tgChatId, threadId, &gotgbot.EditForumTopicOpts{Name: title})
+	_, err := tgBot.EditForumTopic(tgChatId, threadId, &gotgbot.EditForumTopicOpts{Name: title})
+	return err
 }
 
 // TgGetOrMakeThreadFromWa resolves LID→PN, then maps WA chat → Telegram forum thread.
-// For private chats the topic title is WaGetForumTopicName (e.g. "Bruh (+770…)") and is refreshed on each use so LID→phone resolution updates the title.
+// For private chats the initial topic title (on first create) is WaGetForumTopicName; titles are not updated on each message — use /synccontactname to refresh.
 // For groups, pass threadName (e.g. WaGetGroupName); if empty, WaGetGroupName is used.
 func TgGetOrMakeThreadFromWa(waChatId waTypes.JID, tgChatId int64, threadName string) (int64, error) {
 	if waChatId.Server == waTypes.HiddenUserServer {
@@ -103,9 +106,6 @@ func TgGetOrMakeThreadFromWa(waChatId waTypes.JID, tgChatId int64, threadName st
 	threadId, err := TgGetOrMakeThreadFromWa_String(waChatIdString, tgChatId, title)
 	if err != nil {
 		return 0, err
-	}
-	if waChatId.Server == waTypes.DefaultUserServer {
-		syncForumTopicTitleForPrivateChat(tgChatId, threadId, waChatId)
 	}
 	return threadId, nil
 }

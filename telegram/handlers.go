@@ -102,7 +102,15 @@ func AddTelegramHandlers() {
 		},
 		waTgBridgeCommand{
 			handlers.NewCommand("synctopicnames", SyncTopicNamesHandler),
-			"Update the names of the topics created",
+			"Update group topic titles from WhatsApp (not private threads; use /synccontactname there)",
+		},
+		waTgBridgeCommand{
+			handlers.NewCommand("synccontactname", SyncContactNameHandler),
+			"Rename this topic to match WA contact name (run inside a private contact thread)",
+		},
+		waTgBridgeCommand{
+			handlers.NewCommand("synccontactphoto", SyncContactPhotoHandler),
+			"Post this contact's WhatsApp profile photo in the topic and pin it (private contact thread only)",
 		},
 		waTgBridgeCommand{
 			handlers.NewCommand("send", SendToWhatsAppHandler),
@@ -1261,6 +1269,110 @@ func GetProfilePictureHandler(b *gotgbot.Bot, c *ext.Context) error {
 	return nil
 }
 
+func SyncContactNameHandler(b *gotgbot.Bot, c *ext.Context) error {
+	if !utils.TgUpdateIsAuthorized(b, c) {
+		return nil
+	}
+	if !c.EffectiveMessage.IsTopicMessage || c.EffectiveMessage.MessageThreadId == 0 {
+		_, err := utils.TgReplyTextByContext(b, c, "Use <code>/synccontactname</code> inside a private contact topic (not General).", nil, false)
+		return err
+	}
+	waChatId, err := database.ChatThreadGetWaFromTg(c.EffectiveChat.Id, c.EffectiveMessage.MessageThreadId)
+	if err != nil || waChatId == "" {
+		_, err := utils.TgReplyTextByContext(b, c, "This topic is not linked to a WhatsApp chat.", nil, false)
+		return err
+	}
+	if strings.Contains(waChatId, "g.us") || waChatId == "status@broadcast" || waChatId == "calls" || waChatId == "mentions" {
+		_, err := utils.TgReplyTextByContext(b, c, "Use this in a private contact thread only (not groups or system topics).", nil, false)
+		return err
+	}
+	waChatJid, ok := utils.WaParseJID(waChatId)
+	if !ok {
+		_, err := utils.TgReplyTextByContext(b, c, "Could not parse WhatsApp id for this topic.", nil, false)
+		return err
+	}
+	if waChatJid.Server == waTypes.GroupServer {
+		_, err := utils.TgReplyTextByContext(b, c, "Group topics: use <code>/synctopicnames</code> to refresh group titles.", nil, false)
+		return err
+	}
+	err = utils.TgSyncForumTopicTitleFromWa(c.EffectiveChat.Id, c.EffectiveMessage.MessageThreadId, waChatJid.ToNonAD())
+	if err != nil {
+		return utils.TgReplyWithErrorByContext(b, c, "Failed to rename topic", err)
+	}
+	_, err = utils.TgReplyTextByContext(b, c, "Topic title updated to match WhatsApp contact name.", nil, false)
+	return err
+}
+
+func SyncContactPhotoHandler(b *gotgbot.Bot, c *ext.Context) error {
+	if !utils.TgUpdateIsAuthorized(b, c) {
+		return nil
+	}
+	if !c.EffectiveMessage.IsTopicMessage || c.EffectiveMessage.MessageThreadId == 0 {
+		_, err := utils.TgReplyTextByContext(b, c, "Use <code>/synccontactphoto</code> inside a private contact topic (not General).", nil, false)
+		return err
+	}
+	waChatId, err := database.ChatThreadGetWaFromTg(c.EffectiveChat.Id, c.EffectiveMessage.MessageThreadId)
+	if err != nil || waChatId == "" {
+		_, err := utils.TgReplyTextByContext(b, c, "This topic is not linked to a WhatsApp chat.", nil, false)
+		return err
+	}
+	if strings.Contains(waChatId, "g.us") || waChatId == "status@broadcast" || waChatId == "calls" || waChatId == "mentions" {
+		_, err := utils.TgReplyTextByContext(b, c, "Use this in a private contact thread only (not groups or system topics).", nil, false)
+		return err
+	}
+	waChatJid, ok := utils.WaParseJID(waChatId)
+	if !ok {
+		_, err := utils.TgReplyTextByContext(b, c, "Could not parse WhatsApp id for this topic.", nil, false)
+		return err
+	}
+	if waChatJid.Server == waTypes.GroupServer {
+		_, err := utils.TgReplyTextByContext(b, c, "Use <code>/getprofilepicture</code> with a group id for groups.", nil, false)
+		return err
+	}
+
+	waClient := state.State.WhatsAppClient
+	targetJID := waChatJid.ToNonAD()
+	if targetJID.Server == waTypes.HiddenUserServer {
+		if pn, errPN := waClient.Store.LIDs.GetPNForLID(context.Background(), targetJID); errPN == nil {
+			targetJID = pn.ToNonAD()
+		}
+	}
+
+	ppInfo, err := waClient.GetProfilePictureInfo(context.Background(), targetJID, &whatsmeow.GetProfilePictureParams{})
+	if err != nil {
+		return utils.TgReplyWithErrorByContext(b, c, "Failed to fetch profile picture from WhatsApp", err)
+	}
+	if ppInfo == nil || ppInfo.URL == "" {
+		_, err := utils.TgReplyTextByContext(b, c, "This contact has no WhatsApp profile photo (or visibility is restricted).", nil, false)
+		return err
+	}
+
+	imgBytes, err := utils.DownloadFileBytesByURL(ppInfo.URL)
+	if err != nil {
+		return utils.TgReplyWithErrorByContext(b, c, "Failed to download profile picture", err)
+	}
+
+	threadID := c.EffectiveMessage.MessageThreadId
+	sentMsg, err := b.SendPhoto(c.EffectiveChat.Id, &gotgbot.FileReader{Data: bytes.NewReader(imgBytes)}, &gotgbot.SendPhotoOpts{
+		MessageThreadId:     threadID,
+		Caption:             "<i>WhatsApp profile photo</i>",
+		ParseMode:           "HTML",
+		DisableNotification: true,
+	})
+	if err != nil {
+		return utils.TgReplyWithErrorByContext(b, c, "Failed to send photo", err)
+	}
+
+	_, err = b.PinChatMessage(c.EffectiveChat.Id, sentMsg.MessageId, &gotgbot.PinChatMessageOpts{
+		DisableNotification: true,
+	})
+	if err != nil {
+		return utils.TgReplyWithErrorByContext(b, c, "Photo sent, but failed to pin (bot needs can_pin_messages in this group)", err)
+	}
+	_, err = utils.TgReplyTextByContext(b, c, "Profile photo posted and pinned.", nil, false)
+	return err
+}
+
 func SyncTopicNamesHandler(b *gotgbot.Bot, c *ext.Context) error {
 	if !utils.TgUpdateIsAuthorized(b, c) {
 		return nil
@@ -1280,14 +1392,15 @@ func SyncTopicNamesHandler(b *gotgbot.Bot, c *ext.Context) error {
 		if waChatId == "status@broadcast" || waChatId == "calls" || waChatId == "mentions" {
 			continue
 		}
-		waChatJid, _ := utils.WaParseJID(waChatId)
-
-		var newName string
-		if waChatJid.Server == waTypes.GroupServer {
-			newName = utils.WaGetGroupName(waChatJid)
-		} else {
-			newName = utils.WaGetForumTopicName(waChatJid)
+		waChatJid, ok := utils.WaParseJID(waChatId)
+		if !ok {
+			continue
 		}
+		if waChatJid.Server != waTypes.GroupServer {
+			continue
+		}
+
+		newName := utils.WaGetGroupName(waChatJid)
 
 		b.EditForumTopic(c.EffectiveChat.Id, tgThreadId, &gotgbot.EditForumTopicOpts{
 			Name:              newName,
@@ -1296,7 +1409,7 @@ func SyncTopicNamesHandler(b *gotgbot.Bot, c *ext.Context) error {
 		time.Sleep(5 * time.Second)
 	}
 
-	_, err = c.EffectiveMessage.Reply(b, "Successfully synced topic names", nil)
+	_, err = c.EffectiveMessage.Reply(b, "Successfully synced group topic names from WhatsApp", nil)
 	return err
 }
 
@@ -1452,15 +1565,15 @@ func RevokeCallbackHandler(b *gotgbot.Bot, c *ext.Context) error {
 				return err
 			}
 
-	} else {
+		} else {
 
-		_, err := cq.Answer(b, &gotgbot.AnswerCallbackQueryOpts{
-			Text:      "Invalid callback query",
-			ShowAlert: true,
-			CacheTime: 60,
-		})
-		return err
-	}
+			_, err := cq.Answer(b, &gotgbot.AnswerCallbackQueryOpts{
+				Text:      "Invalid callback query",
+				ShowAlert: true,
+				CacheTime: 60,
+			})
+			return err
+		}
 
 	} else {
 
