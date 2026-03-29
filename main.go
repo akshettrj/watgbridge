@@ -6,15 +6,19 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"time"
 
+	"watgbridge/bridge"
 	"watgbridge/database"
+	"watgbridge/mainbot"
 	"watgbridge/modules"
 	"watgbridge/state"
 	"watgbridge/telegram"
 	"watgbridge/utils"
 	"watgbridge/whatsapp"
+	"watgbridge/crypto/sqlitekey"
 
 	"github.com/PaulSonOfLars/gotgbot/v2"
 	"github.com/go-co-op/gocron"
@@ -25,6 +29,8 @@ import (
 func main() {
 	// Flags (override config file and env)
 	configPath := pflag.StringP("config", "c", "config.yaml", "config file path")
+	pflag.String("mode", "single", "run mode: single or multi")
+	pflag.String("main-telegram-bot-token", "", "Telegram main bot token (control plane)")
 	pflag.String("telegram-bot-token", "", "Telegram bot token")
 	pflag.Int64("telegram-owner-id", 0, "Telegram owner user ID")
 	pflag.Int64("telegram-target-chat-id", 0, "Telegram target chat/group ID")
@@ -44,17 +50,19 @@ func main() {
 	}
 
 	bindings := []state.FlagBinding{
-		{"telegram.bot_token", pflag.Lookup("telegram-bot-token")},
-		{"telegram.owner_id", pflag.Lookup("telegram-owner-id")},
-		{"telegram.target_chat_id", pflag.Lookup("telegram-target-chat-id")},
-		{"debug_mode", pflag.Lookup("debug")},
-		{"time_zone", pflag.Lookup("time-zone")},
-		{"time_format", pflag.Lookup("time-format")},
-		{"whatsapp.session_name", pflag.Lookup("whatsapp-session-name")},
-		{"telegram.skip_startup_message", pflag.Lookup("telegram-skip-startup-message")},
-		{"telegram.skip_setting_commands", pflag.Lookup("telegram-skip-setting-commands")},
-		{"telegram.silent_confirmation", pflag.Lookup("telegram-silent-confirmation")},
-		{"telegram.confirmation_type", pflag.Lookup("telegram-confirmation-type")},
+		{ViperKey: "mode", Flag: pflag.Lookup("mode")},
+		{ViperKey: "telegram.main_bot_token", Flag: pflag.Lookup("main-telegram-bot-token")},
+		{ViperKey: "telegram.bot_token", Flag: pflag.Lookup("telegram-bot-token")},
+		{ViperKey: "telegram.owner_id", Flag: pflag.Lookup("telegram-owner-id")},
+		{ViperKey: "telegram.target_chat_id", Flag: pflag.Lookup("telegram-target-chat-id")},
+		{ViperKey: "debug_mode", Flag: pflag.Lookup("debug")},
+		{ViperKey: "time_zone", Flag: pflag.Lookup("time-zone")},
+		{ViperKey: "time_format", Flag: pflag.Lookup("time-format")},
+		{ViperKey: "whatsapp.session_name", Flag: pflag.Lookup("whatsapp-session-name")},
+		{ViperKey: "telegram.skip_startup_message", Flag: pflag.Lookup("telegram-skip-startup-message")},
+		{ViperKey: "telegram.skip_setting_commands", Flag: pflag.Lookup("telegram-skip-setting-commands")},
+		{ViperKey: "telegram.silent_confirmation", Flag: pflag.Lookup("telegram-silent-confirmation")},
+		{ViperKey: "telegram.confirmation_type", Flag: pflag.Lookup("telegram-confirmation-type")},
 	}
 
 	var err error
@@ -67,7 +75,11 @@ func main() {
 	}
 
 	cfg := state.State.Config
-	if cfg.Telegram.BotToken == "" || cfg.Telegram.OwnerID == 0 || cfg.Telegram.TargetChatID == 0 {
+	if cfg.Mode == "multi" {
+		if cfg.Telegram.MainBotToken == "" {
+			panic(fmt.Errorf("telegram.main_bot_token is required in multi mode"))
+		}
+	} else if cfg.Telegram.BotToken == "" || cfg.Telegram.OwnerID == 0 || cfg.Telegram.TargetChatID == 0 {
 		panic(fmt.Errorf("telegram.bot_token, telegram.owner_id and telegram.target_chat_id are required (set in config file, env TELEGRAM_BOT_TOKEN/TELEGRAM_OWNER_ID/TELEGRAM_TARGET_CHAT_ID, or flags --telegram-bot-token/--telegram-owner-id/--telegram-target-chat-id)"))
 	}
 
@@ -176,6 +188,29 @@ func main() {
 		}
 	}
 
+	// SQLCipher: derive WATG_SQLCIPHER_KEY_HEX from WATG_SQLITE_MASTER_KEY for this process (children get their own from the bridge manager).
+	if master, hasMaster, err := sqlitekey.MasterKeyBytesFromEnv(); err != nil {
+		logger.Fatal("invalid WATG_SQLITE_MASTER_KEY", zap.Error(err))
+	} else if hasMaster && os.Getenv(sqlitekey.EnvDerived) == "" {
+		dbType := cfg.Database["type"]
+		waSQLite := cfg.WhatsApp.LoginDatabase.Type == "sqlite3"
+		switch {
+		case cfg.Mode == "multi" && dbType == "sqlite":
+			k, err := sqlitekey.DeriveKeyHex(master, "watgbridge-v1/registry")
+			if err != nil {
+				logger.Fatal("derive sqlcipher registry key", zap.Error(err))
+			}
+			_ = os.Setenv(sqlitekey.EnvDerived, k)
+		case cfg.Mode == "single" && (dbType == "sqlite" || waSQLite):
+			k, err := sqlitekey.DeriveKeyHex(master, "watgbridge-v1/single")
+			if err != nil {
+				logger.Fatal("derive sqlcipher key", zap.Error(err))
+			}
+			_ = os.Setenv(sqlitekey.EnvDerived, k)
+		}
+	}
+
+
 	// Setup database
 	db, err := database.Connect()
 	if err != nil {
@@ -189,6 +224,19 @@ func main() {
 		logger.Fatal("could not migrate database tabels",
 			zap.Error(err),
 		)
+	}
+
+	if cfg.Mode == "multi" {
+		bridgeRoot := filepath.Join(filepath.Dir(cfg.Path), "bridges")
+		manager := bridge.NewManager(bridgeRoot)
+		if err := manager.StartEnabled(); err != nil {
+			logger.Error("failed to start enabled bridge runtimes", zap.Error(err))
+		}
+		logger.Info("starting main bot in multi mode")
+		if err := mainbot.Start(cfg.Telegram.MainBotToken, manager); err != nil {
+			logger.Fatal("failed to start main bot", zap.Error(err))
+		}
+		return
 	}
 
 	if cfg.Redis.Addr != "" {

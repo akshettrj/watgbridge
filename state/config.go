@@ -11,6 +11,7 @@ import (
 
 type Config struct {
 	Path             string `yaml:"-" mapstructure:"-"`
+	Mode             string `yaml:"mode" mapstructure:"mode"`
 	TimeZone         string `yaml:"time_zone" mapstructure:"time_zone"`
 	TimeFormat       string `yaml:"time_format" mapstructure:"time_format"`
 	GitExecutable    string `yaml:"git_executable" mapstructure:"git_executable"`
@@ -22,6 +23,7 @@ type Config struct {
 	Architecture       string `yaml:"architecture" mapstructure:"architecture"`
 
 	Telegram struct {
+		MainBotToken        string  `yaml:"main_bot_token" mapstructure:"main_bot_token"`
 		BotToken            string  `yaml:"bot_token" mapstructure:"bot_token"`
 		APIURL              string  `yaml:"api_url" mapstructure:"api_url"`
 		SudoUsersID         []int64 `yaml:"sudo_users_id" mapstructure:"sudo_users_id"`
@@ -150,6 +152,7 @@ func (cfg *Config) SaveConfig() error {
 }
 
 func (cfg *Config) SetDefaults() {
+	cfg.Mode = "single"
 	cfg.TimeZone = "UTC"
 
 	cfg.WhatsApp.SessionName = "watgbridge"

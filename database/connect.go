@@ -1,13 +1,16 @@
 package database
 
 import (
+	"database/sql"
 	"fmt"
 
+	"watgbridge/crypto/sqlitekey"
+	"watgbridge/internal/gormsqlcipher"
 	"watgbridge/state"
 
+	_ "github.com/mutecomm/go-sqlcipher/v4"
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
@@ -60,7 +63,17 @@ func Connect() (*gorm.DB, error) {
 			return nil, fmt.Errorf("Error: database config for type '%s' requires the keys %+v", dbType, missingKeys)
 		}
 
-		return gorm.Open(sqlite.Open(dbConfig["path"]), &gormConfig)
+		sqlDB, err := sql.Open("sqlite3", dbConfig["path"])
+		if err != nil {
+			return nil, err
+		}
+		if hexKey, ok := sqlitekey.DerivedHexFromEnv(); ok {
+			if err := sqlitekey.ApplyToDB(sqlDB, hexKey); err != nil {
+				_ = sqlDB.Close()
+				return nil, fmt.Errorf("sqlcipher: %w", err)
+			}
+		}
+		return gorm.Open(gormsqlcipher.New(gormsqlcipher.Config{Conn: sqlDB}), &gormConfig)
 
 	case "mysql":
 

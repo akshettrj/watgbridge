@@ -1,8 +1,10 @@
+mode: ${MODE}
 time_zone: ${TIME_ZONE}
 time_format: ${TIME_FORMAT}
 debug_mode: ${DEBUG_MODE}
 
 telegram:
+  main_bot_token: "${TELEGRAM_MAIN_BOT_TOKEN}"
   bot_token: "${TELEGRAM_BOT_TOKEN}"
   owner_id: ${TELEGRAM_OWNER_ID}
   target_chat_id: ${TELEGRAM_TARGET_CHAT_ID}

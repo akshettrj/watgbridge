@@ -1,3 +1,4 @@
+# Prebuilt Linux binaries (amd64 + arm64). Requires CGO + gcc for SQLCipher — see .github/CI.md
 name: Release Prebuilt Binaries
 
 on:
@@ -28,8 +29,9 @@ jobs:
       with:
         go-version: '1.25'
 
+    # CGO required: github.com/mutecomm/go-sqlcipher/v4 (SQLCipher). See .github/CI.md
     - name: Build
-      run: GOARCH=amd64 GOOS=linux go build -ldflags '-s -w' -o watgbridge_linux_amd64 .
+      run: CGO_ENABLED=1 GOARCH=amd64 GOOS=linux go build -ldflags '-s -w' -o watgbridge_linux_amd64 .
 
     - name: Get Project Version
       id: get_version

@@ -2,6 +2,7 @@ package database
 
 import (
 	"database/sql"
+	"time"
 
 	"watgbridge/state"
 )
@@ -53,6 +54,38 @@ type ContactTag struct {
 	TagId       uint   `gorm:"primaryKey;not null"`
 }
 
+type BridgeUser struct {
+	TelegramUserID int64     `gorm:"primaryKey;autoIncrement:false"`
+	Status         string    `gorm:"size:32;not null;default:active"`
+	CreatedAt      time.Time `gorm:"not null"`
+	UpdatedAt      time.Time `gorm:"not null"`
+}
+
+type Bridge struct {
+	ID                 uint      `gorm:"primaryKey;autoIncrement"`
+	OwnerUserID        int64     `gorm:"index:idx_bridge_owner_name,unique;not null"`
+	Name               string    `gorm:"size:191;index:idx_bridge_owner_name,unique;not null"`
+	BridgeBotToken     string    `gorm:"type:text;not null"`
+	BridgeBotTokenHash string    `gorm:"size:64;uniqueIndex;not null"`
+	TelegramTargetChat int64     `gorm:"not null"`
+	WaSessionName      string    `gorm:"size:191;uniqueIndex;not null"`
+	Enabled            bool      `gorm:"not null;default:true"`
+	CreatedAt          time.Time `gorm:"not null"`
+	UpdatedAt          time.Time `gorm:"not null"`
+}
+
+type BridgeProvisionState struct {
+	BridgeID          uint      `gorm:"primaryKey;autoIncrement:false"`
+	GeneralThreadID   int64
+	BotMetaThreadID   int64
+	CallsThreadID     int64
+	LastCheckStatus   string    `gorm:"size:64;not null;default:pending"`
+	LastCheckError    string    `gorm:"type:text"`
+	LastProvisionedAt time.Time
+	CreatedAt         time.Time `gorm:"not null"`
+	UpdatedAt         time.Time `gorm:"not null"`
+}
+
 func AutoMigrate() error {
 	db := state.State.Database
 	return db.AutoMigrate(
@@ -62,5 +95,8 @@ func AutoMigrate() error {
 		&ChatEphemeralSettings{},
 		&Tag{},
 		&ContactTag{},
+		&BridgeUser{},
+		&Bridge{},
+		&BridgeProvisionState{},
 	)
 }

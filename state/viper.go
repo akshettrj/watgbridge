@@ -27,6 +27,7 @@ func InitConfig(configPath string, bindings []FlagBinding) error {
 	v.SetConfigType("yaml")
 
 	// Defaults (match SetDefaults)
+	v.SetDefault("mode", "single")
 	v.SetDefault("time_zone", "UTC")
 	v.SetDefault("whatsapp.session_name", "watgbridge")
 	v.SetDefault("whatsapp.login_database.type", "sqlite3")

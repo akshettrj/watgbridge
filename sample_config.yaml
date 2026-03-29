@@ -1,3 +1,5 @@
+mode: single # single = legacy one bridge, multi = main bot manages many bridge runtimes
+
 time_zone: Asia/Kolkata
 time_format: 02 Jan, 2006 - Mon @ 15:04
 
@@ -10,6 +12,7 @@ use_github_binaries: false              # Set to true if you want to use pre-bui
 architecture:                           # Set it to aarch64 or amd64 based on your machine architecture to update using prebuilt releases
 
 telegram:
+  main_bot_token: ""                      # Used only in multi mode (control-plane bot)
   bot_token: 186779
   #api_url: http://localhost:8082        # Uncomment if you have a local bot API server running (for bypassing file size limits)
   self_hosted_api: false

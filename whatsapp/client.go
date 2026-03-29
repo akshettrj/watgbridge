@@ -3,15 +3,17 @@ package whatsapp
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"fmt"
 	"html"
 	"os"
 
+	"watgbridge/crypto/sqlitekey"
 	"watgbridge/state"
 
 	"github.com/PaulSonOfLars/gotgbot/v2"
 	_ "github.com/jackc/pgx/v5"
-	_ "github.com/mattn/go-sqlite3"
+	_ "github.com/mutecomm/go-sqlcipher/v4"
 	"github.com/mdp/qrterminal/v3"
 	"github.com/skip2/go-qrcode"
 	"go.mau.fi/whatsmeow"
@@ -88,10 +90,28 @@ func NewWhatsAppClient() error {
 		SupportCagReactionsAndPolls:    proto.Bool(false),
 	}
 
-	container, err := sqlstore.New(context.Background(), state.State.Config.WhatsApp.LoginDatabase.Type,
-		state.State.Config.WhatsApp.LoginDatabase.URL, waDatabaseLogger)
-	if err != nil {
-		return fmt.Errorf("could not initialize sqlstore for Whatsapp : %s", err)
+	var container *sqlstore.Container
+	if cfg.WhatsApp.LoginDatabase.Type == "sqlite3" {
+		sqlDB, err := sql.Open("sqlite3", cfg.WhatsApp.LoginDatabase.URL)
+		if err != nil {
+			return fmt.Errorf("could not open whatsapp sqlite: %w", err)
+		}
+		if hexKey, ok := sqlitekey.DerivedHexFromEnv(); ok {
+			if err := sqlitekey.ApplyToDB(sqlDB, hexKey); err != nil {
+				_ = sqlDB.Close()
+				return fmt.Errorf("whatsapp sqlcipher: %w", err)
+			}
+		}
+		container = sqlstore.NewWithDB(sqlDB, "sqlite3", waDatabaseLogger)
+		if err := container.Upgrade(context.Background()); err != nil {
+			return fmt.Errorf("could not upgrade whatsapp sqlstore: %w", err)
+		}
+	} else {
+		container, err = sqlstore.New(context.Background(), cfg.WhatsApp.LoginDatabase.Type,
+			cfg.WhatsApp.LoginDatabase.URL, waDatabaseLogger)
+		if err != nil {
+			return fmt.Errorf("could not initialize sqlstore for Whatsapp : %s", err)
+		}
 	}
 
 	deviceStore, err := container.GetFirstDevice(context.Background())

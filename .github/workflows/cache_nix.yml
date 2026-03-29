@@ -1,3 +1,5 @@
+# Builds the Nix flake package and pushes to Cachix. CGO/SQLCipher inputs are defined in flake.nix / nix packages.
+# See .github/CI.md for workflow overview.
 name: Cache Nixpkg
 
 on:

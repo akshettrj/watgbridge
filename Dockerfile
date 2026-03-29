@@ -1,6 +1,8 @@
 FROM golang:1.25-alpine3.22 AS build
 
 RUN apk --no-cache add gcc g++ make git libwebp-tools ffmpeg imagemagick
+# musl: bundled SQLite expects pread64/off64_t (SQLCipher via go-sqlcipher)
+ENV CGO_CFLAGS="-D_GNU_SOURCE -D_LARGEFILE64_SOURCE"
 WORKDIR /go/src/watgbridge
 COPY go.mod go.sum ./
 RUN go mod download
