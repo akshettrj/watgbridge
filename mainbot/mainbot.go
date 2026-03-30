@@ -63,6 +63,9 @@ func Start(token string, manager *bridge.Manager) error {
 }
 
 func startHandler(b *gotgbot.Bot, c *ext.Context) error {
+	if c.EffectiveSender != nil && c.EffectiveSender.User != nil {
+		_ = database.BridgeUserEnsure(c.EffectiveSender.User.Id)
+	}
 	text := "<b>WaTgBridge Main Bot</b>\n\n"
 	text += "<b>What we store</b> (on the server that runs this bot): bridge registry (Telegram user id, bridge bot tokens, target chat/topic ids, enable flags), and each bridge process keeps its own SQLite for message id mappings and WhatsApp session state (whatsmeow store). We do <b>not</b> mirror your full chat history into that app database.\n\n"
 	text += "<b>At rest</b>: if you set <code>WATG_SQLITE_MASTER_KEY</code> (64 hex chars = 32 bytes), SQLite files are encrypted with SQLCipher; the same host must keep that secret to open them. Bridge child processes receive a derived key via environment, not via the generated YAML.\n\n"

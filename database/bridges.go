@@ -25,6 +25,38 @@ func BridgeUserEnsure(userID int64) error {
 	return db.Create(&BridgeUser{TelegramUserID: userID, Status: "active"}).Error
 }
 
+// BridgeRegistryNotifyUserIDs returns distinct Telegram user ids (bridge_users + bridge owners) for main-bot broadcasts.
+func BridgeRegistryNotifyUserIDs() ([]int64, error) {
+	db := state.State.Database
+	seen := make(map[int64]struct{})
+	var out []int64
+	add := func(id int64) {
+		if id == 0 {
+			return
+		}
+		if _, ok := seen[id]; ok {
+			return
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	var users []BridgeUser
+	if err := db.Find(&users).Error; err != nil {
+		return nil, err
+	}
+	for _, u := range users {
+		add(u.TelegramUserID)
+	}
+	var ownerIDs []int64
+	if err := db.Model(&Bridge{}).Distinct("owner_user_id").Pluck("owner_user_id", &ownerIDs).Error; err != nil {
+		return nil, err
+	}
+	for _, id := range ownerIDs {
+		add(id)
+	}
+	return out, nil
+}
+
 func BridgeCreate(ownerUserID int64, name, token string, tgTargetChatID int64, waSessionName string, enabled bool) (*Bridge, error) {
 	db := state.State.Database
 	hash := HashBridgeToken(token)
