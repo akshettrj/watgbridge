@@ -31,7 +31,6 @@ whatsapp:
   skip_locations: false
   skip_profile_picture_updates: false
   skip_group_settings_updates: false
-  skip_chat_details: true
   sticker_metadata:
     pack_name: WaTgBridge
     author_name: WaTgBridge

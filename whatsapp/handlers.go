@@ -401,33 +401,17 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 	}
 
 	var bridgedText string
-	if cfg.WhatsApp.SkipChatDetails {
-		logger.Debug("skipping to add chat details as configured",
-			zap.String("event_id", v.Info.ID),
-		)
-		if v.Info.IsIncomingBroadcast() {
-			bridgedText += "👥: <b>(Broadcast)</b>\n"
-		} else if v.Info.IsFromMe {
-			bridgedText += "🧑: <b>You [other device]</b>\n"
-		} else if v.Info.IsGroup {
-			bridgedText += fmt.Sprintf("🧑: <b>%s</b>\n", html.EscapeString(utils.WaGetContactName(v.Info.MessageSource.Sender)))
-		}
-
+	if v.Info.IsFromMe {
+		bridgedText += "🧑: <b>You [other device]</b>\n"
 	} else {
-
-		if v.Info.IsFromMe {
-			bridgedText += "🧑: <b>You [other device]</b>\n"
-		} else {
-			bridgedText += fmt.Sprintf("🧑: <b>%s</b>\n", html.EscapeString(utils.WaGetContactName(v.Info.MessageSource.Sender)))
-		}
-		if v.Info.IsIncomingBroadcast() {
-			bridgedText += "👥: <b>(Broadcast)</b>\n"
-		} else if v.Info.IsGroup {
-			bridgedText += fmt.Sprintf("👥: <b>%s</b>\n", html.EscapeString(utils.WaGetGroupName(v.Info.Chat)))
-		} else {
-			bridgedText += "👥: <b>(PVT)</b>\n"
-		}
-
+		bridgedText += fmt.Sprintf("🧑: <b>%s</b>\n", html.EscapeString(utils.WaGetContactName(v.Info.MessageSource.Sender)))
+	}
+	if v.Info.IsIncomingBroadcast() {
+		bridgedText += "👥: <b>(Broadcast)</b>\n"
+	} else if v.Info.IsGroup {
+		bridgedText += fmt.Sprintf("👥: <b>%s</b>\n", html.EscapeString(utils.WaGetGroupName(v.Info.Chat)))
+	} else {
+		bridgedText += "👥: <b>(PVT)</b>\n"
 	}
 
 	if isEdited {
@@ -558,7 +542,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 		if contextInfo != nil {
 
 			if contextInfo.GetIsForwarded() {
-				bridgedText += fmt.Sprintf("⏩: Forwarded %v times\n", contextInfo.GetForwardingScore())
+				bridgedText = fmt.Sprintf("⏩: Forwarded %v times\n", contextInfo.GetForwardingScore()) + bridgedText
 			}
 
 			logger.Debug("checking if your account is mentioned in the message",
@@ -1523,33 +1507,17 @@ func UndecryptableMessageEventHandler(v *events.UndecryptableMessage) {
 	}
 
 	var bridgedText string
-	if cfg.WhatsApp.SkipChatDetails {
-		logger.Debug("skipping to add chat details as configured",
-			zap.String("event_id", v.Info.ID),
-		)
-		if v.Info.IsIncomingBroadcast() {
-			bridgedText += "👥: <b>(Broadcast)</b>\n"
-		} else if v.Info.IsFromMe {
-			bridgedText += "🧑: <b>You [other device]</b>\n"
-		} else if v.Info.IsGroup {
-			bridgedText += fmt.Sprintf("🧑: <b>%s</b>\n", html.EscapeString(utils.WaGetContactName(v.Info.MessageSource.Sender)))
-		}
-
+	if v.Info.IsFromMe {
+		bridgedText += "🧑: <b>You [other device]</b>\n"
 	} else {
-
-		if v.Info.IsFromMe {
-			bridgedText += "🧑: <b>You [other device]</b>\n"
-		} else {
-			bridgedText += fmt.Sprintf("🧑: <b>%s</b>\n", html.EscapeString(utils.WaGetContactName(v.Info.MessageSource.Sender)))
-		}
-		if v.Info.IsIncomingBroadcast() {
-			bridgedText += "👥: <b>(Broadcast)</b>\n"
-		} else if v.Info.IsGroup {
-			bridgedText += fmt.Sprintf("👥: <b>%s</b>\n", html.EscapeString(utils.WaGetGroupName(v.Info.Chat)))
-		} else {
-			bridgedText += "👥: <b>(PVT)</b>\n"
-		}
-
+		bridgedText += fmt.Sprintf("🧑: <b>%s</b>\n", html.EscapeString(utils.WaGetContactName(v.Info.MessageSource.Sender)))
+	}
+	if v.Info.IsIncomingBroadcast() {
+		bridgedText += "👥: <b>(Broadcast)</b>\n"
+	} else if v.Info.IsGroup {
+		bridgedText += fmt.Sprintf("👥: <b>%s</b>\n", html.EscapeString(utils.WaGetGroupName(v.Info.Chat)))
+	} else {
+		bridgedText += "👥: <b>(PVT)</b>\n"
 	}
 
 	if time.Since(v.Info.Timestamp).Seconds() > 60 {
