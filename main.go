@@ -315,8 +315,6 @@ func main() {
 	}
 	_ = logger.Sync()
 
-	startMessageSuccessful := false
-
 	{
 		isRestarted, found := os.LookupEnv("WATG_IS_RESTARTED")
 		if !found || isRestarted != "1" {
@@ -342,13 +340,8 @@ func main() {
 		}
 
 		state.State.TelegramBot.SendMessage(chatId, "Successfully restarted", &opts)
-		startMessageSuccessful = true
 	}
 SKIP_RESTART:
-
-	if !startMessageSuccessful && !cfg.Telegram.SkipStartupMessage {
-		state.State.TelegramBot.SendMessage(cfg.Telegram.OwnerID, "Successfully started WaTgBridge", &gotgbot.SendMessageOpts{})
-	}
 
 	telegram.LogLaunchVersion()
 
