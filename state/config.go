@@ -45,6 +45,7 @@ type Config struct {
 		GeneralThreadID int64 `yaml:"general_thread_id" mapstructure:"general_thread_id"`
 		BotMetaThreadID int64 `yaml:"bot_meta_thread_id" mapstructure:"bot_meta_thread_id"`
 		CallsThreadID   int64 `yaml:"calls_thread_id" mapstructure:"calls_thread_id"`
+		StatusThreadID  int64 `yaml:"status_thread_id" mapstructure:"status_thread_id"`
 	} `yaml:"telegram" mapstructure:"telegram"`
 
 	WhatsApp struct {

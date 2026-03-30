@@ -108,17 +108,18 @@ func BridgeProvisionGet(bridgeID uint) (*BridgeProvisionState, error) {
 	return &p, nil
 }
 
-func BridgeProvisionSet(bridgeID uint, general, botMeta, calls int64, status, lastErr string) error {
+func BridgeProvisionSet(bridgeID uint, general, botMeta, calls, statusThread int64, lastCheckStatus, lastErr string) error {
 	db := state.State.Database
-	status = strings.TrimSpace(status)
-	if status == "" {
-		status = "ok"
+	lastCheckStatus = strings.TrimSpace(lastCheckStatus)
+	if lastCheckStatus == "" {
+		lastCheckStatus = "ok"
 	}
 	res := db.Model(&BridgeProvisionState{}).Where("bridge_id = ?", bridgeID).Updates(map[string]interface{}{
 		"general_thread_id":   general,
 		"bot_meta_thread_id":  botMeta,
 		"calls_thread_id":     calls,
-		"last_check_status":   status,
+		"status_thread_id":    statusThread,
+		"last_check_status":   lastCheckStatus,
 		"last_check_error":    lastErr,
 		"last_provisioned_at": time.Now(),
 		"updated_at":          time.Now(),
@@ -132,7 +133,8 @@ func BridgeProvisionSet(bridgeID uint, general, botMeta, calls int64, status, la
 			GeneralThreadID:   general,
 			BotMetaThreadID:   botMeta,
 			CallsThreadID:     calls,
-			LastCheckStatus:   status,
+			StatusThreadID:    statusThread,
+			LastCheckStatus:   lastCheckStatus,
 			LastCheckError:    lastErr,
 			LastProvisionedAt: time.Now(),
 		}).Error

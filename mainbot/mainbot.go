@@ -159,11 +159,11 @@ func bridgeAddHandler(manager *bridge.Manager) handlers.Response {
 			_, sendErr := b.SendMessage(c.EffectiveChat.Id, "Failed to create bridge record: "+createErr.Error(), nil)
 			return sendErr
 		}
-		general, botMeta, calls, provErr := ensureMetaTopics(bridgeBot, targetChatID)
+		general, botMeta, calls, status, provErr := ensureMetaTopics(bridgeBot, targetChatID)
 		if provErr != nil {
-			_ = database.BridgeProvisionSet(record.ID, 0, 0, 0, "provision_error", provErr.Error())
+			_ = database.BridgeProvisionSet(record.ID, 0, 0, 0, 0, "provision_error", provErr.Error())
 		} else {
-			_ = database.BridgeProvisionSet(record.ID, general, botMeta, calls, "ok", "")
+			_ = database.BridgeProvisionSet(record.ID, general, botMeta, calls, status, "ok", "")
 		}
 		if err := manager.StartBridge(record); err != nil {
 			_, sendErr := b.SendMessage(c.EffectiveChat.Id, "Bridge saved but failed to start runtime: "+err.Error(), nil)
@@ -305,18 +305,22 @@ func isUniqueConstraintError(err error) bool {
 	return strings.Contains(s, "unique") || strings.Contains(s, "duplicate")
 }
 
-func ensureMetaTopics(bot *gotgbot.Bot, chatID int64) (int64, int64, int64, error) {
+func ensureMetaTopics(bot *gotgbot.Bot, chatID int64) (int64, int64, int64, int64, error) {
 	general, err := bot.CreateForumTopic(chatID, "General", nil)
 	if err != nil {
-		return 0, 0, 0, err
+		return 0, 0, 0, 0, err
 	}
 	meta, err := bot.CreateForumTopic(chatID, "BotMeta", nil)
 	if err != nil {
-		return general.MessageThreadId, 0, 0, err
+		return general.MessageThreadId, 0, 0, 0, err
 	}
 	calls, err := bot.CreateForumTopic(chatID, "Calls", nil)
 	if err != nil {
-		return general.MessageThreadId, meta.MessageThreadId, 0, err
+		return general.MessageThreadId, meta.MessageThreadId, 0, 0, err
 	}
-	return general.MessageThreadId, meta.MessageThreadId, calls.MessageThreadId, nil
+	status, err := bot.CreateForumTopic(chatID, "Status", nil)
+	if err != nil {
+		return general.MessageThreadId, meta.MessageThreadId, calls.MessageThreadId, 0, err
+	}
+	return general.MessageThreadId, meta.MessageThreadId, calls.MessageThreadId, status.MessageThreadId, nil
 }

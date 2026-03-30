@@ -165,6 +165,9 @@ func (m *Manager) writeBridgeConfig(bridge *database.Bridge) (string, error) {
 		if prov.CallsThreadID != 0 {
 			tgMap["calls_thread_id"] = prov.CallsThreadID
 		}
+		if prov.StatusThreadID != 0 {
+			tgMap["status_thread_id"] = prov.StatusThreadID
+		}
 	}
 	payload := map[string]interface{}{
 		"mode":        "single",

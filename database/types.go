@@ -79,6 +79,7 @@ type BridgeProvisionState struct {
 	GeneralThreadID   int64
 	BotMetaThreadID   int64
 	CallsThreadID     int64
+	StatusThreadID    int64
 	LastCheckStatus   string    `gorm:"size:64;not null;default:pending"`
 	LastCheckError    string    `gorm:"type:text"`
 	LastProvisionedAt time.Time

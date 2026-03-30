@@ -355,13 +355,19 @@ SKIP_RESTART:
 	state.State.TelegramUpdater.Idle()
 }
 
-// seedMappedForumTopics wires forum thread ids from config into local state (calls → ChatThreadPair, BotMeta file).
+// seedMappedForumTopics wires forum thread ids from config into local state (meta topics → ChatThreadPair, BotMeta file).
 func seedMappedForumTopics(cfg *state.Config) {
-	if cfg.Telegram.CallsThreadID != 0 && cfg.Telegram.TargetChatID != 0 {
-		tgChat := cfg.Telegram.TargetChatID
+	tgChat := cfg.Telegram.TargetChatID
+	if cfg.Telegram.CallsThreadID != 0 && tgChat != 0 {
 		_, found, err := database.ChatThreadGetTgFromWa("calls", tgChat)
 		if err == nil && !found {
 			_ = database.ChatThreadAddNewPair("calls", tgChat, cfg.Telegram.CallsThreadID)
+		}
+	}
+	if cfg.Telegram.StatusThreadID != 0 && tgChat != 0 {
+		_, found, err := database.ChatThreadGetTgFromWa("status@broadcast", tgChat)
+		if err == nil && !found {
+			_ = database.ChatThreadAddNewPair("status@broadcast", tgChat, cfg.Telegram.StatusThreadID)
 		}
 	}
 	if cfg.Telegram.BotMetaThreadID != 0 && cfg.Path != "" {
