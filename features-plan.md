@@ -1,19 +1,34 @@
-# Feature backlog
+# Features plan
 
-Items below are **not scheduled**; they are stricter or more operational options around SQLite encryption and secrets.
+**Source of truth** for backlog and shipped work. For AI/automation context, see [`AGENTS.md`](AGENTS.md).
 
-## SQLite / SQLCipher — stricter operations
+---
 
-- **Master key rotation without data loss**: support re-wrapping DBs with a new master (or new derived keys) without full reset; likely an offline admin command and clear backup/rollback story.
-- **External KMS / secret store**: source the master material from Vault, cloud KMS, or similar instead of (or in addition to) `WATG_SQLITE_MASTER_KEY` in plain environment.
-- **Stronger key isolation (single mode)**: use distinct HKDF info strings (and thus keys) for the GORM bridge DB vs the whatsmeow session store when both are SQLite, instead of a single `watgbridge-v1/single` derivation for both.
-- **Operational runbooks**: documented steps for backup, restore, verifying encryption (`sqlcipher`/pragma checks), and disaster recovery when the master secret is lost.
+## Shipped (recent)
 
-## Telegram chat history export → bridge
+### Bridge → Telegram behavior
 
-- **Bot API limitation**: bots cannot read arbitrary chat history or import Telegram Desktop exports (`result.json` / HTML). There is no supported way to “upload history to the main bot” and have it become live Telegram↔WhatsApp bridge state.
-- **Possible future work (large / speculative)**: parse an exported archive offline, map topic names → `message_thread_id` + WA JIDs where inferable, and insert into `MsgIdPair` / `ChatThreadPair` — fragile, privacy-sensitive, and still would not repopulate WhatsApp-side history.
+- **Status** (`status@broadcast`): forum topic **Status**; mapping seeded like other meta topics (`status_thread_id` in config; DB row `status@broadcast` → thread id). Multi-bridge: provision creates a **Status** topic and stores `status_thread_id` in `bridge_provision_states` (child YAML gets `telegram.status_thread_id` when set).
+- **Headers**: groups use `👤 name (+phone)`; status lines include contact + phone; private chats rely on topic title (no redundant headers).
+- **Forwards**: `⏩: Forwarded N times` at the **bottom** of the bridged body/caption.
+- **Edits**: reply to the original Telegram message with **`Edited`** (bold), then send updated content separately (no inline “edited” prefix in the main body).
+- **Revokes**: reply to the original Telegram message with **`Deleted`** (bold).
 
-## Notes
+### Main bot (multi mode)
 
-- Today, enabling encryption on **existing plaintext** SQLite files is a breaking change until databases are recreated or a future migration tool exists.
+- **Launch line**: `Launched • version: …` sent to **every registry user** (union of `bridge_users`, bridge `owner_user_id`, plus config `owner_id` / `sudo_users_id`, deduped). **`/start`** ensures the user is in `bridge_users` for future launches.
+- **Removed**: bridge bot DM **`Successfully started WaTgBridge`** to the owner on startup (obsolete).
+
+---
+
+# Backlog
+
+## Use aiogram-dialog on main bot
+
+## Use i18n to keep two languages: rus and eng
+
+## Clear user onboarding instruction
+
+## Separate main bot 
+
+
