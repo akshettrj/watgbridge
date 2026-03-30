@@ -41,6 +41,31 @@ func TgRegisterBotCommands(b *gotgbot.Bot, commands ...gotgbot.BotCommand) error
 	return err
 }
 
+// TgMessageIsInGeneralHub is true for commands that must run in the forum "General" hub topic
+// (/list_contacts, /getwagroups, etc.). When telegram.general_thread_id is set (mapped topics),
+// the message must be in that thread.
+func TgMessageIsInGeneralHub(cfg *state.Config, msg *gotgbot.Message) bool {
+	if msg == nil {
+		return false
+	}
+	if cfg.Telegram.GeneralThreadID != 0 {
+		return msg.IsTopicMessage && msg.MessageThreadId == cfg.Telegram.GeneralThreadID
+	}
+	// Legacy (no forum mapping): thread id 0 or non-topic messages treated as hub.
+	return !msg.IsTopicMessage || msg.MessageThreadId == 0
+}
+
+// TgMessageIsInContactTopic is true inside a per-contact (or per-chat) WA-linked topic, not the hub.
+func TgMessageIsInContactTopic(cfg *state.Config, msg *gotgbot.Message) bool {
+	if msg == nil || !msg.IsTopicMessage || msg.MessageThreadId == 0 {
+		return false
+	}
+	if TgMessageIsInGeneralHub(cfg, msg) {
+		return false
+	}
+	return true
+}
+
 func TgGetOrMakeThreadFromWa_String(waChatIdString string, tgChatId int64, threadName string) (int64, error) {
 	threadId, threadFound, err := database.ChatThreadGetTgFromWa(waChatIdString, tgChatId)
 	if err != nil {

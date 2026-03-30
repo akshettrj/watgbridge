@@ -17,6 +17,9 @@
 *.yaml
 !sample_config.yaml
 
+# Docker bind mount: SQLite + bridges/ (multi mode)
+/data/
+
 /watgbridge
 *.db
 *.db-journal

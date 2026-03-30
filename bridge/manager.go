@@ -30,16 +30,20 @@ func NewManager(baseDir string) *Manager {
 	}
 }
 
-func childEnviron(bridgeID uint) ([]string, error) {
+func childEnviron(bridge *database.Bridge) ([]string, error) {
 	base := os.Environ()
 	prefix := sqlitekey.EnvDerived + "="
-	out := make([]string, 0, len(base)+1)
+	out := make([]string, 0, len(base)+3)
 	for _, e := range base {
 		if strings.HasPrefix(e, prefix) {
 			continue
 		}
 		out = append(out, e)
 	}
+	out = append(out,
+		fmt.Sprintf("WATG_BRIDGE_ID=%d", bridge.ID),
+		fmt.Sprintf("WATG_BRIDGE_OWNER_TELEGRAM_USER_ID=%d", bridge.OwnerUserID),
+	)
 	master, hasMaster, err := sqlitekey.MasterKeyBytesFromEnv()
 	if err != nil {
 		return nil, err
@@ -47,7 +51,7 @@ func childEnviron(bridgeID uint) ([]string, error) {
 	if !hasMaster {
 		return out, nil
 	}
-	k, err := sqlitekey.DeriveKeyHex(master, fmt.Sprintf("watgbridge-v1/bridge/%d", bridgeID))
+	k, err := sqlitekey.DeriveKeyHex(master, fmt.Sprintf("watgbridge-v1/bridge/%d", bridge.ID))
 	if err != nil {
 		return nil, err
 	}
@@ -59,9 +63,19 @@ func (m *Manager) StartEnabled() error {
 	if err != nil {
 		return err
 	}
-	for _, bridge := range bridges {
-		if err := m.StartBridge(&bridge); err != nil {
-			state.State.Logger.Warn("failed to start enabled bridge", zap.Uint("bridge_id", bridge.ID), zap.Error(err))
+	if len(bridges) == 0 {
+		state.State.Logger.Warn("multi mode: no enabled bridges in registry — only the main bot runs; WhatsApp bridging needs at least one enabled bridge row")
+	}
+	for _, b := range bridges {
+		if err := m.StartBridge(&b); err != nil {
+			state.State.Logger.Warn("failed to start enabled bridge",
+				zap.Uint("bridge_id", b.ID),
+				zap.Int64("bridge_owner_telegram_user_id", b.OwnerUserID),
+				zap.Error(err))
+		} else {
+			state.State.Logger.Info("started bridge child process",
+				zap.Uint("bridge_id", b.ID),
+				zap.Int64("bridge_owner_telegram_user_id", b.OwnerUserID))
 		}
 	}
 	return nil
@@ -85,7 +99,7 @@ func (m *Manager) StartBridge(bridge *database.Bridge) error {
 	cmd := exec.Command(binaryPath, "--mode=single", "--config", cfgPath)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	cmd.Env, err = childEnviron(bridge.ID)
+	cmd.Env, err = childEnviron(bridge)
 	if err != nil {
 		return err
 	}
@@ -93,12 +107,22 @@ func (m *Manager) StartBridge(bridge *database.Bridge) error {
 		return err
 	}
 	m.cmds[bridge.ID] = cmd
-	go func(bridgeID uint, process *exec.Cmd) {
-		_ = process.Wait()
+	go func(bid uint, ownerID int64, process *exec.Cmd) {
+		waitErr := process.Wait()
 		m.mu.Lock()
 		defer m.mu.Unlock()
-		delete(m.cmds, bridgeID)
-	}(bridge.ID, cmd)
+		delete(m.cmds, bid)
+		if waitErr != nil {
+			state.State.Logger.Warn("bridge child process exited",
+				zap.Uint("bridge_id", bid),
+				zap.Int64("bridge_owner_telegram_user_id", ownerID),
+				zap.Error(waitErr))
+		} else {
+			state.State.Logger.Info("bridge child process exited",
+				zap.Uint("bridge_id", bid),
+				zap.Int64("bridge_owner_telegram_user_id", ownerID))
+		}
+	}(bridge.ID, bridge.OwnerUserID, cmd)
 	return nil
 }
 
@@ -124,18 +148,30 @@ func (m *Manager) writeBridgeConfig(bridge *database.Bridge) (string, error) {
 	}
 	path := filepath.Join(m.baseDir, fmt.Sprintf("bridge_%d.yaml", bridge.ID))
 	mainCfg := state.State.Config
+	tgMap := map[string]interface{}{
+		"bot_token":       bridge.BridgeBotToken,
+		"owner_id":        bridge.OwnerUserID,
+		"target_chat_id":  bridge.TelegramTargetChat,
+		"api_url":         mainCfg.Telegram.APIURL,
+		"self_hosted_api": mainCfg.Telegram.SelfHostedAPI,
+	}
+	if prov, err := database.BridgeProvisionGet(bridge.ID); err == nil && prov != nil {
+		if prov.GeneralThreadID != 0 {
+			tgMap["general_thread_id"] = prov.GeneralThreadID
+		}
+		if prov.BotMetaThreadID != 0 {
+			tgMap["bot_meta_thread_id"] = prov.BotMetaThreadID
+		}
+		if prov.CallsThreadID != 0 {
+			tgMap["calls_thread_id"] = prov.CallsThreadID
+		}
+	}
 	payload := map[string]interface{}{
 		"mode":        "single",
 		"time_zone":   mainCfg.TimeZone,
 		"time_format": mainCfg.TimeFormat,
 		"debug_mode":  mainCfg.DebugMode,
-		"telegram": map[string]interface{}{
-			"bot_token":       bridge.BridgeBotToken,
-			"owner_id":        bridge.OwnerUserID,
-			"target_chat_id":  bridge.TelegramTargetChat,
-			"api_url":         mainCfg.Telegram.APIURL,
-			"self_hosted_api": mainCfg.Telegram.SelfHostedAPI,
-		},
+		"telegram":    tgMap,
 		"whatsapp": map[string]interface{}{
 			"session_name": bridge.WaSessionName,
 			"login_database": map[string]interface{}{

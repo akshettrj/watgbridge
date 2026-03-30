@@ -354,8 +354,8 @@ func ListContactsCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
 	if !utils.TgUpdateIsAuthorized(b, c) {
 		return nil
 	}
-	if c.EffectiveMessage.IsTopicMessage && c.EffectiveMessage.MessageThreadId != 0 {
-		_, err := utils.TgReplyTextByContext(b, c, "Use this command only in the General topic (no specific topic).", nil, false)
+	if !utils.TgMessageIsInGeneralHub(state.State.Config, c.EffectiveMessage) {
+		_, err := utils.TgReplyTextByContext(b, c, "Use this command only in the General topic.", nil, false)
 		return err
 	}
 	// List from WhatsApp store (same source as "Contacts on WhatsApp"); DB is only for name overrides
@@ -410,7 +410,7 @@ func TagCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
 	if !utils.TgUpdateIsAuthorized(b, c) {
 		return nil
 	}
-	if !c.EffectiveMessage.IsTopicMessage || c.EffectiveMessage.MessageThreadId == 0 {
+	if !utils.TgMessageIsInContactTopic(state.State.Config, c.EffectiveMessage) {
 		_, err := utils.TgReplyTextByContext(b, c, "Use this command inside a contact topic (a thread linked to a WA contact).", nil, false)
 		return err
 	}
@@ -730,7 +730,7 @@ func SetTargetGroupChatHandler(b *gotgbot.Bot, c *ext.Context) error {
 		return err
 	}
 
-	if !c.EffectiveMessage.IsTopicMessage || c.EffectiveMessage.MessageThreadId == 0 {
+	if !utils.TgMessageIsInContactTopic(state.State.Config, c.EffectiveMessage) {
 		_, err := utils.TgReplyTextByContext(b, c, "The command should be sent in a topic", nil, false)
 		return err
 	}
@@ -770,7 +770,7 @@ func UnlinkThreadHandler(b *gotgbot.Bot, c *ext.Context) error {
 		return nil
 	}
 
-	if !c.EffectiveMessage.IsTopicMessage || c.EffectiveMessage.MessageThreadId == 0 {
+	if !utils.TgMessageIsInContactTopic(state.State.Config, c.EffectiveMessage) {
 		_, err := utils.TgReplyTextByContext(b, c, "The command should be sent in a topic", nil, false)
 		return err
 	}
@@ -803,7 +803,7 @@ func handleBlockUnblockUser(b *gotgbot.Bot, c *ext.Context, action events.Blockl
 	if !utils.TgUpdateIsAuthorized(b, c) {
 		return nil
 	}
-	if !c.EffectiveMessage.IsTopicMessage || c.EffectiveMessage.MessageThreadId == 0 {
+	if !utils.TgMessageIsInContactTopic(state.State.Config, c.EffectiveMessage) {
 		_, err := utils.TgReplyTextByContext(b, c, "The command should be sent in a topic", nil, false)
 		return err
 	}
@@ -875,7 +875,7 @@ func StatusIgnoreHandler(b *gotgbot.Bot, c *ext.Context) error {
 			return err
 		}
 		user = jid.User
-	} else if c.EffectiveMessage.IsTopicMessage && c.EffectiveMessage.MessageThreadId != 0 {
+	} else if utils.TgMessageIsInContactTopic(state.State.Config, c.EffectiveMessage) {
 		waChatId, err := database.ChatThreadGetWaFromTg(c.EffectiveChat.Id, c.EffectiveMessage.MessageThreadId)
 		if err != nil || waChatId == "" {
 			_, err := utils.TgReplyTextByContext(b, c, "Could not get WhatsApp chat for this topic. Use <code>/statusignore &lt;jid&gt;</code> with the contact's JID (e.g. from /findcontact).", nil, false)
@@ -919,7 +919,7 @@ func StatusUnignoreHandler(b *gotgbot.Bot, c *ext.Context) error {
 			return err
 		}
 		user = jid.User
-	} else if c.EffectiveMessage.IsTopicMessage && c.EffectiveMessage.MessageThreadId != 0 {
+	} else if utils.TgMessageIsInContactTopic(state.State.Config, c.EffectiveMessage) {
 		waChatId, err := database.ChatThreadGetWaFromTg(c.EffectiveChat.Id, c.EffectiveMessage.MessageThreadId)
 		if err != nil || waChatId == "" {
 			_, err := utils.TgReplyTextByContext(b, c, "Could not get WhatsApp chat for this topic. Use <code>/statusunignore &lt;jid&gt;</code>.", nil, false)
@@ -977,7 +977,7 @@ func AddContactCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
 		return nil
 	}
 	usageString := "Usage (in a contact topic): <code>" + html.EscapeString("/add FirstName [LastName] [Company]") + "</code>\nNo spaces inside arguments."
-	if !c.EffectiveMessage.IsTopicMessage || c.EffectiveMessage.MessageThreadId == 0 {
+	if !utils.TgMessageIsInContactTopic(state.State.Config, c.EffectiveMessage) {
 		_, err := utils.TgReplyTextByContext(b, c, "Use this command inside a WhatsApp contact topic.", nil, false)
 		return err
 	}
@@ -1032,7 +1032,7 @@ func RemoveContactCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
 			_, err := utils.TgReplyTextByContext(b, c, "Invalid JID. "+usageString, nil, false)
 			return err
 		}
-	} else if c.EffectiveMessage.IsTopicMessage && c.EffectiveMessage.MessageThreadId != 0 {
+	} else if utils.TgMessageIsInContactTopic(state.State.Config, c.EffectiveMessage) {
 		waChatId, err := database.ChatThreadGetWaFromTg(c.EffectiveChat.Id, c.EffectiveMessage.MessageThreadId)
 		if err != nil || waChatId == "" {
 			_, err := utils.TgReplyTextByContext(b, c, "This topic is not linked to a WhatsApp contact. "+usageString, nil, false)
@@ -1084,7 +1084,7 @@ func ArchiveChatCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
 	if !utils.TgUpdateIsAuthorized(b, c) {
 		return nil
 	}
-	if !c.EffectiveMessage.IsTopicMessage || c.EffectiveMessage.MessageThreadId == 0 {
+	if !utils.TgMessageIsInContactTopic(state.State.Config, c.EffectiveMessage) {
 		_, err := utils.TgReplyTextByContext(b, c, "Use this command inside a topic linked to a WhatsApp chat.", nil, false)
 		return err
 	}
@@ -1111,7 +1111,7 @@ func RemoveTopicCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
 	if !utils.TgUpdateIsAuthorized(b, c) {
 		return nil
 	}
-	if !c.EffectiveMessage.IsTopicMessage || c.EffectiveMessage.MessageThreadId == 0 {
+	if !utils.TgMessageIsInContactTopic(state.State.Config, c.EffectiveMessage) {
 		_, err := utils.TgReplyTextByContext(b, c, "Use this command inside a topic.", nil, false)
 		return err
 	}
@@ -1187,7 +1187,7 @@ func SetTargetPrivateChatHandler(b *gotgbot.Bot, c *ext.Context) error {
 		return err
 	}
 
-	if !c.EffectiveMessage.IsTopicMessage || c.EffectiveMessage.MessageThreadId == 0 {
+	if !utils.TgMessageIsInContactTopic(state.State.Config, c.EffectiveMessage) {
 		_, err := utils.TgReplyTextByContext(b, c, "The command should be sent in a topic", nil, false)
 		return err
 	}
@@ -1273,7 +1273,7 @@ func SyncContactNameHandler(b *gotgbot.Bot, c *ext.Context) error {
 	if !utils.TgUpdateIsAuthorized(b, c) {
 		return nil
 	}
-	if !c.EffectiveMessage.IsTopicMessage || c.EffectiveMessage.MessageThreadId == 0 {
+	if !utils.TgMessageIsInContactTopic(state.State.Config, c.EffectiveMessage) {
 		_, err := utils.TgReplyTextByContext(b, c, "Use <code>/synccontactname</code> inside a private contact topic (not General).", nil, false)
 		return err
 	}
@@ -1307,7 +1307,7 @@ func SyncContactPhotoHandler(b *gotgbot.Bot, c *ext.Context) error {
 	if !utils.TgUpdateIsAuthorized(b, c) {
 		return nil
 	}
-	if !c.EffectiveMessage.IsTopicMessage || c.EffectiveMessage.MessageThreadId == 0 {
+	if !utils.TgMessageIsInContactTopic(state.State.Config, c.EffectiveMessage) {
 		_, err := utils.TgReplyTextByContext(b, c, "Use <code>/synccontactphoto</code> inside a private contact topic (not General).", nil, false)
 		return err
 	}

@@ -29,7 +29,12 @@ func LogVersionToBotMetaTopic() {
 	path := botMetaTopicIdPath()
 
 	threadId := int64(0)
-	if b, err := os.ReadFile(path); err == nil {
+	if cfg.Telegram.BotMetaThreadID != 0 {
+		threadId = cfg.Telegram.BotMetaThreadID
+		if err := os.WriteFile(path, []byte(strconv.FormatInt(threadId, 10)), 0644); err != nil {
+			state.State.Logger.Error("failed to write bot_meta_topic_id from config", zap.Error(err))
+		}
+	} else if b, err := os.ReadFile(path); err == nil {
 		if id, err := strconv.ParseInt(string(b), 10, 64); err == nil {
 			threadId = id
 		}

@@ -9,6 +9,11 @@ Items below are **not scheduled**; they are stricter or more operational options
 - **Stronger key isolation (single mode)**: use distinct HKDF info strings (and thus keys) for the GORM bridge DB vs the whatsmeow session store when both are SQLite, instead of a single `watgbridge-v1/single` derivation for both.
 - **Operational runbooks**: documented steps for backup, restore, verifying encryption (`sqlcipher`/pragma checks), and disaster recovery when the master secret is lost.
 
+## Telegram chat history export → bridge
+
+- **Bot API limitation**: bots cannot read arbitrary chat history or import Telegram Desktop exports (`result.json` / HTML). There is no supported way to “upload history to the main bot” and have it become live Telegram↔WhatsApp bridge state.
+- **Possible future work (large / speculative)**: parse an exported archive offline, map topic names → `message_thread_id` + WA JIDs where inferable, and insert into `MsgIdPair` / `ChatThreadPair` — fragile, privacy-sensitive, and still would not repopulate WhatsApp-side history.
+
 ## Notes
 
 - Today, enabling encryption on **existing plaintext** SQLite files is a breaking change until databases are recreated or a future migration tool exists.

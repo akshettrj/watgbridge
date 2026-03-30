@@ -45,7 +45,7 @@ This project is in no way affiliated with WhatsApp or Telegram. Using this can a
 - Keep existing `single` mode unchanged for legacy setup.
 - In multi mode, users talk to Main bot:
   - `/start` for onboarding instructions
-  - `/bridge_add <bridge_bot_token> <target_chat_id> [name]`
+  - `/bridge_add <bridge_bot_token> <target_chat_id> [label]` — optional `label` is for listing only; WhatsApp linked-device name is a random browser-style string
   - `/bridge_list`
   - `/bridge_enable <id>`
   - `/bridge_disable <id>`

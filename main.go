@@ -17,8 +17,8 @@ import (
 	"watgbridge/state"
 	"watgbridge/telegram"
 	"watgbridge/utils"
-	"watgbridge/whatsapp"
 	"watgbridge/crypto/sqlitekey"
+	"watgbridge/whatsapp"
 
 	"github.com/PaulSonOfLars/gotgbot/v2"
 	"github.com/go-co-op/gocron"
@@ -112,6 +112,22 @@ func main() {
 		state.State.Logger = state.State.Logger.Named("WaTgBridge")
 	}
 	logger := state.State.Logger
+	switch cfg.Mode {
+	case "single":
+		fields := []zap.Field{zap.String("watgbridge_process_role", "bridge_child")}
+		if cfg.Telegram.OwnerID != 0 {
+			fields = append(fields, zap.Int64("bridge_owner_telegram_user_id", cfg.Telegram.OwnerID))
+		}
+		if s := os.Getenv("WATG_BRIDGE_ID"); s != "" {
+			if n, err := strconv.ParseUint(s, 10, 64); err == nil {
+				fields = append(fields, zap.Uint("bridge_id", uint(n)))
+			}
+		}
+		logger = logger.With(fields...)
+	case "multi":
+		logger = logger.With(zap.String("watgbridge_process_role", "main_bot"))
+	}
+	state.State.Logger = logger
 
 	logger.Debug("loaded config file and started logger",
 		zap.String("config_path", cfg.Path),
@@ -225,6 +241,7 @@ func main() {
 			zap.Error(err),
 		)
 	}
+	seedMappedForumTopics(cfg)
 
 	if cfg.Mode == "multi" {
 		bridgeRoot := filepath.Join(filepath.Dir(cfg.Path), "bridges")
@@ -335,4 +352,19 @@ SKIP_RESTART:
 	telegram.LogVersionToBotMetaTopic()
 
 	state.State.TelegramUpdater.Idle()
+}
+
+// seedMappedForumTopics wires forum thread ids from config into local state (calls → ChatThreadPair, BotMeta file).
+func seedMappedForumTopics(cfg *state.Config) {
+	if cfg.Telegram.CallsThreadID != 0 && cfg.Telegram.TargetChatID != 0 {
+		tgChat := cfg.Telegram.TargetChatID
+		_, found, err := database.ChatThreadGetTgFromWa("calls", tgChat)
+		if err == nil && !found {
+			_ = database.ChatThreadAddNewPair("calls", tgChat, cfg.Telegram.CallsThreadID)
+		}
+	}
+	if cfg.Telegram.BotMetaThreadID != 0 && cfg.Path != "" {
+		p := filepath.Join(filepath.Dir(cfg.Path), "bot_meta_topic_id")
+		_ = os.WriteFile(p, []byte(strconv.FormatInt(cfg.Telegram.BotMetaThreadID, 10)), 0o644)
+	}
 }

@@ -1,13 +1,19 @@
 # Pass creds via CLI: TELEGRAM_BOT_TOKEN=xxx TELEGRAM_OWNER_ID=123 TELEGRAM_TARGET_CHAT_ID=-100… docker compose up -d
 # Or use a file: docker compose --env-file .env up -d
+#
+# SQLite lives on the host under ./data (bind mount). Create the directory once: mkdir -p data
+# Migrating from the old named volume sqlite_data: copy with:
+#   docker compose down
+#   docker run --rm -v "<project>_sqlite_data:/from" -v "$PWD/data:/to" alpine:3.22 cp -a /from/. /to/
+#   (<project>_sqlite_data is from: docker volume ls | grep sqlite_data)
 services:
-  # SQLite is file-based (no server). This container holds the DB volume; the app reads/writes
-  # the same files. There is no "sqlite" server image—unlike Postgres/MySQL, SQLite is embedded.
+  # SQLite is file-based (no server). This container exists so the same ./data mount can be
+  # attached for one-off admin (optional). watgbridge mounts ./data directly.
   db:
     image: alpine:3.22
     command: ["sleep", "infinity"]
     volumes:
-      - sqlite_data:/data
+      - /opt/watgbridge/data:/data
     restart: unless-stopped
 
   redis:
@@ -42,11 +48,9 @@ services:
       - WATG_SQLITE_MASTER_KEY=${WATG_SQLITE_MASTER_KEY:-}
       - REDIS_ADDR=redis:6379
     volumes:
-      - sqlite_data:/data
-      # Mount pre-generated config from host; entrypoint will just use it.
+      - /opt/watgbridge/data:/data
       - ./config.yaml:/data/config.yaml
     restart: unless-stopped
 
 volumes:
-  sqlite_data:
   redis_data:

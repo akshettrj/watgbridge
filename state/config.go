@@ -41,6 +41,10 @@ type Config struct {
 		SkipStartupMessage  bool    `yaml:"skip_startup_message" mapstructure:"skip_startup_message"`
 		SpoilerViewOnce     bool    `yaml:"spoiler_as_viewonce" mapstructure:"spoiler_as_viewonce"`
 		Reactions           bool    `yaml:"reactions" mapstructure:"reactions"`
+		// Forum hub topics (multi mode / mapped topics): 0 = legacy behavior (thread id 0 = hub).
+		GeneralThreadID int64 `yaml:"general_thread_id" mapstructure:"general_thread_id"`
+		BotMetaThreadID int64 `yaml:"bot_meta_thread_id" mapstructure:"bot_meta_thread_id"`
+		CallsThreadID   int64 `yaml:"calls_thread_id" mapstructure:"calls_thread_id"`
 	} `yaml:"telegram" mapstructure:"telegram"`
 
 	WhatsApp struct {

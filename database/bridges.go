@@ -92,7 +92,20 @@ func BridgeDelete(ownerUserID int64, bridgeID uint) error {
 	if err := db.Where("bridge_id = ?", bridgeID).Delete(&BridgeProvisionState{}).Error; err != nil {
 		return err
 	}
+	if err := db.Where("bridge_id = ?", bridgeID).Delete(&TelegramImportMessage{}).Error; err != nil {
+		return err
+	}
 	return db.Where("id = ? AND owner_user_id = ?", bridgeID, ownerUserID).Delete(&Bridge{}).Error
+}
+
+func BridgeProvisionGet(bridgeID uint) (*BridgeProvisionState, error) {
+	db := state.State.Database
+	var p BridgeProvisionState
+	res := db.Where("bridge_id = ?", bridgeID).First(&p)
+	if res.Error != nil {
+		return nil, res.Error
+	}
+	return &p, nil
 }
 
 func BridgeProvisionSet(bridgeID uint, general, botMeta, calls int64, status, lastErr string) error {

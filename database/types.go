@@ -86,6 +86,26 @@ type BridgeProvisionState struct {
 	UpdatedAt         time.Time `gorm:"not null"`
 }
 
+// TelegramImportMessage stores Telegram Desktop JSON export rows for a bridge target chat.
+// This is archival metadata only; it does not populate MsgIdPair (WhatsApp ids are not in the export).
+type TelegramImportMessage struct {
+	ID            uint   `gorm:"primaryKey;autoIncrement"`
+	BridgeID      uint   `gorm:"index;uniqueIndex:ux_tg_import_bridge_msg;not null"`
+	OwnerUserID   int64  `gorm:"index;not null"`
+	TgChatID      int64  `gorm:"not null"`
+	ExportChatID  int64  `gorm:"not null"`
+	TgMessageID   int64  `gorm:"uniqueIndex:ux_tg_import_bridge_msg;not null"`
+	TgThreadID    int64  // 0 if unknown in export
+	FromName      string `gorm:"size:512"`
+	FromID        string `gorm:"size:256"`
+	Text          string `gorm:"type:text"`
+	MsgType       string `gorm:"size:32"`
+	ServiceAction string `gorm:"size:64"`
+	DateUnix      int64
+	ImportBatchID string    `gorm:"size:36;index;not null"`
+	CreatedAt     time.Time `gorm:"not null"`
+}
+
 func AutoMigrate() error {
 	db := state.State.Database
 	return db.AutoMigrate(
@@ -98,5 +118,6 @@ func AutoMigrate() error {
 		&BridgeUser{},
 		&Bridge{},
 		&BridgeProvisionState{},
+		&TelegramImportMessage{},
 	)
 }
