@@ -23,6 +23,13 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+func bridgeMessageBody(base, forwardSuffix string) string {
+	if forwardSuffix == "" {
+		return base
+	}
+	return base + forwardSuffix
+}
+
 func WhatsAppEventHandler(evt interface{}) {
 
 	cfg := state.State.Config
@@ -401,27 +408,22 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 	}
 
 	var bridgedText string
-	if v.Info.IsFromMe {
-		bridgedText += "🧑: <b>You [other device]</b>\n"
-	} else {
-		bridgedText += fmt.Sprintf("🧑: <b>%s</b>\n", html.EscapeString(utils.WaGetContactName(v.Info.MessageSource.Sender)))
-	}
-	if v.Info.IsIncomingBroadcast() {
-		bridgedText += "👥: <b>(Broadcast)</b>\n"
-	} else if v.Info.IsGroup {
-		bridgedText += fmt.Sprintf("👥: <b>%s</b>\n", html.EscapeString(utils.WaGetGroupName(v.Info.Chat)))
-	} else {
-		bridgedText += "👥: <b>(PVT)</b>\n"
-	}
-
-	if isEdited {
-		bridgedText += "<i>Edited</i>\n"
+	statusChat := v.Info.Chat.ToNonAD().String() == "status@broadcast"
+	// Groups: 👤 name (+phone); private 1:1 and non-status broadcast → topic title only.
+	if v.Info.IsGroup && !statusChat {
+		bridgedText += utils.WaSenderHTMLBlock(v.Info.MessageSource.Sender.ToNonAD()) + "\n\n"
 	}
 
 	if time.Since(v.Info.Timestamp).Seconds() > 60 {
 		bridgedText += fmt.Sprintf("🕛: <b>%s</b>\n",
 			html.EscapeString(v.Info.Timestamp.In(state.State.LocalLocation).Format(cfg.TimeFormat)))
 	}
+
+	if statusChat {
+		bridgedText += utils.WaSenderHTMLBlock(v.Info.MessageSource.Sender.ToNonAD()) + "\n"
+	}
+
+	var forwardSuffix string
 
 	var (
 		replyToMsgId  int64
@@ -542,7 +544,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 		if contextInfo != nil {
 
 			if contextInfo.GetIsForwarded() {
-				bridgedText = fmt.Sprintf("⏩: Forwarded %v times\n", contextInfo.GetForwardingScore()) + bridgedText
+				forwardSuffix = fmt.Sprintf("\n⏩: Forwarded %v times", contextInfo.GetForwardingScore())
 			}
 
 			logger.Debug("checking if your account is mentioned in the message",
@@ -553,7 +555,11 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 					parsedJid, _ := utils.WaParseJID(jid)
 					if parsedJid.User == waClient.Store.ID.User {
 
-						tagInfoText := "#mentions\n\n" + bridgedText + fmt.Sprintf("\n<i>You were tagged in %s</i>",
+						tagInfoText := "#mentions\n\n" + bridgedText
+						if forwardSuffix != "" {
+							tagInfoText += forwardSuffix
+						}
+						tagInfoText += fmt.Sprintf("\n<i>You were tagged in %s</i>",
 							html.EscapeString(utils.WaGetGroupName(v.Info.Chat)))
 
 						threadId, err := utils.TgGetOrMakeThreadFromWa_String("mentions", cfg.Telegram.TargetChatID, "Mentions")
@@ -584,13 +590,13 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 		}
 	}
 
-	if !strings.HasSuffix(bridgedText, "\n\n") {
+	if bridgedText != "" && !strings.HasSuffix(bridgedText, "\n\n") {
 		bridgedText += "\n"
 	}
 
 	if !threadIdFound {
 		var err error
-		if v.Info.Chat.String() == "status@broadcast" {
+		if statusChat {
 			threadId, err = utils.TgGetOrMakeThreadFromWa_String("status@broadcast", cfg.Telegram.TargetChatID,
 				"Status")
 			if err != nil {
@@ -628,6 +634,16 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 		}
 	}
 
+	if isEdited && replyToMsgId != 0 {
+		_, _ = tgBot.SendMessage(cfg.Telegram.TargetChatID, "<b>Edited</b>", &gotgbot.SendMessageOpts{
+			ReplyParameters: &gotgbot.ReplyParameters{
+				MessageId: replyToMsgId,
+			},
+			MessageThreadId: threadId,
+		})
+		replyToMsgId = 0
+	}
+
 	if v.Message.GetImageMessage() != nil {
 
 		imageMsg := v.Message.GetImageMessage()
@@ -637,7 +653,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 
 		if cfg.WhatsApp.SkipImages {
 			bridgedText += "\n<i>Skipping image because 'skip_images' set in config file</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgeMessageBody(bridgedText, forwardSuffix), &gotgbot.SendMessageOpts{
 				ReplyParameters: &gotgbot.ReplyParameters{
 					MessageId: replyToMsgId,
 				},
@@ -650,7 +666,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 			return
 		} else if !cfg.Telegram.SelfHostedAPI && imageMsg.GetFileLength() > utils.UploadSizeLimit {
 			bridgedText += "\n<i>Couldn't send the photo as it exceeds Telegram size restrictions.</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgeMessageBody(bridgedText, forwardSuffix), &gotgbot.SendMessageOpts{
 				ReplyParameters: &gotgbot.ReplyParameters{
 					MessageId: replyToMsgId,
 				},
@@ -665,7 +681,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 			imageBytes, err := waClient.Download(context.Background(), imageMsg)
 			if err != nil {
 				bridgedText += "\n<i>Couldn't download the photo due to some errors</i>"
-				sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+				sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgeMessageBody(bridgedText, forwardSuffix), &gotgbot.SendMessageOpts{
 					ReplyParameters: &gotgbot.ReplyParameters{
 						MessageId: replyToMsgId,
 					},
@@ -687,7 +703,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 			}
 
 			sentMsg, _ := tgBot.SendPhoto(cfg.Telegram.TargetChatID, &gotgbot.FileReader{Data: bytes.NewReader(imageBytes)}, &gotgbot.SendPhotoOpts{
-				Caption: bridgedText,
+				Caption: bridgeMessageBody(bridgedText, forwardSuffix),
 				ReplyParameters: &gotgbot.ReplyParameters{
 					MessageId: replyToMsgId,
 				},
@@ -710,7 +726,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 
 		if cfg.WhatsApp.SkipGIFs {
 			bridgedText += "\n<i>Skipping GIF because 'skip_gifs' set in config file</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgeMessageBody(bridgedText, forwardSuffix), &gotgbot.SendMessageOpts{
 				ReplyParameters: &gotgbot.ReplyParameters{
 					MessageId: replyToMsgId,
 				},
@@ -723,7 +739,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 			return
 		} else if !cfg.Telegram.SelfHostedAPI && gifMsg.GetFileLength() > utils.UploadSizeLimit {
 			bridgedText += "\n<i>Couldn't send the GIF as it exceeds Telegram size restrictions.</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgeMessageBody(bridgedText, forwardSuffix), &gotgbot.SendMessageOpts{
 				ReplyParameters: &gotgbot.ReplyParameters{
 					MessageId: replyToMsgId,
 				},
@@ -738,7 +754,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 			gifBytes, err := waClient.Download(context.Background(), gifMsg)
 			if err != nil {
 				bridgedText += "\n<i>Couldn't download the GIF due to some errors</i>"
-				sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+				sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgeMessageBody(bridgedText, forwardSuffix), &gotgbot.SendMessageOpts{
 					ReplyParameters: &gotgbot.ReplyParameters{
 						MessageId: replyToMsgId,
 					},
@@ -765,7 +781,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 			}
 
 			sentMsg, _ := tgBot.SendAnimation(cfg.Telegram.TargetChatID, &fileToSend, &gotgbot.SendAnimationOpts{
-				Caption: bridgedText,
+				Caption: bridgeMessageBody(bridgedText, forwardSuffix),
 				ReplyParameters: &gotgbot.ReplyParameters{
 					MessageId: replyToMsgId,
 				},
@@ -795,7 +811,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 
 		if cfg.WhatsApp.SkipVideos {
 			bridgedText += "\n<i>Skipping video because 'skip_videos' set in config file</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgeMessageBody(bridgedText, forwardSuffix), &gotgbot.SendMessageOpts{
 				ReplyParameters: &gotgbot.ReplyParameters{
 					MessageId: replyToMsgId,
 				},
@@ -808,7 +824,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 			return
 		} else if !cfg.Telegram.SelfHostedAPI && videoMsg.GetFileLength() > utils.UploadSizeLimit {
 			bridgedText += "\n<i>Couldn't send the video as it exceeds Telegram size restrictions.</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgeMessageBody(bridgedText, forwardSuffix), &gotgbot.SendMessageOpts{
 				ReplyParameters: &gotgbot.ReplyParameters{
 					MessageId: replyToMsgId,
 				},
@@ -823,7 +839,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 			videoBytes, err := waClient.Download(context.Background(), videoMsg)
 			if err != nil {
 				bridgedText += "\n<i>Couldn't download the video due to some errors</i>"
-				sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+				sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgeMessageBody(bridgedText, forwardSuffix), &gotgbot.SendMessageOpts{
 					ReplyParameters: &gotgbot.ReplyParameters{
 						MessageId: replyToMsgId,
 					},
@@ -860,7 +876,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 				})
 			} else {
 				sentMsg, _ = tgBot.SendVideo(cfg.Telegram.TargetChatID, &fileToSend, &gotgbot.SendVideoOpts{
-					Caption: bridgedText,
+					Caption: bridgeMessageBody(bridgedText, forwardSuffix),
 					ReplyParameters: &gotgbot.ReplyParameters{
 						MessageId: replyToMsgId,
 					},
@@ -884,7 +900,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 
 		if cfg.WhatsApp.SkipVoiceNotes {
 			bridgedText += "\n<i>Skipping voice note because 'skip_voice_notes' set in config file</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgeMessageBody(bridgedText, forwardSuffix), &gotgbot.SendMessageOpts{
 				ReplyParameters: &gotgbot.ReplyParameters{
 					MessageId: replyToMsgId,
 				},
@@ -897,7 +913,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 			return
 		} else if !cfg.Telegram.SelfHostedAPI && audioMsg.GetFileLength() > utils.UploadSizeLimit {
 			bridgedText += "\n<i>Couldn't send the audio as it exceeds Telegram size restrictions.</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgeMessageBody(bridgedText, forwardSuffix), &gotgbot.SendMessageOpts{
 				ReplyParameters: &gotgbot.ReplyParameters{
 					MessageId: replyToMsgId,
 				},
@@ -912,7 +928,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 			audioBytes, err := waClient.Download(context.Background(), audioMsg)
 			if err != nil {
 				bridgedText += "\n<i>Couldn't download the audio due to some errors</i>"
-				sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+				sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgeMessageBody(bridgedText, forwardSuffix), &gotgbot.SendMessageOpts{
 					ReplyParameters: &gotgbot.ReplyParameters{
 						MessageId: replyToMsgId,
 					},
@@ -931,7 +947,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 			}
 
 			sentMsg, _ := tgBot.SendAudio(cfg.Telegram.TargetChatID, &fileToSend, &gotgbot.SendAudioOpts{
-				Caption:  bridgedText,
+				Caption:  bridgeMessageBody(bridgedText, forwardSuffix),
 				Duration: int64(audioMsg.GetSeconds()),
 				ReplyParameters: &gotgbot.ReplyParameters{
 					MessageId: replyToMsgId,
@@ -954,7 +970,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 
 		if cfg.WhatsApp.SkipAudios {
 			bridgedText += "\n<i>Skipping audio because 'skip_audios' set in config file</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgeMessageBody(bridgedText, forwardSuffix), &gotgbot.SendMessageOpts{
 				ReplyParameters: &gotgbot.ReplyParameters{
 					MessageId: replyToMsgId,
 				},
@@ -967,7 +983,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 			return
 		} else if !cfg.Telegram.SelfHostedAPI && audioMsg.GetFileLength() > utils.UploadSizeLimit {
 			bridgedText += "\n<i>Couldn't send the audio as it exceeds Telegram size restrictions.</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgeMessageBody(bridgedText, forwardSuffix), &gotgbot.SendMessageOpts{
 				ReplyParameters: &gotgbot.ReplyParameters{
 					MessageId: replyToMsgId,
 				},
@@ -982,7 +998,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 			audioBytes, err := waClient.Download(context.Background(), audioMsg)
 			if err != nil {
 				bridgedText += "\n<i>Couldn't download the audio due to some errors</i>"
-				sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+				sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgeMessageBody(bridgedText, forwardSuffix), &gotgbot.SendMessageOpts{
 					ReplyParameters: &gotgbot.ReplyParameters{
 						MessageId: replyToMsgId,
 					},
@@ -1001,7 +1017,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 			}
 
 			sentMsg, _ := tgBot.SendAudio(cfg.Telegram.TargetChatID, &fileToSend, &gotgbot.SendAudioOpts{
-				Caption:  bridgedText,
+				Caption:  bridgeMessageBody(bridgedText, forwardSuffix),
 				Duration: int64(audioMsg.GetSeconds()),
 				ReplyParameters: &gotgbot.ReplyParameters{
 					MessageId: replyToMsgId,
@@ -1024,7 +1040,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 
 		if cfg.WhatsApp.SkipDocuments {
 			bridgedText += "\n<i>Skipping document because 'skip_documents' set in config file</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgeMessageBody(bridgedText, forwardSuffix), &gotgbot.SendMessageOpts{
 				ReplyParameters: &gotgbot.ReplyParameters{
 					MessageId: replyToMsgId,
 				},
@@ -1037,7 +1053,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 			return
 		} else if !cfg.Telegram.SelfHostedAPI && documentMsg.GetFileLength() > utils.UploadSizeLimit {
 			bridgedText += "\n<i>Couldn't send the document as it exceeds Telegram size restrictions.</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgeMessageBody(bridgedText, forwardSuffix), &gotgbot.SendMessageOpts{
 				ReplyParameters: &gotgbot.ReplyParameters{
 					MessageId: replyToMsgId,
 				},
@@ -1052,7 +1068,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 			documentBytes, err := waClient.Download(context.Background(), documentMsg)
 			if err != nil {
 				bridgedText += "\n<i>Couldn't download the document due to some errors</i>"
-				sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+				sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgeMessageBody(bridgedText, forwardSuffix), &gotgbot.SendMessageOpts{
 					ReplyParameters: &gotgbot.ReplyParameters{
 						MessageId: replyToMsgId,
 					},
@@ -1079,7 +1095,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 			}
 
 			sentMsg, _ := tgBot.SendDocument(cfg.Telegram.TargetChatID, &fileToSend, &gotgbot.SendDocumentOpts{
-				Caption: bridgedText,
+				Caption: bridgeMessageBody(bridgedText, forwardSuffix),
 				ReplyParameters: &gotgbot.ReplyParameters{
 					MessageId: replyToMsgId,
 				},
@@ -1101,7 +1117,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 
 		if cfg.WhatsApp.SkipStickers {
 			bridgedText += "\n<i>Skipping sticker because 'skip_stickers' set in config file</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgeMessageBody(bridgedText, forwardSuffix), &gotgbot.SendMessageOpts{
 				ReplyParameters: &gotgbot.ReplyParameters{
 					MessageId: replyToMsgId,
 				},
@@ -1114,7 +1130,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 			return
 		} else if !cfg.Telegram.SelfHostedAPI && stickerMsg.GetFileLength() > utils.UploadSizeLimit {
 			bridgedText += "\n<i>Couldn't send the sticker as it exceeds Telegram size restrictions.</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgeMessageBody(bridgedText, forwardSuffix), &gotgbot.SendMessageOpts{
 				ReplyParameters: &gotgbot.ReplyParameters{
 					MessageId: replyToMsgId,
 				},
@@ -1129,7 +1145,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 			stickerBytes, err := waClient.Download(context.Background(), stickerMsg)
 			if err != nil {
 				bridgedText += "\n<i>Couldn't download the sticker due to some errors</i>"
-				sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+				sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgeMessageBody(bridgedText, forwardSuffix), &gotgbot.SendMessageOpts{
 					ReplyParameters: &gotgbot.ReplyParameters{
 						MessageId: replyToMsgId,
 					},
@@ -1153,7 +1169,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 				}
 
 				sentMsg, _ := tgBot.SendAnimation(cfg.Telegram.TargetChatID, &fileToSend, &gotgbot.SendAnimationOpts{
-					Caption: bridgedText,
+					Caption: bridgeMessageBody(bridgedText, forwardSuffix),
 					ReplyParameters: &gotgbot.ReplyParameters{
 						MessageId: replyToMsgId,
 					},
@@ -1186,7 +1202,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 
 		if cfg.WhatsApp.SkipContacts {
 			bridgedText += "\n<i>Skipping contact because 'skip_contacts' set in config file</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgeMessageBody(bridgedText, forwardSuffix), &gotgbot.SendMessageOpts{
 				ReplyParameters: &gotgbot.ReplyParameters{
 					MessageId: replyToMsgId,
 				},
@@ -1203,7 +1219,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 		card, err := decoder.Decode()
 		if err != nil {
 			bridgedText += "\n<i>Couldn't send the vCard as failed to parse it</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgeMessageBody(bridgedText, forwardSuffix), &gotgbot.SendMessageOpts{
 				ReplyParameters: &gotgbot.ReplyParameters{
 					MessageId: replyToMsgId,
 				},
@@ -1237,7 +1253,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 
 		if cfg.WhatsApp.SkipContacts {
 			bridgedText += "\n<i>Skipping contact array because 'skip_contacts' set in config file</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgeMessageBody(bridgedText, forwardSuffix), &gotgbot.SendMessageOpts{
 				ReplyParameters: &gotgbot.ReplyParameters{
 					MessageId: replyToMsgId,
 				},
@@ -1285,7 +1301,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 
 		if cfg.WhatsApp.SkipLocations {
 			bridgedText += "\n<i>Skipping location because 'skip_locations' set in config file</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgeMessageBody(bridgedText, forwardSuffix), &gotgbot.SendMessageOpts{
 				ReplyParameters: &gotgbot.ReplyParameters{
 					MessageId: replyToMsgId,
 				},
@@ -1318,7 +1334,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 
 		if cfg.WhatsApp.SkipLocations {
 			bridgedText += "\n<i>Skipping live location because 'skip_locations' set in config file</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgeMessageBody(bridgedText, forwardSuffix), &gotgbot.SendMessageOpts{
 				ReplyParameters: &gotgbot.ReplyParameters{
 					MessageId: replyToMsgId,
 				},
@@ -1331,7 +1347,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 			return
 		}
 
-		sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+		sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgeMessageBody(bridgedText, forwardSuffix), &gotgbot.SendMessageOpts{
 			ReplyParameters: &gotgbot.ReplyParameters{
 				MessageId: replyToMsgId,
 			},
@@ -1365,7 +1381,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 			bridgedText += fmt.Sprintf("%v. %s\n", optionNum+1, html.EscapeString(option.GetOptionName()))
 		}
 
-		sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+		sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgeMessageBody(bridgedText, forwardSuffix), &gotgbot.SendMessageOpts{
 			ReplyParameters: &gotgbot.ReplyParameters{
 				MessageId: replyToMsgId,
 			},
@@ -1449,7 +1465,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 				)
 			}
 		}
-		sentMsg, err := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+		sentMsg, err := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgeMessageBody(bridgedText, forwardSuffix), &gotgbot.SendMessageOpts{
 			ReplyParameters: &gotgbot.ReplyParameters{
 				MessageId: replyToMsgId,
 			},
@@ -1507,17 +1523,9 @@ func UndecryptableMessageEventHandler(v *events.UndecryptableMessage) {
 	}
 
 	var bridgedText string
-	if v.Info.IsFromMe {
-		bridgedText += "🧑: <b>You [other device]</b>\n"
-	} else {
-		bridgedText += fmt.Sprintf("🧑: <b>%s</b>\n", html.EscapeString(utils.WaGetContactName(v.Info.MessageSource.Sender)))
-	}
-	if v.Info.IsIncomingBroadcast() {
-		bridgedText += "👥: <b>(Broadcast)</b>\n"
-	} else if v.Info.IsGroup {
-		bridgedText += fmt.Sprintf("👥: <b>%s</b>\n", html.EscapeString(utils.WaGetGroupName(v.Info.Chat)))
-	} else {
-		bridgedText += "👥: <b>(PVT)</b>\n"
+	statusChat := v.Info.Chat.ToNonAD().String() == "status@broadcast"
+	if v.Info.IsGroup && !statusChat {
+		bridgedText += utils.WaSenderHTMLBlock(v.Info.MessageSource.Sender.ToNonAD()) + "\n\n"
 	}
 
 	if time.Since(v.Info.Timestamp).Seconds() > 60 {
@@ -1525,12 +1533,16 @@ func UndecryptableMessageEventHandler(v *events.UndecryptableMessage) {
 			html.EscapeString(v.Info.Timestamp.In(state.State.LocalLocation).Format(cfg.TimeFormat)))
 	}
 
+	if statusChat {
+		bridgedText += utils.WaSenderHTMLBlock(v.Info.MessageSource.Sender.ToNonAD()) + "\n"
+	}
+
 	bridgedText += "\n<i>It is a View Once message.\nPlease check in your official WhatsApp application</i>"
 
 	var threadId int64
 
 	var err error
-	if v.Info.Chat.String() == "status@broadcast" {
+	if statusChat {
 		threadId, err = utils.TgGetOrMakeThreadFromWa_String("status@broadcast", cfg.Telegram.TargetChatID,
 			"Status")
 		if err != nil {
@@ -1734,24 +1746,12 @@ func RevokedMessageEventHandler(v *events.Message) {
 		return
 	}
 
-	deleter := v.Info.MessageSource.Sender
-
-	var deleterName string
-	if v.Info.IsFromMe {
-		deleterName = "you"
-	} else {
-		deleterName = utils.WaGetContactName(deleter)
-	}
-
 	tgChatId, tgThreadId, tgMsgId, err := database.MsgIdGetTgFromWa(waMsgId, waChatId)
 	if err != nil || tgChatId == 0 || tgThreadId == 0 || tgMsgId == 0 {
 		return
 	}
 
-	tgBot.SendMessage(tgChatId, fmt.Sprintf(
-		"<i>This message was revoked by %s</i>",
-		html.EscapeString(deleterName),
-	), &gotgbot.SendMessageOpts{
+	tgBot.SendMessage(tgChatId, "<b>Deleted</b>", &gotgbot.SendMessageOpts{
 		MessageThreadId: tgThreadId,
 		ReplyParameters: &gotgbot.ReplyParameters{
 			MessageId: tgMsgId,

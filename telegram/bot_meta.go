@@ -2,9 +2,9 @@ package telegram
 
 import (
 	"fmt"
+	"net/http"
 	"os"
-	"path/filepath"
-	"strconv"
+	"strings"
 
 	"watgbridge/state"
 
@@ -12,48 +12,34 @@ import (
 	"go.uber.org/zap"
 )
 
-const botMetaTopicName = "Bot's meta"
-
-// botMetaTopicIdPath returns the path to the file storing the "Bot's meta" topic thread id (same dir as config).
-func botMetaTopicIdPath() string {
-	return filepath.Join(filepath.Dir(state.State.Config.Path), "bot_meta_topic_id")
-}
-
-// LogVersionToBotMetaTopic ensures the "Bot's meta" topic exists in the target group,
-// then sends a launch message with the current version (short sha or tag from WATGBRIDGE_VERSION).
-// The topic thread id is stored in a file so it persists across restarts (e.g. when config is regenerated from env).
-func LogVersionToBotMetaTopic() {
+// LogLaunchVersion sends "Launched • version: …" as a DM from the main (control) bot to telegram.owner_id.
+// It does not post to bridge target groups. If main_bot_token or owner_id is unset, it skips (no-op).
+func LogLaunchVersion() {
+	if os.Getenv("WATG_BRIDGE_ID") != "" {
+		return // multi-mode bridge child; notification is sent by parent only
+	}
 	cfg := state.State.Config
-	bot := state.State.TelegramBot
-	chatId := cfg.Telegram.TargetChatID
-	path := botMetaTopicIdPath()
-
-	threadId := int64(0)
-	if cfg.Telegram.BotMetaThreadID != 0 {
-		threadId = cfg.Telegram.BotMetaThreadID
-		if err := os.WriteFile(path, []byte(strconv.FormatInt(threadId, 10)), 0644); err != nil {
-			state.State.Logger.Error("failed to write bot_meta_topic_id from config", zap.Error(err))
-		}
-	} else if b, err := os.ReadFile(path); err == nil {
-		if id, err := strconv.ParseInt(string(b), 10, 64); err == nil {
-			threadId = id
-		}
+	token := strings.TrimSpace(cfg.Telegram.MainBotToken)
+	if token == "" {
+		state.State.Logger.Debug("launch version: telegram.main_bot_token not set, skipping")
+		return
 	}
-	if threadId == 0 {
-		newForum, err := bot.CreateForumTopic(chatId, botMetaTopicName, &gotgbot.CreateForumTopicOpts{})
-		if err != nil {
-			state.State.Logger.Error("failed to create Bot's meta topic", zap.Error(err))
-			return
-		}
-		threadId = newForum.MessageThreadId
-		if err := os.WriteFile(path, []byte(strconv.FormatInt(threadId, 10)), 0644); err != nil {
-			state.State.Logger.Error("failed to write bot_meta_topic_id file", zap.Error(err))
-		}
+	if cfg.Telegram.OwnerID == 0 {
+		state.State.Logger.Debug("launch version: telegram.owner_id not set, skipping")
+		return
 	}
-
-	msg := fmt.Sprintf("Launched • version: <code>%s</code>", state.WATGBRIDGE_VERSION)
-	_, _ = bot.SendMessage(chatId, msg, &gotgbot.SendMessageOpts{
-		MessageThreadId: threadId,
-		ParseMode:       "HTML",
+	bot, err := gotgbot.NewBot(token, &gotgbot.BotOpts{
+		BotClient: &gotgbot.BaseBotClient{Client: http.Client{}},
 	})
+	if err != nil {
+		state.State.Logger.Warn("launch version: failed to create main bot client", zap.Error(err))
+		return
+	}
+	msg := fmt.Sprintf("Launched • version: <code>%s</code>", state.WATGBRIDGE_VERSION)
+	_, err = bot.SendMessage(cfg.Telegram.OwnerID, msg, &gotgbot.SendMessageOpts{
+		ParseMode: gotgbot.ParseModeHTML,
+	})
+	if err != nil {
+		state.State.Logger.Warn("launch version: failed to send DM", zap.Error(err))
+	}
 }

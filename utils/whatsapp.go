@@ -188,6 +188,14 @@ func waContactBaseLabel(jid types.JID) string {
 	return ""
 }
 
+// WaSenderHTMLBlock returns a line like 👤 Name (+phone) for group/status headers.
+func WaSenderHTMLBlock(jid types.JID) string {
+	j := jid.ToNonAD()
+	name := html.EscapeString(WaGetContactName(j))
+	phone := html.EscapeString(WaGetPhoneForDisplay(j.User, j.Server))
+	return fmt.Sprintf("👤 %s (%s)", name, phone)
+}
+
 // WaGetForumTopicName is used for Telegram forum topic titles for private chats:
 // "DisplayName (+phone)" using resolved phone (LID→PN when possible).
 func WaGetForumTopicName(jid types.JID) string {

@@ -249,6 +249,7 @@ func main() {
 		if err := manager.StartEnabled(); err != nil {
 			logger.Error("failed to start enabled bridge runtimes", zap.Error(err))
 		}
+		telegram.LogLaunchVersion()
 		logger.Info("starting main bot in multi mode")
 		if err := mainbot.Start(cfg.Telegram.MainBotToken, manager); err != nil {
 			logger.Fatal("failed to start main bot", zap.Error(err))
@@ -349,7 +350,7 @@ SKIP_RESTART:
 		state.State.TelegramBot.SendMessage(cfg.Telegram.OwnerID, "Successfully started WaTgBridge", &gotgbot.SendMessageOpts{})
 	}
 
-	telegram.LogVersionToBotMetaTopic()
+	telegram.LogLaunchVersion()
 
 	state.State.TelegramUpdater.Idle()
 }
