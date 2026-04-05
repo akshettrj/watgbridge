@@ -146,7 +146,7 @@ func AddTelegramHandlers() {
 		},
 		waTgBridgeCommand{
 			handlers.NewCommand("check", CheckCommandHandler),
-			"Check if a phone number is on WhatsApp; opens Chat to create topic",
+			"Check if a phone number is on WhatsApp (or paste number in General); create/open topic",
 		},
 		waTgBridgeCommand{
 			handlers.NewCommand("add", AddContactCommandHandler),
@@ -221,6 +221,10 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 		if command.command.CheckUpdate(b, c) {
 			return nil
 		}
+	}
+
+	if tryGeneralTopicPhoneCheckAsCheckCommand(b, c) {
+		return nil
 	}
 
 	var (
@@ -1145,24 +1149,31 @@ func RemoveTopicCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
 	return err
 }
 
-func CheckCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
-	if !utils.TgUpdateIsAuthorized(b, c) {
-		return nil
+// tryGeneralTopicPhoneCheckAsCheckCommand treats a plain phone-looking message in the forum General topic like /check.
+func tryGeneralTopicPhoneCheckAsCheckCommand(b *gotgbot.Bot, c *ext.Context) bool {
+	cfg := state.State.Config
+	msg := c.EffectiveMessage
+	if msg == nil || msg.Text == "" {
+		return false
 	}
-	usageString := "Usage: <code>" + html.EscapeString("/check <phone number>") + "</code>"
-	args := c.Args()
-	if len(args) <= 1 {
-		_, err := utils.TgReplyTextByContext(b, c, usageString, nil, false)
-		return err
+	if c.EffectiveChat.Id != cfg.Telegram.TargetChatID || !utils.TgMessageIsInGeneralHub(cfg, msg) {
+		return false
 	}
-	phoneInput := strings.TrimSpace(strings.Join(args[1:], " "))
-	jid, ok := utils.WaParseJID(phoneInput)
-	if !ok || jid.User == "" {
-		_, err := utils.TgReplyTextByContext(b, c, "Invalid phone number. "+usageString, nil, false)
-		return err
+	line := strings.TrimSpace(strings.Split(msg.Text, "\n")[0])
+	if line == "" || strings.HasPrefix(line, "/") {
+		return false
 	}
+	userDigits, ok := utils.WaCheckResolvePhoneUser(line, cfg.Telegram.CheckPhoneDefaultRegion)
+	if !ok {
+		return false
+	}
+	_ = executeWhatsAppPhoneCheck(b, c, userDigits)
+	return true
+}
+
+func executeWhatsAppPhoneCheck(b *gotgbot.Bot, c *ext.Context, userDigits string) error {
 	waClient := state.State.WhatsAppClient
-	responses, err := waClient.IsOnWhatsApp(context.Background(), []string{jid.User})
+	responses, err := waClient.IsOnWhatsApp(context.Background(), []string{userDigits})
 	if err != nil {
 		return utils.TgReplyWithErrorByContext(b, c, "Failed to check WhatsApp", err)
 	}
@@ -1229,6 +1240,26 @@ func CheckCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
 
 	_, err = utils.TgReplyHTMLByContext(b, c, body.String(), kb, false)
 	return err
+}
+
+func CheckCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
+	if !utils.TgUpdateIsAuthorized(b, c) {
+		return nil
+	}
+	usageString := "Usage: <code>" + html.EscapeString("/check <phone number>") + "</code> or paste a valid number in General."
+	args := c.Args()
+	if len(args) <= 1 {
+		_, err := utils.TgReplyTextByContext(b, c, usageString, nil, false)
+		return err
+	}
+	phoneInput := strings.TrimSpace(strings.Join(args[1:], " "))
+	cfg := state.State.Config
+	userDigits, ok := utils.WaCheckResolvePhoneUser(phoneInput, cfg.Telegram.CheckPhoneDefaultRegion)
+	if !ok {
+		_, err := utils.TgReplyTextByContext(b, c, "Invalid phone number. "+usageString, nil, false)
+		return err
+	}
+	return executeWhatsAppPhoneCheck(b, c, userDigits)
 }
 
 func SetTargetPrivateChatHandler(b *gotgbot.Bot, c *ext.Context) error {

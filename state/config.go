@@ -41,6 +41,8 @@ type Config struct {
 		SkipStartupMessage  bool    `yaml:"skip_startup_message" mapstructure:"skip_startup_message"`
 		SpoilerViewOnce     bool    `yaml:"spoiler_as_viewonce" mapstructure:"spoiler_as_viewonce"`
 		Reactions           bool    `yaml:"reactions" mapstructure:"reactions"`
+		// ISO 3166-1 alpha-2 default region for parsing national numbers (no +) in General → /check-style flow; empty = require +country code.
+		CheckPhoneDefaultRegion string `yaml:"check_phone_default_region" mapstructure:"check_phone_default_region"`
 		// Forum hub topics (multi mode / mapped topics): 0 = legacy behavior (thread id 0 = hub).
 		GeneralThreadID int64 `yaml:"general_thread_id" mapstructure:"general_thread_id"`
 		BotMetaThreadID int64 `yaml:"bot_meta_thread_id" mapstructure:"bot_meta_thread_id"`

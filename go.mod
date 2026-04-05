@@ -48,6 +48,7 @@ require (
 	github.com/kettek/apng v0.0.0-20250827064933-2bb5f5fcf253 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
+	github.com/nyaruka/phonenumbers v1.7.1 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
 	github.com/petermattis/goid v0.0.0-20260113132338-7c7de50cc741 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
