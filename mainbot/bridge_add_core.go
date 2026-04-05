@@ -6,6 +6,7 @@ import (
 
 	"watgbridge/bridge"
 	"watgbridge/database"
+	"watgbridge/telegram"
 	"watgbridge/utils"
 
 	"github.com/PaulSonOfLars/gotgbot/v2"
@@ -71,7 +72,7 @@ func addBridgeFromCredentials(b *gotgbot.Bot, manager *bridge.Manager, ownerUser
 		return "", fmt.Errorf("create bridge record: %w", createErr)
 	}
 
-	general, botMeta, calls, status, provErr := ensureMetaTopics(bridgeBot, targetChatID)
+	general, botMeta, calls, status, provErr := telegram.CreateStandardForumMetaTopics(bridgeBot, targetChatID)
 	if provErr != nil {
 		_ = database.BridgeProvisionSet(record.ID, 0, 0, 0, 0, "provision_error", provErr.Error())
 	} else {

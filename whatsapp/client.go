@@ -1,7 +1,6 @@
 package whatsapp
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
 	"fmt"
@@ -10,7 +9,6 @@ import (
 	"watgbridge/crypto/sqlitekey"
 	"watgbridge/state"
 
-	"github.com/PaulSonOfLars/gotgbot/v2"
 	_ "github.com/jackc/pgx/v5"
 	_ "github.com/mutecomm/go-sqlcipher/v4"
 	"github.com/skip2/go-qrcode"
@@ -120,7 +118,9 @@ func NewWhatsAppClient() error {
 	client := whatsmeow.NewClient(deviceStore, waClientLogger)
 	state.State.WhatsAppClient = client
 
+	didFreshQRLogin := false
 	if client.Store.ID == nil {
+		didFreshQRLogin = true
 		qrChan, _ := client.GetQRChannel(context.Background())
 		err = client.Connect()
 		if err != nil {
@@ -128,32 +128,22 @@ func NewWhatsAppClient() error {
 		}
 		for evt := range qrChan {
 			if evt.Event == "code" {
-				// var png []byte
-				// png, _err := qrcode.Encode("aklsdfjasdfaklsdfjlasdfjaskldfjasldfjaklsdfjals", qrcode.Highest, 256)
-				// if _err != nil {
-				// 	panic(_err)
-				// }
-
 				if state.State.TelegramBot != nil {
 					qrCodePNG, err := qrcode.Encode(evt.Code, qrcode.Highest, 512)
 					if err != nil {
-						_, _ = state.State.TelegramBot.SendMessage(
-							state.State.Config.Telegram.OwnerID,
-							fmt.Sprintf(
-								"WhatsApp login QR could not be encoded as PNG. Fix the issue and restart; QR is not printed to logs or terminal.\n<code>%s</code>",
-								html.EscapeString(err.Error()),
-							),
-							&gotgbot.SendMessageOpts{},
+						msg := fmt.Sprintf(
+							"WhatsApp login QR could not be encoded as PNG. Fix the issue and restart; QR is not printed to logs or terminal.\n<code>%s</code>",
+							html.EscapeString(err.Error()),
 						)
+						if sendErr := sendWhatsAppQRTextToTelegram(msg); sendErr != nil {
+							logger.Warn("whatsapp qr error text send failed", zap.Error(sendErr))
+						}
 						logger.Warn("whatsapp qr png encode failed", zap.Error(err))
 					} else {
-						_, _ = state.State.TelegramBot.SendPhoto(
-							state.State.Config.Telegram.OwnerID,
-							gotgbot.InputFileByReader("qrcode.png", bytes.NewReader(qrCodePNG)),
-							&gotgbot.SendPhotoOpts{
-								Caption: "Scan the above QR code to login to WhatsApp.",
-							},
-						)
+						caption := "Scan this code in WhatsApp → Settings → Linked devices, on the phone you want to use for this group."
+						if sendErr := sendWhatsAppQRToTelegram(qrCodePNG, caption); sendErr != nil {
+							logger.Warn("whatsapp qr photo send failed", zap.Error(sendErr))
+						}
 					}
 				} else {
 					logger.Warn("whatsapp qr login: telegram bot not initialized; qr not sent to terminal or logs — ensure Telegram starts before WhatsApp")
@@ -169,6 +159,10 @@ func NewWhatsAppClient() error {
 		if err != nil {
 			return fmt.Errorf("could not connect to Whatsapp : %s", err)
 		}
+	}
+
+	if didFreshQRLogin && client.Store.ID != nil {
+		notifyWhatsAppLinked(client, logger)
 	}
 
 	logger.Info("successfully logged into WhatsApp",

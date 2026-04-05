@@ -46,6 +46,10 @@ type Config struct {
 		BotMetaThreadID int64 `yaml:"bot_meta_thread_id" mapstructure:"bot_meta_thread_id"`
 		CallsThreadID   int64 `yaml:"calls_thread_id" mapstructure:"calls_thread_id"`
 		StatusThreadID  int64 `yaml:"status_thread_id" mapstructure:"status_thread_id"`
+		// Child bridge (multi mode): main/control bot token — used only to DM the owner when WhatsApp links.
+		ControlBotToken string `yaml:"control_bot_token" mapstructure:"control_bot_token"`
+		// Child bridge: registry row id (bridges.id), for owner-facing messages.
+		BridgeRegistryID uint `yaml:"bridge_registry_id" mapstructure:"bridge_registry_id"`
 	} `yaml:"telegram" mapstructure:"telegram"`
 
 	WhatsApp struct {
@@ -83,7 +87,7 @@ type Config struct {
 
 	// Redis is optional; used to cache LID→phone resolution to avoid spamming WhatsApp.
 	Redis struct {
-		Addr     string `yaml:"addr" mapstructure:"addr"`         // e.g. "localhost:6379"
+		Addr     string `yaml:"addr" mapstructure:"addr"` // e.g. "localhost:6379"
 		Password string `yaml:"password" mapstructure:"password"`
 		DB       int    `yaml:"db" mapstructure:"db"`
 	} `yaml:"redis" mapstructure:"redis"`

@@ -69,7 +69,19 @@ func handleManagedBotUpdate(b *gotgbot.Bot, upd *managedBotUpdated) error {
 	} else {
 		hint = fmt.Sprintf("id %d", managedID)
 	}
-	text := fmt.Sprintf("Managed bridge bot ready (%s).\n\n1) Add that bot to your forum supergroup as admin with <b>Manage Topics</b>.\n2) Then run:\n<code>/bridge_bind &lt;target_chat_id&gt; [label]</code>\n\n(<code>target_chat_id</code> is negative for supergroups; same as /bridge_add.)", hint)
+	text := fmt.Sprintf("Your bridge bot is ready: <b>%s</b>\n\n"+
+		"Next:\n"+
+		"1) Create a <b>new group</b> (or use one you already have).\n"+
+		"2) In group settings, turn on <b>Topics</b>.\n"+
+		"3) Add <b>%s</b> to that group.\n"+
+		"4) Make it <b>admin</b> and enable <b>Manage topics</b>.\n\n"+
+		"I’ll send a button next — tap it and <b>select that group</b> to finish (no need to copy any id).\n\n"+
+		"<i>How pairing works:</i> I keep your new bot’s access only for you until you pick the group; "+
+		"after that, this bot is linked to that group only.",
+		hint, hint)
 	_, err = b.SendMessage(ownerID, text, &gotgbot.SendMessageOpts{ParseMode: gotgbot.ParseModeHTML})
-	return err
+	if err != nil {
+		return err
+	}
+	return sendManagedBridgeChooseGroupPrompt(b, ownerID)
 }

@@ -149,11 +149,15 @@ func (m *Manager) writeBridgeConfig(bridge *database.Bridge) (string, error) {
 	path := filepath.Join(m.baseDir, fmt.Sprintf("bridge_%d.yaml", bridge.ID))
 	mainCfg := state.State.Config
 	tgMap := map[string]interface{}{
-		"bot_token":       bridge.BridgeBotToken,
-		"owner_id":        bridge.OwnerUserID,
-		"target_chat_id":  bridge.TelegramTargetChat,
-		"api_url":         mainCfg.Telegram.APIURL,
-		"self_hosted_api": mainCfg.Telegram.SelfHostedAPI,
+		"bot_token":          bridge.BridgeBotToken,
+		"owner_id":           bridge.OwnerUserID,
+		"target_chat_id":     bridge.TelegramTargetChat,
+		"api_url":            mainCfg.Telegram.APIURL,
+		"self_hosted_api":    mainCfg.Telegram.SelfHostedAPI,
+		"bridge_registry_id": bridge.ID,
+	}
+	if mainCfg.Telegram.MainBotToken != "" {
+		tgMap["control_bot_token"] = mainCfg.Telegram.MainBotToken
 	}
 	if prov, err := database.BridgeProvisionGet(bridge.ID); err == nil && prov != nil {
 		if prov.GeneralThreadID != 0 {

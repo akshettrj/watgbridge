@@ -275,7 +275,12 @@ func main() {
 	}
 	_ = logger.Sync()
 
-	telegram.CheckTargetGroupPermissions()
+	if err := telegram.EnsureForumMetaTopicsProvisioned(); err != nil {
+		logger.Fatal("forum meta topics",
+			zap.Error(err),
+		)
+	}
+	seedMappedForumTopics(state.State.Config)
 
 	err = whatsapp.NewWhatsAppClient()
 	if err != nil {

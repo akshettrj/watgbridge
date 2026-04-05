@@ -17,6 +17,97 @@ import (
 	"github.com/PaulSonOfLars/gotgbot/v2/ext/handlers"
 )
 
+func completePendingManagedBind(b *gotgbot.Bot, manager *bridge.Manager, user *gotgbot.User, targetChatID int64, labelArg string) error {
+	if user == nil {
+		return nil
+	}
+	pending, err := database.BridgePendingManagedGet(user.Id)
+	if err != nil {
+		_, e := b.SendMessage(user.Id, "No pending bridge bot. Use /bridge_create_bot first.", nil)
+		return e
+	}
+	name := strings.TrimSpace(labelArg)
+	if name == "" && strings.TrimSpace(pending.LabelHint) != "" {
+		name = pending.LabelHint
+	}
+	resp, addErr := addBridgeFromCredentials(b, manager, user.Id, pending.BridgeBotToken, targetChatID, name)
+	if addErr != nil {
+		_, e := b.SendMessage(user.Id, addErr.Error(), nil)
+		return e
+	}
+	_ = database.BridgePendingManagedDelete(user.Id)
+	pendingManagedLabelHints.Delete(user.Id)
+	_, err = b.SendMessage(user.Id, resp, &gotgbot.SendMessageOpts{
+		ReplyMarkup: gotgbot.ReplyKeyboardRemove{RemoveKeyboard: true},
+	})
+	return err
+}
+
+// sendManagedBridgeChooseGroupPrompt asks the user to pick a forum group via Telegram’s chat picker (private chats only).
+func sendManagedBridgeChooseGroupPrompt(b *gotgbot.Bot, ownerChatID int64) error {
+	rid, err := randomManagedRequestID()
+	if err != nil {
+		_, sendErr := b.SendMessage(ownerChatID, "Could not build group picker: "+err.Error(), nil)
+		return sendErr
+	}
+	forumTrue := true
+	markup := map[string]any{
+		"keyboard": [][]map[string]any{
+			{
+				{
+					"text": "Choose group (with topics)",
+					"request_chat": map[string]any{
+						"request_id":      rid,
+						"chat_is_channel": false,
+						"chat_is_forum":   forumTrue,
+						"request_title":   true,
+						"user_administrator_rights": map[string]any{
+							"is_anonymous":           false,
+							"can_manage_chat":        true,
+							"can_delete_messages":    false,
+							"can_manage_video_chats": false,
+							"can_restrict_members":   false,
+							"can_promote_members":    false,
+							"can_change_info":        true,
+							"can_invite_users":       true,
+							"can_post_stories":       false,
+							"can_edit_stories":       false,
+							"can_delete_stories":     false,
+							"can_pin_messages":       true,
+							"can_manage_topics":      true,
+						},
+						"bot_administrator_rights": map[string]any{
+							"is_anonymous":           false,
+							"can_manage_chat":        true,
+							"can_delete_messages":    false,
+							"can_manage_video_chats": false,
+							"can_restrict_members":   false,
+							"can_promote_members":    false,
+							"can_change_info":        false,
+							"can_invite_users":       false,
+							"can_post_stories":       false,
+							"can_edit_stories":       false,
+							"can_delete_stories":     false,
+							"can_pin_messages":       false,
+							"can_manage_topics":      true,
+						},
+					},
+				},
+			},
+		},
+		"resize_keyboard":   true,
+		"one_time_keyboard": true,
+	}
+	_, err = b.RequestWithContext(context.Background(), "sendMessage", map[string]any{
+		"chat_id": ownerChatID,
+		"text": "Tap the button, then select the group where you added the bridge bot. " +
+			"If it doesn’t appear, check that topics are on and you’re an admin with permission to manage topics.\n\n" +
+			"Optional: send /bridge_bind and paste whatever number you see for that group in its profile — we’ll fix the format for you.",
+		"reply_markup": markup,
+	}, nil)
+	return err
+}
+
 func randomManagedRequestID() (int32, error) {
 	var buf [4]byte
 	if _, err := rand.Read(buf[:]); err != nil {
@@ -105,35 +196,23 @@ func bridgeBindHandler(manager *bridge.Manager) handlers.Response {
 		}
 		args := c.Args()
 		if len(args) < 2 {
-			_, err := b.SendMessage(c.EffectiveChat.Id, "Usage: /bridge_bind <target_chat_id> [label]", nil)
+			_, err := b.SendMessage(c.EffectiveChat.Id,
+				"Use the “Choose group (with topics)” button from my message after your bridge bot was created.\n\n"+
+					"Or send: /bridge_bind <numbers from group info> [optional label]",
+				nil)
 			return err
 		}
-		targetChatID, err := strconv.ParseInt(strings.TrimSpace(args[1]), 10, 64)
+		rawID, err := strconv.ParseInt(strings.TrimSpace(args[1]), 10, 64)
 		if err != nil {
-			_, sendErr := b.SendMessage(c.EffectiveChat.Id, "Invalid target_chat_id", nil)
+			_, sendErr := b.SendMessage(c.EffectiveChat.Id, "That doesn’t look like a number. Use the choose-group button or paste the id from the group’s info.", nil)
 			return sendErr
 		}
+		targetChatID := NormalizeTargetChatID(rawID)
 		name := ""
 		if len(args) > 2 {
 			name = strings.TrimSpace(strings.Join(args[2:], " "))
 		}
-		pending, err := database.BridgePendingManagedGet(user.Id)
-		if err != nil {
-			_, sendErr := b.SendMessage(c.EffectiveChat.Id, "No pending managed bot. Use /bridge_create_bot (or a t.me/newbot/… link) first.", nil)
-			return sendErr
-		}
-		if name == "" && strings.TrimSpace(pending.LabelHint) != "" {
-			name = pending.LabelHint
-		}
-		resp, addErr := addBridgeFromCredentials(b, manager, user.Id, pending.BridgeBotToken, targetChatID, name)
-		if addErr != nil {
-			_, sendErr := b.SendMessage(c.EffectiveChat.Id, addErr.Error(), nil)
-			return sendErr
-		}
-		_ = database.BridgePendingManagedDelete(user.Id)
-		pendingManagedLabelHints.Delete(user.Id)
-		_, err = b.SendMessage(c.EffectiveChat.Id, resp, nil)
-		return err
+		return completePendingManagedBind(b, manager, user, targetChatID, name)
 	}
 }
 
