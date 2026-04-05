@@ -163,6 +163,12 @@ func ChatThreadDropPairByTg(tgChatId, tgThreadId int64) error {
 	return res.Error
 }
 
+// ChatThreadDropPairByWaChat removes the WA↔Telegram mapping row (e.g. corrupt tg_thread_id=0).
+func ChatThreadDropPairByWaChat(waChatId string, tgChatId int64) error {
+	db := state.State.Database
+	return db.Where("id = ? AND tg_chat_id = ?", waChatId, tgChatId).Delete(&ChatThreadPair{}).Error
+}
+
 func ChatThreadGetWaFromTg(tgChatId, tgThreadId int64) (string, error) {
 
 	db := state.State.Database

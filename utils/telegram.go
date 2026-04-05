@@ -36,6 +36,9 @@ const (
 	UploadSizeLimit   uint64 = 52428800
 )
 
+// CheckContactPingMessage is posted in the contact forum topic when the user confirms "Send ping" from /check.
+const CheckContactPingMessage = "###\n⚙️ Bridge bot message\n\nPing!\n###"
+
 // TgEffectiveMessageThreadId returns the forum topic thread id for DB routing.
 // Telegram (and some clients) omit message_thread_id on the outer message when the user
 // replies in a topic; walk reply_to_message until a non-zero thread id is found.
@@ -97,6 +100,16 @@ func TgGetOrMakeThreadFromWa_String(waChatIdString string, tgChatId int64, threa
 	if err != nil {
 		return 0, false, err
 	}
+	// Corrupt mapping (thread id 0): Telegram never created a real topic; repair by re-creating.
+	if threadFound && threadId == 0 {
+		state.State.Logger.Warn("dropping chat_thread row with tg_thread_id=0; will recreate forum topic",
+			zap.String("wa_chat", waChatIdString),
+			zap.Int64("tg_chat", tgChatId))
+		if err := database.ChatThreadDropPairByWaChat(waChatIdString, tgChatId); err != nil {
+			return 0, false, err
+		}
+		threadFound = false
+	}
 
 	if !threadFound {
 		tgBot := state.State.TelegramBot
@@ -138,6 +151,26 @@ func TgPinChatMessageInThread(b *gotgbot.Bot, chatId, messageId, messageThreadId
 	}
 	_, err := b.RequestWithContext(context.Background(), "pinChatMessage", params, nil)
 	return err
+}
+
+// TgAbsChatIDForTMe converts a Bot API supergroup id (e.g. -100…) to the numeric segment used in t.me/c/… links.
+func TgAbsChatIDForTMe(chatID int64) int64 {
+	x := chatID
+	if x < 0 {
+		x = -x
+	}
+	if x >= 1_000_000_000_000 {
+		x -= 1_000_000_000_000
+	}
+	return x
+}
+
+// TgSupergroupTopicURL is a deep link to a forum topic (opens in Telegram for members). Empty if threadID==0.
+func TgSupergroupTopicURL(chatID, threadID int64) string {
+	if threadID == 0 {
+		return ""
+	}
+	return fmt.Sprintf("https://t.me/c/%d/%d", TgAbsChatIDForTMe(chatID), threadID)
 }
 
 // TruncateTelegramForumTopicName shortens titles to Telegram's forum topic limit.
@@ -358,12 +391,13 @@ func TgSyncForumTopicTitleFromWa(tgChatId, threadId int64, waJID waTypes.JID) er
 // TgGetOrMakeThreadFromWa resolves LID→PN, then maps WA chat → Telegram forum thread.
 // New topics are titled from WhatsApp: private chats via WaGetForumTopicName; groups as "GROUP: <name>".
 // For groups, pass threadName when you already have a display name (e.g. from an event); if empty, the name is fetched via GetGroupInfo.
-func TgGetOrMakeThreadFromWa(waChatId waTypes.JID, tgChatId int64, threadName string) (int64, error) {
+// The bool is true if a new forum topic was created in this call (not if it already existed).
+func TgGetOrMakeThreadFromWa(waChatId waTypes.JID, tgChatId int64, threadName string) (int64, bool, error) {
 	if waChatId.Server == waTypes.HiddenUserServer {
 		waClient := state.State.WhatsAppClient
 		pn, err := waClient.Store.LIDs.GetPNForLID(context.Background(), waChatId)
 		if err != nil {
-			return 0, err
+			return 0, false, err
 		}
 		waChatId = pn
 	}
@@ -381,14 +415,14 @@ func TgGetOrMakeThreadFromWa(waChatId waTypes.JID, tgChatId int64, threadName st
 		title = WaGetForumTopicName(waChatId)
 	}
 
-	threadId, _, err := TgGetOrMakeThreadFromWa_String(waChatIdString, tgChatId, title)
+	threadId, created, err := TgGetOrMakeThreadFromWa_String(waChatIdString, tgChatId, title)
 	if err != nil {
-		return 0, err
+		return 0, false, err
 	}
 	if TopicMetadataIsWAChatKey(waChatIdString) {
 		TgTopicMetadataEnsurePostedForChat(tgChatId, threadId, waChatIdString, waChatId)
 	}
-	return threadId, nil
+	return threadId, created, nil
 }
 
 func TgDownloadByFilePath(b *gotgbot.Bot, filePath string) ([]byte, error) {
@@ -438,6 +472,26 @@ func TgReplyTextByContext(b *gotgbot.Bot, c *ext.Context, text string, buttons *
 
 	msg, err := b.SendMessage(c.EffectiveChat.Id, text, sendOpts)
 	return msg, err
+}
+
+// TgReplyHTMLByContext is like TgReplyTextByContext but uses ParseMode HTML.
+func TgReplyHTMLByContext(b *gotgbot.Bot, c *ext.Context, text string, buttons *gotgbot.InlineKeyboardMarkup, silent bool) (*gotgbot.Message, error) {
+	sendOpts := &gotgbot.SendMessageOpts{
+		ParseMode: "HTML",
+		ReplyParameters: &gotgbot.ReplyParameters{
+			MessageId: c.EffectiveMessage.MessageId,
+		},
+	}
+	if tid := TgEffectiveMessageThreadId(c.EffectiveMessage); tid != 0 {
+		sendOpts.MessageThreadId = tid
+	}
+	if buttons != nil {
+		sendOpts.ReplyMarkup = buttons
+	}
+	if silent {
+		sendOpts.DisableNotification = true
+	}
+	return b.SendMessage(c.EffectiveChat.Id, text, sendOpts)
 }
 
 func TgSendTextById(b *gotgbot.Bot, chatId int64, threadId int64, text string) error {

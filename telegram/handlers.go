@@ -204,6 +204,10 @@ func AddTelegramHandlers() {
 		}, RevokeCallbackHandler), DispatcherCallbackHandlerGroup)
 	dispatcher.AddHandlerToGroup(handlers.NewCallback(
 		func(cq *gotgbot.CallbackQuery) bool {
+			return strings.HasPrefix(cq.Data, "check_ping_")
+		}, CheckPingCallbackHandler), DispatcherCallbackHandlerGroup)
+	dispatcher.AddHandlerToGroup(handlers.NewCallback(
+		func(cq *gotgbot.CallbackQuery) bool {
 			return strings.HasPrefix(cq.Data, "check_chat_")
 		}, CheckChatCallbackHandler), DispatcherCallbackHandlerGroup)
 }
@@ -258,7 +262,7 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 
 		waChatJID, _ := utils.WaParseJID(participantID)
 
-		contactThreadID, err := utils.TgGetOrMakeThreadFromWa(waChatJID, c.EffectiveChat.Id, "")
+		contactThreadID, _, err := utils.TgGetOrMakeThreadFromWa(waChatJID, c.EffectiveChat.Id, "")
 		if err != nil {
 			return utils.TgReplyWithErrorByContext(b, c, "Failed to get or create a thread for the contact", err)
 		}
@@ -1166,14 +1170,64 @@ func CheckCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
 		_, err := utils.TgReplyTextByContext(b, c, "Phone number is not registered at WhatsApp.", nil, false)
 		return err
 	}
+	cfg := state.State.Config
 	canonicalJID := responses[0].JID.ToNonAD().String()
-	chatKeyboard := &gotgbot.InlineKeyboardMarkup{
-		InlineKeyboard: [][]gotgbot.InlineKeyboardButton{{{
-			Text:         "Chat",
-			CallbackData: "check_chat_" + canonicalJID,
-		}}},
+	tgTarget := cfg.Telegram.TargetChatID
+
+	threadId, found, dbErr := database.ChatThreadGetTgFromWa(canonicalJID, tgTarget)
+	if dbErr != nil {
+		return utils.TgReplyWithErrorByContext(b, c, "Failed to look up topic mapping", dbErr)
 	}
-	_, err = utils.TgReplyTextByContext(b, c, "Phone number exists, click on `Chat` button to start messaging", chatKeyboard, false)
+	if found && threadId == 0 {
+		_ = database.ChatThreadDropPairByWaChat(canonicalJID, tgTarget)
+		found = false
+		threadId = 0
+	}
+
+	waJ, waOk := utils.WaParseJID(canonicalJID)
+	topicTitle := html.EscapeString(canonicalJID)
+	if waOk {
+		topicTitle = html.EscapeString(utils.WaGetForumTopicName(waJ.ToNonAD()))
+	}
+	link := utils.TgSupergroupTopicURL(tgTarget, threadId)
+
+	var rows [][]gotgbot.InlineKeyboardButton
+	if found && threadId > 0 {
+		if link != "" {
+			rows = append(rows, []gotgbot.InlineKeyboardButton{{
+				Text: "Open topic",
+				Url:  link,
+			}})
+		}
+		rows = append(rows, []gotgbot.InlineKeyboardButton{{
+			Text:         "Send ping in topic",
+			CallbackData: "check_ping_" + canonicalJID,
+		}})
+	} else {
+		rows = append(rows, []gotgbot.InlineKeyboardButton{{
+			Text:         "Create topic in bridge forum",
+			CallbackData: "check_chat_" + canonicalJID,
+		}})
+	}
+	kb := &gotgbot.InlineKeyboardMarkup{InlineKeyboard: rows}
+
+	var body strings.Builder
+	body.WriteString("<b>Number is on WhatsApp.</b>\n")
+	if c.EffectiveChat.Id != tgTarget {
+		body.WriteString(fmt.Sprintf("<i>Forum topics always live in your bridge supergroup</i> (chat id <code>%d</code>), not in private chat with the bot.\n\n", tgTarget))
+	}
+	if found && threadId > 0 {
+		body.WriteString(fmt.Sprintf("A topic is already linked for <b>%s</b>.\n", topicTitle))
+		if link != "" {
+			body.WriteString("Use <b>Open topic</b> to jump there — bots cannot switch your Telegram view for you.\n")
+		}
+		body.WriteString("Optional: <b>Send ping in topic</b> posts a short message there so it shows in recents.")
+	} else {
+		body.WriteString(fmt.Sprintf("Default topic title will be <b>%s</b>.\n", topicTitle))
+		body.WriteString("Tap <b>Create topic in bridge forum</b> to create or open it there.")
+	}
+
+	_, err = utils.TgReplyHTMLByContext(b, c, body.String(), kb, false)
 	return err
 }
 
@@ -1601,7 +1655,7 @@ func CheckChatCallbackHandler(b *gotgbot.Bot, c *ext.Context) error {
 		_, _ = cq.Answer(b, &gotgbot.AnswerCallbackQueryOpts{Text: "Invalid JID", ShowAlert: true})
 		return nil
 	}
-	_, err := utils.TgGetOrMakeThreadFromWa(jid.ToNonAD(), cfg.Telegram.TargetChatID, "")
+	threadId, created, err := utils.TgGetOrMakeThreadFromWa(jid.ToNonAD(), cfg.Telegram.TargetChatID, "")
 	if err != nil {
 		_, _ = cq.Answer(b, &gotgbot.AnswerCallbackQueryOpts{
 			Text:      "Failed to create topic: " + err.Error(),
@@ -1610,11 +1664,77 @@ func CheckChatCallbackHandler(b *gotgbot.Bot, c *ext.Context) error {
 		})
 		return err
 	}
-	_, _ = cq.Answer(b, &gotgbot.AnswerCallbackQueryOpts{Text: "Topic created. You can chat in the new topic."})
-	_, _, _ = b.EditMessageText("Phone number exists. Use the new topic to chat.", &gotgbot.EditMessageTextOpts{
+	link := utils.TgSupergroupTopicURL(cfg.Telegram.TargetChatID, threadId)
+	var body strings.Builder
+	body.WriteString("<b>Phone number exists.</b>\n")
+	if created {
+		body.WriteString("A new forum topic was created in your bridge supergroup.\n")
+	} else {
+		body.WriteString("This contact was already mapped to an existing forum topic.\n")
+	}
+	if c.EffectiveChat.Id != cfg.Telegram.TargetChatID {
+		body.WriteString(fmt.Sprintf("<i>Open the bridge forum</i> (chat id <code>%d</code>) to see it.\n", cfg.Telegram.TargetChatID))
+	}
+	if link != "" {
+		body.WriteString(fmt.Sprintf(`<a href="%s">Open topic in Telegram</a>`, html.EscapeString(link)))
+	}
+	cbText := "Forum topic created."
+	if !created {
+		cbText = "Topic ready (already existed)."
+	}
+	_, _ = cq.Answer(b, &gotgbot.AnswerCallbackQueryOpts{Text: cbText})
+	_, _, _ = b.EditMessageText(body.String(), &gotgbot.EditMessageTextOpts{
 		ChatId:      c.EffectiveChat.Id,
 		MessageId:   c.EffectiveMessage.MessageId,
+		ParseMode:   "HTML",
 		ReplyMarkup: gotgbot.InlineKeyboardMarkup{InlineKeyboard: [][]gotgbot.InlineKeyboardButton{}},
 	})
+	return nil
+}
+
+func CheckPingCallbackHandler(b *gotgbot.Bot, c *ext.Context) error {
+	if !utils.TgUpdateIsAuthorized(b, c) {
+		return nil
+	}
+	cfg := state.State.Config
+	cq := c.CallbackQuery
+	jidString := strings.TrimPrefix(cq.Data, "check_ping_")
+	if jidString == "" {
+		_, _ = cq.Answer(b, &gotgbot.AnswerCallbackQueryOpts{Text: "Invalid callback", ShowAlert: true})
+		return nil
+	}
+	jid, ok := utils.WaParseJID(jidString)
+	if !ok {
+		_, _ = cq.Answer(b, &gotgbot.AnswerCallbackQueryOpts{Text: "Invalid JID", ShowAlert: true})
+		return nil
+	}
+	waKey := jid.ToNonAD().String()
+	threadId, found, err := database.ChatThreadGetTgFromWa(waKey, cfg.Telegram.TargetChatID)
+	if err != nil {
+		_, _ = cq.Answer(b, &gotgbot.AnswerCallbackQueryOpts{Text: err.Error(), ShowAlert: true})
+		return err
+	}
+	if !found || threadId == 0 {
+		var repairErr error
+		threadId, _, repairErr = utils.TgGetOrMakeThreadFromWa(jid.ToNonAD(), cfg.Telegram.TargetChatID, "")
+		if repairErr != nil || threadId == 0 {
+			_, _ = cq.Answer(b, &gotgbot.AnswerCallbackQueryOpts{
+				Text:      "No forum topic for this contact yet. Use Create topic in bridge forum first.",
+				ShowAlert: true,
+			})
+			if repairErr != nil {
+				return repairErr
+			}
+			return fmt.Errorf("no forum thread id for %s", waKey)
+		}
+	}
+	_, err = b.SendMessage(cfg.Telegram.TargetChatID, utils.CheckContactPingMessage, &gotgbot.SendMessageOpts{
+		MessageThreadId: threadId,
+	})
+	if err != nil {
+		_, _ = cq.Answer(b, &gotgbot.AnswerCallbackQueryOpts{Text: "Failed to send ping: " + err.Error(), ShowAlert: true})
+		return err
+	}
+	_, _ = cq.Answer(b, &gotgbot.AnswerCallbackQueryOpts{Text: "Ping sent in the topic."})
 	return nil
 }
