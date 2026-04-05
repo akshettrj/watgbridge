@@ -298,6 +298,7 @@ func main() {
 			_ = database.ContactNameBulkAddOrUpdate(contacts)
 		}
 	})
+	s.StartAsync()
 
 	state.State.WhatsAppClient.AddEventHandler(whatsapp.WhatsAppEventHandler)
 	telegram.AddTelegramHandlers()

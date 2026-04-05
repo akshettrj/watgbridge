@@ -1,7 +1,6 @@
 package telegram
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 
@@ -29,14 +28,7 @@ var standardForumMetaSpecs = []forumMetaSpec{
 }
 
 func isGetForumTopicMissing(err error) bool {
-	var te *gotgbot.TelegramError
-	if !errors.As(err, &te) {
-		return false
-	}
-	d := strings.ToUpper(te.Description)
-	return strings.Contains(d, "NOT FOUND") ||
-		strings.Contains(d, "TOPIC_ID_INVALID") ||
-		strings.Contains(d, "MESSAGE_THREAD_ID_INVALID")
+	return utils.TgErrForumTopicOrThreadInvalid(err)
 }
 
 // buildForumMetaTitleIndex maps normalized topic title (first occurrence) → message_thread_id.

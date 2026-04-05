@@ -165,12 +165,60 @@ func TgAbsChatIDForTMe(chatID int64) int64 {
 	return x
 }
 
-// TgSupergroupTopicURL is a deep link to a forum topic (opens in Telegram for members). Empty if threadID==0.
-func TgSupergroupTopicURL(chatID, threadID int64) string {
-	if threadID == 0 {
-		return ""
+// TgForumTopicOpenLink builds a t.me URL that opens a forum topic by linking a message inside that topic.
+// Per https://core.telegram.org/api/links private message links use t.me/c/<channel>/<message_id>?thread=<thread_id>
+// When bot is non-nil, getForumTopic is used first: if the thread no longer exists, the DB mapping is dropped and
+// droppedStale is true. (Bots cannot "open" t.me URLs as the user; this is the correct existence check.)
+func TgForumTopicOpenLink(bot *gotgbot.Bot, tgChatId, messageThreadId int64, waKey string, waJID waTypes.JID) (url string, droppedStale bool) {
+	if tgChatId == 0 || messageThreadId == 0 {
+		return "", false
 	}
-	return fmt.Sprintf("https://t.me/c/%d/%d", TgAbsChatIDForTMe(chatID), threadID)
+	if bot != nil {
+		_, nameOk, ftErr := TgFetchForumTopicName(bot, tgChatId, messageThreadId)
+		if ftErr != nil && TgErrForumTopicOrThreadInvalid(ftErr) {
+			_ = database.ChatThreadDropPairByTg(tgChatId, messageThreadId)
+			return "", true
+		}
+		if ftErr == nil && !nameOk {
+			_ = database.ChatThreadDropPairByTg(tgChatId, messageThreadId)
+			return "", true
+		}
+	}
+	var msgId int64
+	if pair, ok := database.ChatThreadGetPair(waKey, tgChatId); ok {
+		msgId = pair.MetadataTgMsgId
+	}
+	if msgId == 0 && TopicMetadataIsWAChatKey(waKey) {
+		TgTopicMetadataEnsurePostedForChat(tgChatId, messageThreadId, waKey, waJID.ToNonAD())
+		if pair, ok := database.ChatThreadGetPair(waKey, tgChatId); ok {
+			msgId = pair.MetadataTgMsgId
+		}
+	}
+	if msgId == 0 {
+		return "", false
+	}
+	return fmt.Sprintf("https://t.me/c/%d/%d?thread=%d", TgAbsChatIDForTMe(tgChatId), msgId, messageThreadId), false
+}
+
+// TgErrForumTopicOrThreadInvalid is true when Telegram reports that a forum thread/topic id is invalid or missing
+// (topic deleted, stale DB mapping). Covers sendMessage and getForumTopic style errors.
+func TgErrForumTopicOrThreadInvalid(err error) bool {
+	var te *gotgbot.TelegramError
+	if !errors.As(err, &te) {
+		return false
+	}
+	d := strings.ToUpper(te.Description)
+	return strings.Contains(d, "MESSAGE THREAD NOT FOUND") ||
+		strings.Contains(d, "THREAD NOT FOUND") ||
+		strings.Contains(d, "TOPIC_ID_INVALID") ||
+		strings.Contains(d, "MESSAGE_THREAD_ID_INVALID") ||
+		strings.Contains(d, "TOPIC NOT FOUND") ||
+		(strings.Contains(d, "NOT FOUND") && (strings.Contains(d, "TOPIC") || strings.Contains(d, "THREAD")))
+}
+
+// TgErrMessageThreadMissing is true for sendMessage failures when the target forum thread no longer exists.
+func TgErrMessageThreadMissing(err error) bool {
+	return TgErrForumTopicOrThreadInvalid(err)
 }
 
 // TruncateTelegramForumTopicName shortens titles to Telegram's forum topic limit.

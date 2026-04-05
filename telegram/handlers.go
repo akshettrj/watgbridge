@@ -1200,7 +1200,20 @@ func executeWhatsAppPhoneCheck(b *gotgbot.Bot, c *ext.Context, userDigits string
 	if waOk {
 		topicTitle = html.EscapeString(utils.WaGetForumTopicName(waJ.ToNonAD()))
 	}
-	link := utils.TgSupergroupTopicURL(tgTarget, threadId)
+	var link string
+	var staleTopicDropped bool
+	prevThread := threadId
+	if found && threadId > 0 && waOk {
+		var dropped bool
+		link, dropped = utils.TgForumTopicOpenLink(b, tgTarget, threadId, canonicalJID, waJ.ToNonAD())
+		if dropped {
+			staleTopicDropped = true
+			NotifyForumTopicMappingRemoved(b, cfg, canonicalJID, prevThread)
+			found = false
+			threadId = 0
+			link = ""
+		}
+	}
 
 	var rows [][]gotgbot.InlineKeyboardButton
 	if found && threadId > 0 {
@@ -1231,10 +1244,15 @@ func executeWhatsAppPhoneCheck(b *gotgbot.Bot, c *ext.Context, userDigits string
 		body.WriteString(fmt.Sprintf("A topic is already linked for <b>%s</b>.\n", topicTitle))
 		if link != "" {
 			body.WriteString("Use <b>Open topic</b> to jump there — bots cannot switch your Telegram view for you.\n")
+		} else {
+			body.WriteString("<i>Open topic</i> is unavailable until the metadata message exists — use <b>Send ping</b> or open the topic from the forum list.\n")
 		}
 		body.WriteString("Optional: <b>Send ping in topic</b> posts a short message there so it shows in recents.")
 	} else {
 		body.WriteString(fmt.Sprintf("Default topic title will be <b>%s</b>.\n", topicTitle))
+		if staleTopicDropped {
+			body.WriteString("<i>The previous Telegram topic was deleted — the old mapping was removed.</i>\n")
+		}
 		body.WriteString("Tap <b>Create topic in bridge forum</b> to create or open it there.")
 	}
 
@@ -1695,10 +1713,14 @@ func CheckChatCallbackHandler(b *gotgbot.Bot, c *ext.Context) error {
 		})
 		return err
 	}
-	link := utils.TgSupergroupTopicURL(cfg.Telegram.TargetChatID, threadId)
+	prevTid := threadId
+	link, droppedStale := utils.TgForumTopicOpenLink(b, cfg.Telegram.TargetChatID, threadId, jid.ToNonAD().String(), jid.ToNonAD())
 	var body strings.Builder
 	body.WriteString("<b>Phone number exists.</b>\n")
-	if created {
+	if droppedStale {
+		NotifyForumTopicMappingRemoved(b, cfg, jid.ToNonAD().String(), prevTid)
+		body.WriteString("<i>The stored forum topic no longer exists — mapping was cleared. Use <code>/check</code> → Create topic again.</i>\n")
+	} else if created {
 		body.WriteString("A new forum topic was created in your bridge supergroup.\n")
 	} else {
 		body.WriteString("This contact was already mapped to an existing forum topic.\n")
@@ -1710,7 +1732,9 @@ func CheckChatCallbackHandler(b *gotgbot.Bot, c *ext.Context) error {
 		body.WriteString(fmt.Sprintf(`<a href="%s">Open topic in Telegram</a>`, html.EscapeString(link)))
 	}
 	cbText := "Forum topic created."
-	if !created {
+	if droppedStale {
+		cbText = "Stale mapping cleared."
+	} else if !created {
 		cbText = "Topic ready (already existed)."
 	}
 	_, _ = cq.Answer(b, &gotgbot.AnswerCallbackQueryOpts{Text: cbText})
@@ -1759,9 +1783,23 @@ func CheckPingCallbackHandler(b *gotgbot.Bot, c *ext.Context) error {
 			return fmt.Errorf("no forum thread id for %s", waKey)
 		}
 	}
-	_, err = b.SendMessage(cfg.Telegram.TargetChatID, utils.CheckContactPingMessage, &gotgbot.SendMessageOpts{
-		MessageThreadId: threadId,
-	})
+	sendPing := func(tid int64) error {
+		_, e := b.SendMessage(cfg.Telegram.TargetChatID, utils.CheckContactPingMessage, &gotgbot.SendMessageOpts{
+			MessageThreadId: tid,
+		})
+		return e
+	}
+	err = sendPing(threadId)
+	if err != nil && utils.TgErrMessageThreadMissing(err) {
+		_ = database.ChatThreadDropPairByWaChat(waKey, cfg.Telegram.TargetChatID)
+		var recErr error
+		threadId, _, recErr = utils.TgGetOrMakeThreadFromWa(jid.ToNonAD(), cfg.Telegram.TargetChatID, "")
+		if recErr == nil && threadId != 0 {
+			err = sendPing(threadId)
+		} else if recErr != nil {
+			err = recErr
+		}
+	}
 	if err != nil {
 		_, _ = cq.Answer(b, &gotgbot.AnswerCallbackQueryOpts{Text: "Failed to send ping: " + err.Error(), ShowAlert: true})
 		return err
