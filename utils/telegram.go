@@ -119,6 +119,26 @@ func TgGetOrMakeThreadFromWa_String(waChatIdString string, tgChatId int64, threa
 
 const maxForumTopicNameLen = 128
 
+// TgPinChatMessageInThread pins a chat message. For forum supergroups, message_thread_id must
+// match the topic the message belongs to; omitting it (as gotgbot.PinChatMessage does) pins in General.
+func TgPinChatMessageInThread(b *gotgbot.Bot, chatId, messageId, messageThreadId int64, disableNotification bool) error {
+	if b == nil {
+		return fmt.Errorf("nil bot")
+	}
+	params := map[string]any{
+		"chat_id":    chatId,
+		"message_id": messageId,
+	}
+	if messageThreadId != 0 {
+		params["message_thread_id"] = messageThreadId
+	}
+	if disableNotification {
+		params["disable_notification"] = true
+	}
+	_, err := b.RequestWithContext(context.Background(), "pinChatMessage", params, nil)
+	return err
+}
+
 // TruncateTelegramForumTopicName shortens titles to Telegram's forum topic limit.
 func TruncateTelegramForumTopicName(title string) string {
 	if len(title) <= maxForumTopicNameLen {
@@ -193,7 +213,7 @@ func TgTopicMetadataEnsurePostedForChat(tgChatId, tgThreadId int64, waKey string
 		logger.Warn("topic metadata send", zap.Error(err))
 		return
 	}
-	if _, pinErr := b.PinChatMessage(tgChatId, sent.MessageId, &gotgbot.PinChatMessageOpts{DisableNotification: true}); pinErr != nil {
+	if pinErr := TgPinChatMessageInThread(b, tgChatId, sent.MessageId, tgThreadId, true); pinErr != nil {
 		logger.Warn("topic metadata pin", zap.Error(pinErr))
 	}
 	if err := database.ChatThreadTopicMetadataWrite(waKey, tgChatId, disp, tgCreated, waDlgSt, sent.MessageId); err != nil {

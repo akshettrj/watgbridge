@@ -1369,9 +1369,7 @@ func SyncContactPhotoHandler(b *gotgbot.Bot, c *ext.Context) error {
 		return utils.TgReplyWithErrorByContext(b, c, "Failed to send photo", err)
 	}
 
-	_, err = b.PinChatMessage(c.EffectiveChat.Id, sentMsg.MessageId, &gotgbot.PinChatMessageOpts{
-		DisableNotification: true,
-	})
+	err = utils.TgPinChatMessageInThread(b, c.EffectiveChat.Id, sentMsg.MessageId, threadID, true)
 	if err != nil {
 		return utils.TgReplyWithErrorByContext(b, c, "Photo sent, but failed to pin (bot needs can_pin_messages in this group)", err)
 	}
@@ -1603,9 +1601,7 @@ func CheckChatCallbackHandler(b *gotgbot.Bot, c *ext.Context) error {
 		_, _ = cq.Answer(b, &gotgbot.AnswerCallbackQueryOpts{Text: "Invalid JID", ShowAlert: true})
 		return nil
 	}
-	waChatIdString := jid.ToNonAD().String()
-	threadName := utils.WaGetContactName(jid)
-	threadId, _, err := utils.TgGetOrMakeThreadFromWa_String(waChatIdString, cfg.Telegram.TargetChatID, threadName)
+	_, err := utils.TgGetOrMakeThreadFromWa(jid.ToNonAD(), cfg.Telegram.TargetChatID, "")
 	if err != nil {
 		_, _ = cq.Answer(b, &gotgbot.AnswerCallbackQueryOpts{
 			Text:      "Failed to create topic: " + err.Error(),
@@ -1614,7 +1610,6 @@ func CheckChatCallbackHandler(b *gotgbot.Bot, c *ext.Context) error {
 		})
 		return err
 	}
-	utils.TgTopicMetadataEnsurePostedForChat(cfg.Telegram.TargetChatID, threadId, waChatIdString, jid.ToNonAD())
 	_, _ = cq.Answer(b, &gotgbot.AnswerCallbackQueryOpts{Text: "Topic created. You can chat in the new topic."})
 	_, _, _ = b.EditMessageText("Phone number exists. Use the new topic to chat.", &gotgbot.EditMessageTextOpts{
 		ChatId:      c.EffectiveChat.Id,

@@ -9,10 +9,12 @@ import (
 
 	"watgbridge/bridge"
 	"watgbridge/database"
+	"watgbridge/state"
 
 	"github.com/PaulSonOfLars/gotgbot/v2"
 	"github.com/PaulSonOfLars/gotgbot/v2/ext"
 	"github.com/PaulSonOfLars/gotgbot/v2/ext/handlers"
+	"go.uber.org/zap"
 )
 
 func Start(token string, manager *bridge.Manager) error {
@@ -23,6 +25,10 @@ func Start(token string, manager *bridge.Manager) error {
 	})
 	if err != nil {
 		return err
+	}
+
+	if err := registerMainBotMyCommands(bot); err != nil {
+		state.State.Logger.Warn("main bot: setMyCommands failed", zap.String("error", err.Error()))
 	}
 
 	dispatcher := ext.NewDispatcher(&ext.DispatcherOpts{
@@ -243,7 +249,13 @@ func bridgeDeleteHandler(manager *bridge.Manager) handlers.Response {
 			return sendErr
 		}
 		bridgeID := uint(id64)
+		rec, getErr := database.BridgeGetByID(user.Id, bridgeID)
+		if getErr != nil {
+			_, sendErr := b.SendMessage(c.EffectiveChat.Id, "Bridge not found", nil)
+			return sendErr
+		}
 		_ = manager.StopBridge(bridgeID)
+		bridgeBotLeaveTargetChat(rec.BridgeBotToken, rec.TelegramTargetChat)
 		if err := database.BridgeDelete(user.Id, bridgeID); err != nil {
 			_, sendErr := b.SendMessage(c.EffectiveChat.Id, "Failed to delete bridge", nil)
 			return sendErr
