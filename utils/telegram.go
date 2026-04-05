@@ -10,7 +10,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -252,26 +251,20 @@ func TgTopicMetadataRefreshFromWA(tgChatId, tgThreadId int64, waKey string, waJI
 
 // TgFetchForumTopicName returns the current forum topic name via Telegram getForumTopic (Bot API).
 func TgFetchForumTopicName(b *gotgbot.Bot, chatId, messageThreadId int64) (name string, ok bool, err error) {
-	r, err := b.RequestWithContext(context.Background(), "getForumTopic", map[string]string{
-		"chat_id":             strconv.FormatInt(chatId, 10),
-		"message_thread_id": strconv.FormatInt(messageThreadId, 10),
-	}, nil, nil)
+	r, err := b.RequestWithContext(context.Background(), "getForumTopic", map[string]any{
+		"chat_id":           chatId,
+		"message_thread_id": messageThreadId,
+	}, nil)
 	if err != nil {
 		return "", false, err
 	}
-	var raw struct {
-		Ok     bool `json:"ok"`
-		Result struct {
-			Name string `json:"name"`
-		} `json:"result"`
+	var topic struct {
+		Name string `json:"name"`
 	}
-	if err := json.Unmarshal(r, &raw); err != nil {
+	if err := json.Unmarshal(r, &topic); err != nil {
 		return "", false, err
 	}
-	if !raw.Ok {
-		return "", false, fmt.Errorf("getForumTopic failed: %s", string(r))
-	}
-	return raw.Result.Name, true, nil
+	return topic.Name, topic.Name != "", nil
 }
 
 // TgApplyForumTopicSyncFromWA is used by /synccontactname and /synctopicnames.

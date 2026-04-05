@@ -174,6 +174,35 @@ func BridgeProvisionSet(bridgeID uint, general, botMeta, calls, statusThread int
 	return nil
 }
 
+func BridgePendingManagedUpsert(ownerUserID, managedBotUserID int64, token, labelHint string) error {
+	db := state.State.Database
+	now := time.Now()
+	row := BridgePendingManaged{
+		OwnerUserID:      ownerUserID,
+		ManagedBotUserID: managedBotUserID,
+		BridgeBotToken:   strings.TrimSpace(token),
+		LabelHint:        strings.TrimSpace(labelHint),
+		CreatedAt:        now,
+		UpdatedAt:        now,
+	}
+	return db.Save(&row).Error
+}
+
+func BridgePendingManagedGet(ownerUserID int64) (*BridgePendingManaged, error) {
+	db := state.State.Database
+	var row BridgePendingManaged
+	res := db.Where("owner_user_id = ?", ownerUserID).First(&row)
+	if res.Error != nil {
+		return nil, res.Error
+	}
+	return &row, nil
+}
+
+func BridgePendingManagedDelete(ownerUserID int64) error {
+	db := state.State.Database
+	return db.Where("owner_user_id = ?", ownerUserID).Delete(&BridgePendingManaged{}).Error
+}
+
 func BridgeBuildName(ownerID int64, nextIndex int) string {
 	baseNames := []string{"chrome", "safari", "firefox", "edge", "opera", "brave"}
 	name := baseNames[nextIndex%len(baseNames)]

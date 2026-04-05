@@ -13,15 +13,17 @@ type sendWithoutReplyBotClient struct {
 }
 
 func (b *sendWithoutReplyBotClient) RequestWithContext(ctx context.Context,
-	token string, method string, params map[string]string,
-	data map[string]gotgbot.FileReader,
+	token string, method string, params map[string]any,
 	opts *gotgbot.RequestOpts) (json.RawMessage, error) {
 
 	if strings.HasPrefix(method, "send") || method == "copyMessage" {
-		params["allow_sending_without_reply"] = "true"
+		if params == nil {
+			params = make(map[string]any)
+		}
+		params["allow_sending_without_reply"] = true
 	}
 
-	return b.BotClient.RequestWithContext(ctx, token, method, params, data, opts)
+	return b.BotClient.RequestWithContext(ctx, token, method, params, opts)
 }
 
 func SendWithoutReply(b gotgbot.BotClient) gotgbot.BotClient {

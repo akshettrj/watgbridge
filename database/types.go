@@ -84,16 +84,26 @@ type Bridge struct {
 }
 
 type BridgeProvisionState struct {
-	BridgeID          uint      `gorm:"primaryKey;autoIncrement:false"`
+	BridgeID          uint `gorm:"primaryKey;autoIncrement:false"`
 	GeneralThreadID   int64
 	BotMetaThreadID   int64
 	CallsThreadID     int64
 	StatusThreadID    int64
-	LastCheckStatus   string    `gorm:"size:64;not null;default:pending"`
-	LastCheckError    string    `gorm:"type:text"`
+	LastCheckStatus   string `gorm:"size:64;not null;default:pending"`
+	LastCheckError    string `gorm:"type:text"`
 	LastProvisionedAt time.Time
 	CreatedAt         time.Time `gorm:"not null"`
 	UpdatedAt         time.Time `gorm:"not null"`
+}
+
+// BridgePendingManaged stores a managed-bridge bot token until the owner runs /bridge_bind with a target forum group.
+type BridgePendingManaged struct {
+	OwnerUserID      int64     `gorm:"primaryKey;autoIncrement:false"`
+	ManagedBotUserID int64     `gorm:"not null"`
+	BridgeBotToken   string    `gorm:"type:text;not null"`
+	LabelHint        string    `gorm:"size:191"`
+	CreatedAt        time.Time `gorm:"not null"`
+	UpdatedAt        time.Time `gorm:"not null"`
 }
 
 // TelegramImportMessage stores Telegram Desktop JSON export rows for a bridge target chat.
@@ -128,6 +138,7 @@ func AutoMigrate() error {
 		&BridgeUser{},
 		&Bridge{},
 		&BridgeProvisionState{},
+		&BridgePendingManaged{},
 		&TelegramImportMessage{},
 	)
 }

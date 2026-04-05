@@ -16,16 +16,18 @@ type autoHandleRateLimitBotClient struct {
 }
 
 func (b *autoHandleRateLimitBotClient) RequestWithContext(ctx context.Context,
-	token string, method string, params map[string]string,
-	data map[string]gotgbot.FileReader,
+	token string, method string, params map[string]any,
 	opts *gotgbot.RequestOpts) (json.RawMessage, error) {
 
 	if strings.HasPrefix(method, "send") || strings.HasPrefix(method, "edit") {
-		params["parse_mode"] = "html"
+		if params == nil {
+			params = make(map[string]any)
+		}
+		params["parse_mode"] = "HTML"
 	}
 
 	for {
-		response, err := b.BotClient.RequestWithContext(ctx, token, method, params, data, opts)
+		response, err := b.BotClient.RequestWithContext(ctx, token, method, params, opts)
 		if err == nil {
 			return response, err
 		}

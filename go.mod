@@ -3,7 +3,7 @@ module watgbridge
 go 1.25.0
 
 require (
-	github.com/PaulSonOfLars/gotgbot/v2 v2.0.0-rc.33
+	github.com/PaulSonOfLars/gotgbot/v2 v2.0.0-rc.34
 	github.com/emersion/go-vcard v0.0.0-20241024213814-c9703dde27ff
 	github.com/forPelevin/gomoji v1.4.1
 	github.com/go-co-op/gocron v1.37.0

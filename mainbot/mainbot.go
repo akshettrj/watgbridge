@@ -9,7 +9,6 @@ import (
 
 	"watgbridge/bridge"
 	"watgbridge/database"
-	"watgbridge/utils"
 
 	"github.com/PaulSonOfLars/gotgbot/v2"
 	"github.com/PaulSonOfLars/gotgbot/v2/ext"
@@ -32,14 +31,12 @@ func Start(token string, manager *bridge.Manager) error {
 		},
 		MaxRoutines: ext.DefaultMaxRoutines,
 	})
-	updater := ext.NewUpdater(dispatcher, &ext.UpdaterOpts{
-		UnhandledErrFunc: func(err error) {
-			fmt.Printf("main bot updater error: %v\n", err)
-		},
-	})
 
 	dispatcher.AddHandler(handlers.NewCommand("start", startHandler))
 	dispatcher.AddHandler(handlers.NewCommand("bridge_add", bridgeAddHandler(manager)))
+	dispatcher.AddHandler(handlers.NewCommand("bridge_create_bot", bridgeCreateBotHandler()))
+	dispatcher.AddHandler(handlers.NewCommand("bridge_bind", bridgeBindHandler(manager)))
+	dispatcher.AddHandler(handlers.NewCommand("bridge_cancel_managed", bridgeCancelManagedHandler()))
 	dispatcher.AddHandler(handlers.NewCommand("bridge_list", bridgeListHandler))
 	dispatcher.AddHandler(handlers.NewCommand("bridge_enable", bridgeEnableHandler(manager)))
 	dispatcher.AddHandler(handlers.NewCommand("bridge_disable", bridgeDisableHandler(manager)))
@@ -47,10 +44,18 @@ func Start(token string, manager *bridge.Manager) error {
 	dispatcher.AddHandler(handlers.NewCommand("import_history", importHistoryCommandHandler()))
 	dispatcher.AddHandler(handlers.NewMessage(importHistoryPendingDocumentFilter, importHistoryDocumentHandler()))
 
+	relay := newManagedRelayDispatcher(dispatcher)
+	updater := ext.NewUpdater(relay, &ext.UpdaterOpts{
+		UnhandledErrFunc: func(err error) {
+			fmt.Printf("main bot updater error: %v\n", err)
+		},
+	})
+
 	if err := updater.StartPolling(bot, &ext.PollingOpts{
 		DropPendingUpdates: true,
 		GetUpdatesOpts: &gotgbot.GetUpdatesOpts{
-			Timeout: 9,
+			Timeout:        9,
+			AllowedUpdates: []string{"message", "managed_bot"},
 			RequestOpts: &gotgbot.RequestOpts{
 				Timeout: 10 * time.Second,
 			},
@@ -72,10 +77,11 @@ func startHandler(b *gotgbot.Bot, c *ext.Context) error {
 	text += "<b>Setup</b>\n"
 	text += "1) Supergroup with Topics.\n"
 	text += "2) Add the bridge bot with <b>Manage Topics</b>.\n"
-	text += "3) <code>/bridge_add …</code> creates <b>General</b>, <b>BotMeta</b>, and <b>Calls</b> topics.\n\n"
+	text += "3) <code>/bridge_add …</code> or managed flow below creates <b>General</b>, <b>BotMeta</b>, <b>Calls</b>, and <b>Status</b> topics.\n\n"
+	text += "<b>Managed bridge bot</b> (Telegram <a href=\"https://core.telegram.org/bots/features#managed-bots\">managed bots</a>): in @BotFather open this main bot → Mini App → enable <i>Bot Management Mode</i>. Then <code>/bridge_create_bot</code> [label] (tap-to-create or t.me link), wait for the bot confirmation message here, add the new bot to your forum group, and <code>/bridge_bind &lt;target_chat_id&gt;</code> [label]. <code>/bridge_cancel_managed</code> drops a pending managed bot.\n\n"
 	text += "<b>Chat history archive</b>: <code>/import_history &lt;bridge_id&gt;</code> then send your Telegram Desktop <code>result.json</code> or a zip of the export folder. Rows are stored in the registry SQLite for audit/search; they do <b>not</b> fill WhatsApp↔Telegram id mappings (those only come from live bridged traffic).\n\n"
 	text += "<b>Manage</b>\n"
-	text += "<code>/bridge_list</code> · <code>/bridge_enable</code> · <code>/bridge_disable</code> · <code>/bridge_delete</code> · <code>/import_history</code>"
+	text += "<code>/bridge_list</code> · <code>/bridge_enable</code> · <code>/bridge_disable</code> · <code>/bridge_delete</code> · <code>/import_history</code> · <code>/bridge_create_bot</code> · <code>/bridge_bind</code>"
 	pm := gotgbot.ParseModeHTML
 	_, err := b.SendMessage(c.EffectiveChat.Id, text, &gotgbot.SendMessageOpts{ParseMode: pm})
 	return err
@@ -114,66 +120,11 @@ func bridgeAddHandler(manager *bridge.Manager) handlers.Response {
 			return sendErr
 		}
 
-		bridgeBot, err := gotgbot.NewBot(token, nil)
-		if err != nil {
-			_, sendErr := b.SendMessage(c.EffectiveChat.Id, "Invalid bridge token", nil)
+		resp, addErr := addBridgeFromCredentials(b, manager, user.Id, token, targetChatID, name)
+		if addErr != nil {
+			_, sendErr := b.SendMessage(c.EffectiveChat.Id, addErr.Error(), nil)
 			return sendErr
 		}
-		if _, err := bridgeBot.GetMe(nil); err != nil {
-			_, sendErr := b.SendMessage(c.EffectiveChat.Id, "Token validation failed", nil)
-			return sendErr
-		}
-		chat, err := bridgeBot.GetChat(targetChatID, nil)
-		if err != nil {
-			_, sendErr := b.SendMessage(c.EffectiveChat.Id, "Bridge bot cannot access target group", nil)
-			return sendErr
-		}
-		if !chat.IsForum {
-			_, sendErr := b.SendMessage(c.EffectiveChat.Id, "Target group must have Topics enabled", nil)
-			return sendErr
-		}
-		member, err := bridgeBot.GetChatMember(targetChatID, bridgeBot.Id, nil)
-		if err != nil {
-			_, sendErr := b.SendMessage(c.EffectiveChat.Id, "Bridge bot must be in target group as admin", nil)
-			return sendErr
-		}
-		merged := member.MergeChatMember()
-		if merged.Status != "creator" && (merged.Status != "administrator" || !merged.CanManageTopics) {
-			_, sendErr := b.SendMessage(c.EffectiveChat.Id, "Bridge bot needs admin + Manage Topics permission", nil)
-			return sendErr
-		}
-		var record *database.Bridge
-		var createErr error
-		for attempt := 0; attempt < 8; attempt++ {
-			waSession, genErr := utils.RandomWhatsAppDeviceLabel()
-			if genErr != nil {
-				_, sendErr := b.SendMessage(c.EffectiveChat.Id, "Failed to generate WhatsApp device label", nil)
-				return sendErr
-			}
-			record, createErr = database.BridgeCreate(user.Id, name, token, targetChatID, waSession, true)
-			if createErr == nil {
-				break
-			}
-			if !isUniqueConstraintError(createErr) {
-				break
-			}
-		}
-		if createErr != nil {
-			_, sendErr := b.SendMessage(c.EffectiveChat.Id, "Failed to create bridge record: "+createErr.Error(), nil)
-			return sendErr
-		}
-		general, botMeta, calls, status, provErr := ensureMetaTopics(bridgeBot, targetChatID)
-		if provErr != nil {
-			_ = database.BridgeProvisionSet(record.ID, 0, 0, 0, 0, "provision_error", provErr.Error())
-		} else {
-			_ = database.BridgeProvisionSet(record.ID, general, botMeta, calls, status, "ok", "")
-		}
-		if err := manager.StartBridge(record); err != nil {
-			_, sendErr := b.SendMessage(c.EffectiveChat.Id, "Bridge saved but failed to start runtime: "+err.Error(), nil)
-			return sendErr
-		}
-		resp := fmt.Sprintf("Bridge enabled.\nID: %d\nLabel: %s\nTarget: %d\nWhatsApp linked device name: %s\n\nManage with /bridge_list /bridge_disable /bridge_delete",
-			record.ID, record.Name, record.TelegramTargetChat, record.WaSessionName)
 		_, err = b.SendMessage(c.EffectiveChat.Id, resp, nil)
 		return err
 	}
@@ -181,7 +132,7 @@ func bridgeAddHandler(manager *bridge.Manager) handlers.Response {
 
 func tryForumThread(bot *gotgbot.Bot, chatID, threadID int64) error {
 	msg, err := bot.SendMessage(chatID, "\u2060", &gotgbot.SendMessageOpts{
-		MessageThreadId:   threadID,
+		MessageThreadId:     threadID,
 		DisableNotification: true,
 	})
 	if err != nil {
