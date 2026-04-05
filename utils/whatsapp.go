@@ -18,6 +18,75 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+// ChatThreadLookupByWaJID finds chat_thread_pairs for a WA chat in the target Telegram supergroup.
+// Rows may be keyed by phone JID or by LID (@lid); tries the native key, LID→PN, and PN→LID.
+// When found, waDbKey is the primary key stored in the DB (for metadata updates).
+func ChatThreadLookupByWaJID(ctx context.Context, waChat types.JID, tgTargetChatId int64) (tgThreadId int64, waDbKey string, err error) {
+	waChat = waChat.ToNonAD()
+	try := func(key string) (int64, bool, error) {
+		tid, ok, e := database.ChatThreadGetTgFromWa(key, tgTargetChatId)
+		if e != nil {
+			return 0, false, e
+		}
+		if ok && tid != 0 {
+			return tid, true, nil
+		}
+		return 0, false, nil
+	}
+
+	if tid, ok, e := try(waChat.String()); e != nil {
+		return 0, "", e
+	} else if ok {
+		return tid, waChat.String(), nil
+	}
+
+	waClient := state.State.WhatsAppClient
+	if waClient == nil {
+		return 0, "", nil
+	}
+
+	if waChat.Server == types.HiddenUserServer {
+		if pn, e2 := waClient.Store.LIDs.GetPNForLID(ctx, waChat); e2 == nil && !pn.IsEmpty() {
+			pn = pn.ToNonAD()
+			if tid, ok, e := try(pn.String()); e != nil {
+				return 0, "", e
+			} else if ok {
+				return tid, pn.String(), nil
+			}
+		}
+	}
+
+	if waChat.Server == types.DefaultUserServer || waChat.Server == types.LegacyUserServer {
+		if lid, e2 := waClient.Store.LIDs.GetLIDForPN(ctx, waChat); e2 == nil && !lid.IsEmpty() {
+			lid = lid.ToNonAD()
+			if tid, ok, e := try(lid.String()); e != nil {
+				return 0, "", e
+			} else if ok {
+				return tid, lid.String(), nil
+			}
+		}
+	}
+
+	return 0, "", nil
+}
+
+// WaBestJIDForOutgoingChat prefers the phone JID for 1:1 sends when the mapped chat is @lid.
+func WaBestJIDForOutgoingChat(ctx context.Context, chat types.JID) types.JID {
+	chat = chat.ToNonAD()
+	if chat.Server != types.HiddenUserServer {
+		return chat
+	}
+	waClient := state.State.WhatsAppClient
+	if waClient == nil {
+		return chat
+	}
+	pn, err := waClient.Store.LIDs.GetPNForLID(ctx, chat)
+	if err != nil || pn.IsEmpty() {
+		return chat
+	}
+	return pn.ToNonAD()
+}
+
 func WaParseJID(s string) (types.JID, bool) {
 	if s[0] == '+' {
 		s = SubString(s, 1, len(s)-1)

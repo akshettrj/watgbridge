@@ -283,6 +283,7 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 		msgCopy.MessageThreadId = forwardedMsg.MessageThreadId
 
 		finalWaChatJID, _ := utils.WaParseJID(waChatID)
+		finalWaChatJID = utils.WaBestJIDForOutgoingChat(context.Background(), finalWaChatJID)
 		return utils.TgSendToWhatsApp(b, c, &msgCopy, msgToReplyTo, finalWaChatJID, participantID, stanzaID, true)
 
 	} else if participantID != "" {
@@ -291,6 +292,7 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 	}
 
 	waChatJID, _ := utils.WaParseJID(waChatID)
+	waChatJID = utils.WaBestJIDForOutgoingChat(context.Background(), waChatJID)
 
 	return utils.TgSendToWhatsApp(b, c, msgToForward, msgToReplyTo, waChatJID, participantID, stanzaID, msgToReplyTo != nil && msgToReplyTo.ForumTopicCreated == nil)
 }

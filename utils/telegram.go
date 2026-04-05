@@ -71,7 +71,9 @@ func TgMessageIsInGeneralHub(cfg *state.Config, msg *gotgbot.Message) bool {
 	}
 	tid := TgEffectiveMessageThreadId(msg)
 	if cfg.Telegram.GeneralThreadID != 0 {
-		return msg.IsTopicMessage && tid == cfg.Telegram.GeneralThreadID
+		// Rely on message_thread_id only: Telegram updates sometimes omit is_topic_message
+		// (JSON omitempty → false), while message_thread_id still identifies the General topic.
+		return tid == cfg.Telegram.GeneralThreadID
 	}
 	// Legacy (no general_thread_id): non-forum / non-topic messages are the hub.
 	if !msg.IsTopicMessage {

@@ -1654,10 +1654,9 @@ func PushNameEventHandler(v *events.PushName) {
 
 func UserAboutEventHandler(v *events.UserAbout) {
 	var (
-		cfg      = state.State.Config
-		logger   = state.State.Logger
-		tgBot    = state.State.TelegramBot
-		waClient = state.State.WhatsAppClient
+		cfg    = state.State.Config
+		logger = state.State.Logger
+		tgBot  = state.State.TelegramBot
 	)
 	defer logger.Sync()
 
@@ -1668,20 +1667,13 @@ func UserAboutEventHandler(v *events.UserAbout) {
 	)
 
 	var (
-		tgThreadId  int64       = 0
-		threadFound bool        = false
-		err         error       = nil
-		pn          waTypes.JID = waTypes.EmptyJID
+		tgThreadId  int64 = 0
+		threadFound bool  = false
+		err         error = nil
 	)
 
-	if v.JID.Server == waTypes.HiddenUserServer {
-		pn, err = waClient.Store.LIDs.GetPNForLID(context.Background(), v.JID.ToNonAD())
-		if err == nil {
-			tgThreadId, threadFound, err = database.ChatThreadGetTgFromWa(pn.String(), cfg.Telegram.TargetChatID)
-		}
-	} else {
-		tgThreadId, threadFound, err = database.ChatThreadGetTgFromWa(v.JID.ToNonAD().String(), cfg.Telegram.TargetChatID)
-	}
+	tgThreadId, _, err = utils.ChatThreadLookupByWaJID(context.Background(), v.JID.ToNonAD(), cfg.Telegram.TargetChatID)
+	threadFound = tgThreadId != 0
 	if err != nil {
 		logger.Warn(
 			"failed to find thread for a WhatsApp chat (handling UserAbout event)",
@@ -1769,20 +1761,13 @@ func PictureEventHandler(v *events.Picture) {
 	defer logger.Sync()
 
 	var (
-		tgThreadId  int64       = 0
-		threadFound bool        = false
-		err         error       = nil
-		pn          waTypes.JID = waTypes.EmptyJID
+		tgThreadId  int64 = 0
+		threadFound bool  = false
+		err         error = nil
 	)
 
-	if v.JID.Server == waTypes.HiddenUserServer {
-		pn, err = waClient.Store.LIDs.GetPNForLID(context.Background(), v.JID.ToNonAD())
-		if err == nil {
-			tgThreadId, threadFound, err = database.ChatThreadGetTgFromWa(pn.String(), cfg.Telegram.TargetChatID)
-		}
-	} else {
-		tgThreadId, threadFound, err = database.ChatThreadGetTgFromWa(v.JID.ToNonAD().String(), cfg.Telegram.TargetChatID)
-	}
+	tgThreadId, _, err = utils.ChatThreadLookupByWaJID(context.Background(), v.JID.ToNonAD(), cfg.Telegram.TargetChatID)
+	threadFound = tgThreadId != 0
 	if err != nil {
 		logger.Warn(
 			"failed to find thread for a WhatsApp chat (handling Picture event)",
@@ -1854,7 +1839,7 @@ func PictureEventHandler(v *events.Picture) {
 				return
 			}
 		}
-	} else if v.JID.Server == waTypes.DefaultUserServer {
+	} else if v.JID.Server == waTypes.DefaultUserServer || v.JID.Server == waTypes.HiddenUserServer {
 		tgThreadId, _, err = utils.TgGetOrMakeThreadFromWa(v.JID.ToNonAD(), cfg.Telegram.TargetChatID, "")
 		if err != nil {
 			logger.Warn(
@@ -1916,28 +1901,21 @@ func PictureEventHandler(v *events.Picture) {
 
 func GroupInfoEventHandler(v *events.GroupInfo) {
 	var (
-		cfg      = state.State.Config
-		logger   = state.State.Logger
-		tgBot    = state.State.TelegramBot
-		waClient = state.State.WhatsAppClient
+		cfg    = state.State.Config
+		logger = state.State.Logger
+		tgBot  = state.State.TelegramBot
 	)
 	defer logger.Sync()
 
 	var (
-		tgThreadId  int64       = 0
-		threadFound bool        = false
-		err         error       = nil
-		pn          waTypes.JID = waTypes.EmptyJID
+		tgThreadId  int64  = 0
+		threadFound bool   = false
+		err         error  = nil
+		waPairKey   string = ""
 	)
 
-	if v.JID.Server == waTypes.HiddenUserServer {
-		pn, err = waClient.Store.LIDs.GetPNForLID(context.Background(), v.JID.ToNonAD())
-		if err == nil {
-			tgThreadId, threadFound, err = database.ChatThreadGetTgFromWa(pn.String(), cfg.Telegram.TargetChatID)
-		}
-	} else {
-		tgThreadId, threadFound, err = database.ChatThreadGetTgFromWa(v.JID.ToNonAD().String(), cfg.Telegram.TargetChatID)
-	}
+	tgThreadId, waPairKey, err = utils.ChatThreadLookupByWaJID(context.Background(), v.JID.ToNonAD(), cfg.Telegram.TargetChatID)
+	threadFound = tgThreadId != 0 && waPairKey != ""
 	if err != nil {
 		logger.Warn(
 			"failed to find thread for a WhatsApp chat (handling GroupInfo event)",
@@ -1961,14 +1939,10 @@ func GroupInfoEventHandler(v *events.GroupInfo) {
 				)
 				return
 			}
+			waPairKey = v.JID.ToNonAD().String()
 		} else {
 			return
 		}
-	}
-
-	waPairKey := v.JID.ToNonAD().String()
-	if v.JID.Server == waTypes.HiddenUserServer && !pn.IsEmpty() {
-		waPairKey = pn.String()
 	}
 
 	if v.Announce != nil {
