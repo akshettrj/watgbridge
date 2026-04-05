@@ -1,6 +1,7 @@
 package mainbot
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -11,6 +12,24 @@ import (
 
 	"github.com/PaulSonOfLars/gotgbot/v2"
 )
+
+// User-fixable setup errors (managed onboarding can offer a “Proceed” retry).
+var (
+	ErrBridgeBotCannotAccessTarget = errors.New("bridge bot cannot access target group")
+	ErrTargetGroupNotForum         = errors.New("target group must have Topics enabled")
+	ErrBridgeBotNotGroupMember     = errors.New("bridge bot must be in target group as admin")
+	ErrBridgeBotNeedsManageTopics  = errors.New("bridge bot needs admin + Manage Topics permission")
+)
+
+func isRetryableManagedBindErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	return errors.Is(err, ErrBridgeBotCannotAccessTarget) ||
+		errors.Is(err, ErrTargetGroupNotForum) ||
+		errors.Is(err, ErrBridgeBotNotGroupMember) ||
+		errors.Is(err, ErrBridgeBotNeedsManageTopics)
+}
 
 // addBridgeFromCredentials validates token, forum group, provisions topics, persists the bridge, and starts the runtime.
 func addBridgeFromCredentials(b *gotgbot.Bot, manager *bridge.Manager, ownerUserID int64, token string, targetChatID int64, name string) (resp string, err error) {
@@ -39,18 +58,18 @@ func addBridgeFromCredentials(b *gotgbot.Bot, manager *bridge.Manager, ownerUser
 	}
 	chat, err := bridgeBot.GetChat(targetChatID, nil)
 	if err != nil {
-		return "", fmt.Errorf("bridge bot cannot access target group")
+		return "", ErrBridgeBotCannotAccessTarget
 	}
 	if !chat.IsForum {
-		return "", fmt.Errorf("target group must have Topics enabled")
+		return "", ErrTargetGroupNotForum
 	}
 	member, err := bridgeBot.GetChatMember(targetChatID, bridgeBot.Id, nil)
 	if err != nil {
-		return "", fmt.Errorf("bridge bot must be in target group as admin")
+		return "", ErrBridgeBotNotGroupMember
 	}
 	merged := member.MergeChatMember()
 	if merged.Status != "creator" && (merged.Status != "administrator" || !merged.CanManageTopics) {
-		return "", fmt.Errorf("bridge bot needs admin + Manage Topics permission")
+		return "", ErrBridgeBotNeedsManageTopics
 	}
 
 	var record *database.Bridge

@@ -48,6 +48,7 @@ func Start(token string, manager *bridge.Manager) error {
 	dispatcher.AddHandler(handlers.NewCommand("bridge_disable", bridgeDisableHandler(manager)))
 	dispatcher.AddHandler(handlers.NewCommand("bridge_delete", bridgeDeleteHandler(manager)))
 	dispatcher.AddHandler(handlers.NewCommand("import_history", importHistoryCommandHandler()))
+	dispatcher.AddHandler(handlers.NewCallback(managedBindProceedCallbackFilter, managedBindProceedHandler(manager)))
 	dispatcher.AddHandler(handlers.NewMessage(managedChatSharedFilter, managedChatSharedHandler(manager)))
 	dispatcher.AddHandler(handlers.NewMessage(importHistoryPendingDocumentFilter, importHistoryDocumentHandler()))
 
@@ -62,7 +63,7 @@ func Start(token string, manager *bridge.Manager) error {
 		DropPendingUpdates: true,
 		GetUpdatesOpts: &gotgbot.GetUpdatesOpts{
 			Timeout:        9,
-			AllowedUpdates: []string{"message", "managed_bot"},
+			AllowedUpdates: []string{"message", "managed_bot", "callback_query"},
 			RequestOpts: &gotgbot.RequestOpts{
 				Timeout: 10 * time.Second,
 			},

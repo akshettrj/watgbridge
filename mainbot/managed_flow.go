@@ -32,6 +32,9 @@ func completePendingManagedBind(b *gotgbot.Bot, manager *bridge.Manager, user *g
 	}
 	resp, addErr := addBridgeFromCredentials(b, manager, user.Id, pending.BridgeBotToken, targetChatID, name)
 	if addErr != nil {
+		if isRetryableManagedBindErr(addErr) {
+			return sendManagedBindRetryPrompt(b, user.Id, targetChatID, addErr)
+		}
 		_, e := b.SendMessage(user.Id, addErr.Error(), nil)
 		return e
 	}
