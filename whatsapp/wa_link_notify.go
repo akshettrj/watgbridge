@@ -81,23 +81,51 @@ func notifyWhatsAppLinked(cli *whatsmeow.Client, zl *zap.Logger) {
 		zl.Warn("wa linked: general topic message failed", zap.Error(err))
 	}
 
-	token := strings.TrimSpace(t.ControlBotToken)
-	if token == "" || t.OwnerID == 0 {
-		return
+	botNameHTML := html.EscapeString(strings.TrimSpace(bot.FirstName))
+	if u := strings.TrimSpace(bot.Username); u != "" {
+		botNameHTML = fmt.Sprintf(`<a href="https://t.me/%s">@%s</a>`, html.EscapeString(u), html.EscapeString(u))
 	}
 
-	control, err := gotgbot.NewBot(token, &gotgbot.BotOpts{
-		BotClient: &gotgbot.BaseBotClient{
-			Client: http.Client{},
-			DefaultRequestOpts: &gotgbot.RequestOpts{
-				APIURL:  t.APIURL,
-				Timeout: time.Duration(math.MaxInt64),
+	token := strings.TrimSpace(t.ControlBotToken)
+	var control *gotgbot.Bot
+	if token != "" {
+		var cErr error
+		control, cErr = gotgbot.NewBot(token, &gotgbot.BotOpts{
+			BotClient: &gotgbot.BaseBotClient{
+				Client: http.Client{},
+				DefaultRequestOpts: &gotgbot.RequestOpts{
+					APIURL:  t.APIURL,
+					Timeout: time.Duration(math.MaxInt64),
+				},
 			},
-		},
-		DisableTokenCheck: true,
-	})
-	if err != nil {
-		zl.Warn("wa linked: control bot init failed", zap.Error(err))
+			DisableTokenCheck: true,
+		})
+		if cErr != nil {
+			zl.Warn("wa linked: control bot init failed", zap.Error(cErr))
+		}
+	}
+
+	// Multi-mode chat-picker adds the main (control) bot to the forum so bot_administrator_rights can apply; leave after onboarding.
+	if control != nil && t.TargetChatID != 0 && t.GeneralThreadID != 0 {
+		farewell := fmt.Sprintf(
+			"WhatsApp is linked on <b>%s</b>. I’m leaving this group — your bridge runs here with %s. "+
+				"For settings and other bridges, open a private chat with me and send <code>/bridge_list</code>.",
+			html.EscapeString(phone),
+			botNameHTML,
+		)
+		_, fareErr := control.SendMessage(t.TargetChatID, farewell, &gotgbot.SendMessageOpts{
+			MessageThreadId: t.GeneralThreadID,
+			ParseMode:       gotgbot.ParseModeHTML,
+		})
+		if fareErr != nil {
+			zl.Debug("wa linked: control bot farewell in group (ok if main bot was not in group)", zap.Error(fareErr))
+		}
+		if _, leaveErr := control.LeaveChat(t.TargetChatID, nil); leaveErr != nil {
+			zl.Debug("wa linked: control bot leave group", zap.Error(leaveErr))
+		}
+	}
+
+	if control == nil || t.OwnerID == 0 {
 		return
 	}
 
@@ -107,11 +135,6 @@ func notifyWhatsAppLinked(cli *whatsmeow.Client, zl *zap.Logger) {
 		groupTitle = chat.Title
 	} else if err != nil {
 		zl.Debug("wa linked: getChat for title failed", zap.Error(err))
-	}
-
-	botNameHTML := html.EscapeString(strings.TrimSpace(bot.FirstName))
-	if u := strings.TrimSpace(bot.Username); u != "" {
-		botNameHTML = fmt.Sprintf(`<a href="https://t.me/%s">@%s</a>`, html.EscapeString(u), html.EscapeString(u))
 	}
 
 	body := fmt.Sprintf(
