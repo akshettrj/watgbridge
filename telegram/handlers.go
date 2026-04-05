@@ -1305,7 +1305,7 @@ func SyncContactNameHandler(b *gotgbot.Bot, c *ext.Context) error {
 	if err != nil {
 		return utils.TgReplyWithErrorByContext(b, c, "Failed to rename topic", err)
 	}
-	_, err = utils.TgReplyTextByContext(b, c, "Topic title updated to match WhatsApp contact name.", nil, false)
+	_, err = utils.TgReplyTextByContext(b, c, "Synced with WhatsApp (forum title where applicable; pinned metadata refreshed).", nil, false)
 	return err
 }
 

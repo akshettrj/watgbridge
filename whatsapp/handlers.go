@@ -2191,7 +2191,7 @@ func GroupInfoEventHandler(v *events.GroupInfo) {
 				Name: topicTitle,
 			},
 		)
-		if err != nil {
+		if err != nil && !utils.TgEditForumTopicUnchanged(err) {
 			logger.Error(
 				"failed to change thread name",
 				zap.Error(err),

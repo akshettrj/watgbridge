@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"io"
@@ -269,6 +270,13 @@ func TgTopicMetadataRefreshFromWA(tgChatId, tgThreadId int64, waKey string, waJI
 	}
 }
 
+// TgEditForumTopicUnchanged reports whether Telegram rejected editForumTopic because the name/icon
+// was already identical (Bot API: Bad Request: TOPIC_NOT_MODIFIED). That case should be treated as success.
+func TgEditForumTopicUnchanged(err error) bool {
+	var te *gotgbot.TelegramError
+	return errors.As(err, &te) && strings.Contains(strings.ToUpper(te.Description), "TOPIC_NOT_MODIFIED")
+}
+
 // TgFetchForumTopicName returns the current forum topic name via Telegram getForumTopic (Bot API).
 func TgFetchForumTopicName(b *gotgbot.Bot, chatId, messageThreadId int64) (name string, ok bool, err error) {
 	r, err := b.RequestWithContext(context.Background(), "getForumTopic", map[string]any{
@@ -332,7 +340,7 @@ func TgApplyForumTopicSyncFromWA(tgChatId, threadId int64, waKey string, waJID w
 	}
 
 	if shouldEditForum {
-		if _, err := tgBot.EditForumTopic(tgChatId, threadId, &gotgbot.EditForumTopicOpts{Name: expected}); err != nil {
+		if _, err := tgBot.EditForumTopic(tgChatId, threadId, &gotgbot.EditForumTopicOpts{Name: expected}); err != nil && !TgEditForumTopicUnchanged(err) {
 			return err
 		}
 		_ = database.ChatThreadForumSyncedTitleSet(waKey, tgChatId, expected)
