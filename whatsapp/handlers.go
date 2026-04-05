@@ -562,7 +562,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 						tagInfoText += fmt.Sprintf("\n<i>You were tagged in %s</i>",
 							html.EscapeString(utils.WaGetGroupName(v.Info.Chat)))
 
-						threadId, err := utils.TgGetOrMakeThreadFromWa_String("mentions", cfg.Telegram.TargetChatID, "Mentions")
+						threadId, _, err := utils.TgGetOrMakeThreadFromWa_String("mentions", cfg.Telegram.TargetChatID, "Mentions")
 						if err != nil {
 							utils.TgSendErrorById(tgBot, cfg.Telegram.TargetChatID, 0, "failed to create/find thread id for 'mentions'", err)
 						} else {
@@ -597,7 +597,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 	if !threadIdFound {
 		var err error
 		if statusChat {
-			threadId, err = utils.TgGetOrMakeThreadFromWa_String("status@broadcast", cfg.Telegram.TargetChatID,
+			threadId, _, err = utils.TgGetOrMakeThreadFromWa_String("status@broadcast", cfg.Telegram.TargetChatID,
 				"Status")
 			if err != nil {
 				utils.TgSendErrorById(tgBot, cfg.Telegram.TargetChatID, 0, "failed to create/find thread id for 'status@broadcast'", err)
@@ -1543,7 +1543,7 @@ func UndecryptableMessageEventHandler(v *events.UndecryptableMessage) {
 
 	var err error
 	if statusChat {
-		threadId, err = utils.TgGetOrMakeThreadFromWa_String("status@broadcast", cfg.Telegram.TargetChatID,
+		threadId, _, err = utils.TgGetOrMakeThreadFromWa_String("status@broadcast", cfg.Telegram.TargetChatID,
 			"Status")
 		if err != nil {
 			utils.TgSendErrorById(tgBot, cfg.Telegram.TargetChatID, 0, "failed to create/find thread id for 'status@broadcast'", err)
@@ -1603,7 +1603,7 @@ func CallOfferEventHandler(v *events.CallOffer) {
 	// Show caller *phone number* (not just a display name).
 	callerPhone := utils.WaGetPhoneForDisplay(v.CallCreator.User, v.CallCreator.Server)
 
-	callThreadId, err := utils.TgGetOrMakeThreadFromWa_String("calls", cfg.Telegram.TargetChatID, "Calls")
+	callThreadId, _, err := utils.TgGetOrMakeThreadFromWa_String("calls", cfg.Telegram.TargetChatID, "Calls")
 	if err != nil {
 		utils.TgSendErrorById(tgBot, cfg.Telegram.TargetChatID, 0, "Failed to create/retreive corresponding thread id for calls", err)
 		return
@@ -1966,6 +1966,11 @@ func GroupInfoEventHandler(v *events.GroupInfo) {
 		}
 	}
 
+	waPairKey := v.JID.ToNonAD().String()
+	if v.JID.Server == waTypes.HiddenUserServer && !pn.IsEmpty() {
+		waPairKey = pn.String()
+	}
+
 	if v.Announce != nil {
 		var authorInfo string
 		if v.Sender != nil {
@@ -2179,10 +2184,11 @@ func GroupInfoEventHandler(v *events.GroupInfo) {
 	}
 
 	if v.Name != nil {
+		topicTitle := utils.TruncateTelegramForumTopicName(utils.WaTelegramGroupTopicTitle(v.Name.Name))
 		_, err = tgBot.EditForumTopic(
 			cfg.Telegram.TargetChatID, tgThreadId,
 			&gotgbot.EditForumTopicOpts{
-				Name: v.Name.Name,
+				Name: topicTitle,
 			},
 		)
 		if err != nil {
@@ -2194,6 +2200,8 @@ func GroupInfoEventHandler(v *events.GroupInfo) {
 			)
 			return
 		}
+		_ = database.ChatThreadForumSyncedTitleSet(waPairKey, cfg.Telegram.TargetChatID, topicTitle)
+		utils.TgTopicMetadataRefreshFromWA(cfg.Telegram.TargetChatID, tgThreadId, waPairKey, v.JID.ToNonAD())
 		changer := utils.WaGetContactName(v.Name.NameSetBy)
 		updateText := fmt.Sprintf(
 			"The group name was changed by <b>%s</b>:\n\n<code>%s</code>",

@@ -3,11 +3,14 @@ package utils
 import (
 	"bytes"
 	"context"
+	"database/sql"
+	"encoding/json"
 	"fmt"
 	"html"
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -33,6 +36,21 @@ const (
 	UploadSizeLimit   uint64 = 52428800
 )
 
+// TgEffectiveMessageThreadId returns the forum topic thread id for DB routing.
+// Telegram (and some clients) omit message_thread_id on the outer message when the user
+// replies in a topic; walk reply_to_message until a non-zero thread id is found.
+func TgEffectiveMessageThreadId(msg *gotgbot.Message) int64 {
+	if msg == nil {
+		return 0
+	}
+	for cur := msg; cur != nil; cur = cur.ReplyToMessage {
+		if cur.MessageThreadId != 0 {
+			return cur.MessageThreadId
+		}
+	}
+	return 0
+}
+
 func TgRegisterBotCommands(b *gotgbot.Bot, commands ...gotgbot.BotCommand) error {
 	_, err := b.SetMyCommands(commands, &gotgbot.SetMyCommandsOpts{
 		LanguageCode: "en",
@@ -48,16 +66,24 @@ func TgMessageIsInGeneralHub(cfg *state.Config, msg *gotgbot.Message) bool {
 	if msg == nil {
 		return false
 	}
+	tid := TgEffectiveMessageThreadId(msg)
 	if cfg.Telegram.GeneralThreadID != 0 {
-		return msg.IsTopicMessage && msg.MessageThreadId == cfg.Telegram.GeneralThreadID
+		return msg.IsTopicMessage && tid == cfg.Telegram.GeneralThreadID
 	}
-	// Legacy (no forum mapping): thread id 0 or non-topic messages treated as hub.
-	return !msg.IsTopicMessage || msg.MessageThreadId == 0
+	// Legacy (no general_thread_id): non-forum / non-topic messages are the hub.
+	if !msg.IsTopicMessage {
+		return true
+	}
+	// Forum: no resolvable thread on this message chain → treat as hub.
+	return tid == 0
 }
 
 // TgMessageIsInContactTopic is true inside a per-contact (or per-chat) WA-linked topic, not the hub.
 func TgMessageIsInContactTopic(cfg *state.Config, msg *gotgbot.Message) bool {
-	if msg == nil || !msg.IsTopicMessage || msg.MessageThreadId == 0 {
+	if msg == nil {
+		return false
+	}
+	if TgEffectiveMessageThreadId(msg) == 0 {
 		return false
 	}
 	if TgMessageIsInGeneralHub(cfg, msg) {
@@ -66,45 +92,251 @@ func TgMessageIsInContactTopic(cfg *state.Config, msg *gotgbot.Message) bool {
 	return true
 }
 
-func TgGetOrMakeThreadFromWa_String(waChatIdString string, tgChatId int64, threadName string) (int64, error) {
+func TgGetOrMakeThreadFromWa_String(waChatIdString string, tgChatId int64, threadName string) (int64, bool, error) {
 	threadId, threadFound, err := database.ChatThreadGetTgFromWa(waChatIdString, tgChatId)
 	if err != nil {
-		return 0, err
+		return 0, false, err
 	}
 
 	if !threadFound {
 		tgBot := state.State.TelegramBot
-		newForum, err := tgBot.CreateForumTopic(tgChatId, threadName, &gotgbot.CreateForumTopicOpts{})
+		newForum, err := tgBot.CreateForumTopic(tgChatId, TruncateTelegramForumTopicName(threadName), &gotgbot.CreateForumTopicOpts{})
 		if err != nil {
-			return 0, err
+			return 0, false, err
 		}
 		err = database.ChatThreadAddNewPair(waChatIdString, tgChatId, newForum.MessageThreadId)
 		if err != nil {
-			return newForum.MessageThreadId, err
+			return newForum.MessageThreadId, true, err
 		}
-		return newForum.MessageThreadId, nil
+		if TopicMetadataIsWAChatKey(waChatIdString) {
+			_ = database.ChatThreadTopicMetadataSetTopicCreatedAt(waChatIdString, tgChatId, time.Now())
+			_ = database.ChatThreadForumSyncedTitleSet(waChatIdString, tgChatId, TruncateTelegramForumTopicName(threadName))
+		}
+		return newForum.MessageThreadId, true, nil
 	}
 
-	return threadId, nil
+	return threadId, false, nil
 }
 
 const maxForumTopicNameLen = 128
 
-// TgSyncForumTopicTitleFromWa sets the forum topic title to WaGetForumTopicName (WA display + phone).
-// Call from /synccontactname only — do not invoke on every message, so users can rename topics freely.
-func TgSyncForumTopicTitleFromWa(tgChatId, threadId int64, waJID waTypes.JID) error {
-	title := WaGetForumTopicName(waJID)
-	if len(title) > maxForumTopicNameLen {
-		title = title[:maxForumTopicNameLen-3] + "..."
+// TruncateTelegramForumTopicName shortens titles to Telegram's forum topic limit.
+func TruncateTelegramForumTopicName(title string) string {
+	if len(title) <= maxForumTopicNameLen {
+		return title
 	}
+	return title[:maxForumTopicNameLen-3] + "..."
+}
+
+func tgTopicMetadataCardHTML(waDisplay string, tgTopicCreated, waDialog sql.NullTime, isGroup bool, timeFormat string, loc *time.Location) string {
+	waLine := html.EscapeString(waDisplay)
+	if waLine == "" {
+		waLine = "—"
+	}
+	tgLine := "—"
+	if tgTopicCreated.Valid {
+		tgLine = html.EscapeString(tgTopicCreated.Time.In(loc).Format(timeFormat))
+	}
+	var waDlgLine string
+	if waDialog.Valid {
+		waDlgLine = html.EscapeString(waDialog.Time.In(loc).Format(timeFormat))
+	} else if isGroup {
+		waDlgLine = "—"
+	} else {
+		waDlgLine = "<i>Not available for 1:1 chats</i>"
+	}
+	return fmt.Sprintf(
+		"<b>Topic metadata</b>\n• <b>WhatsApp name</b>: %s\n• <b>Telegram topic created</b>: %s\n• <b>WhatsApp chat created</b>: %s",
+		waLine, tgLine, waDlgLine,
+	)
+}
+
+// TgTopicMetadataEnsurePostedForChat sends and pins the metadata card when missing (1:1 and groups).
+func TgTopicMetadataEnsurePostedForChat(tgChatId, tgThreadId int64, waKey string, waJID waTypes.JID) {
+	if !TopicMetadataIsWAChatKey(waKey) {
+		return
+	}
+	b := state.State.TelegramBot
+	if b == nil {
+		return
+	}
+	cfg := state.State.Config
+	logger := state.State.Logger
+	ctx := context.Background()
+
+	pair, ok := database.ChatThreadGetPair(waKey, tgChatId)
+	if !ok || pair.MetadataTgMsgId != 0 {
+		return
+	}
+
+	waJID = waJID.ToNonAD()
+	isGroup := waJID.Server == waTypes.GroupServer
+	disp := WaSourceDisplayNameForMetadata(waJID)
+	waDlg := WaChatDialogCreatedAt(ctx, waJID)
+
+	tgCreated := pair.TgTopicCreatedAt
+	waDlgSt := pair.WaDialogCreatedAt
+	if !waDlgSt.Valid && waDlg.Valid {
+		waDlgSt = waDlg
+	}
+
+	if err := database.ChatThreadTopicMetadataWrite(waKey, tgChatId, disp, tgCreated, waDlgSt, 0); err != nil {
+		logger.Warn("topic metadata write", zap.Error(err))
+	}
+
+	body := tgTopicMetadataCardHTML(disp, tgCreated, waDlgSt, isGroup, cfg.TimeFormat, state.State.LocalLocation)
+	sent, err := b.SendMessage(tgChatId, body, &gotgbot.SendMessageOpts{
+		MessageThreadId:     tgThreadId,
+		ParseMode:           "HTML",
+		DisableNotification: true,
+	})
+	if err != nil || sent == nil {
+		logger.Warn("topic metadata send", zap.Error(err))
+		return
+	}
+	if _, pinErr := b.PinChatMessage(tgChatId, sent.MessageId, &gotgbot.PinChatMessageOpts{DisableNotification: true}); pinErr != nil {
+		logger.Warn("topic metadata pin", zap.Error(pinErr))
+	}
+	if err := database.ChatThreadTopicMetadataWrite(waKey, tgChatId, disp, tgCreated, waDlgSt, sent.MessageId); err != nil {
+		logger.Warn("topic metadata save message id", zap.Error(err))
+	}
+}
+
+// TgTopicMetadataRefreshFromWA updates the pinned card after the WhatsApp-side display name (or group creation) changes.
+func TgTopicMetadataRefreshFromWA(tgChatId, tgThreadId int64, waKey string, waJID waTypes.JID) {
+	if !TopicMetadataIsWAChatKey(waKey) {
+		return
+	}
+	b := state.State.TelegramBot
+	if b == nil {
+		return
+	}
+	cfg := state.State.Config
+	logger := state.State.Logger
+	ctx := context.Background()
+
+	waJID = waJID.ToNonAD()
+	isGroup := waJID.Server == waTypes.GroupServer
+	disp := WaSourceDisplayNameForMetadata(waJID)
+	waDlg := WaChatDialogCreatedAt(ctx, waJID)
+
+	pair, ok := database.ChatThreadGetPair(waKey, tgChatId)
+	if !ok {
+		return
+	}
+	if pair.MetadataTgMsgId == 0 {
+		TgTopicMetadataEnsurePostedForChat(tgChatId, tgThreadId, waKey, waJID)
+		return
+	}
+
+	tgCreated := pair.TgTopicCreatedAt
+	waDlgSt := pair.WaDialogCreatedAt
+	if !waDlgSt.Valid && waDlg.Valid {
+		waDlgSt = waDlg
+	}
+
+	if err := database.ChatThreadTopicMetadataWrite(waKey, tgChatId, disp, tgCreated, waDlgSt, pair.MetadataTgMsgId); err != nil {
+		logger.Warn("topic metadata refresh write", zap.Error(err))
+	}
+
+	body := tgTopicMetadataCardHTML(disp, tgCreated, waDlgSt, isGroup, cfg.TimeFormat, state.State.LocalLocation)
+	_, _, err := b.EditMessageText(body, &gotgbot.EditMessageTextOpts{
+		ChatId:    tgChatId,
+		MessageId: pair.MetadataTgMsgId,
+		ParseMode: "HTML",
+	})
+	if err != nil {
+		logger.Warn("topic metadata edit", zap.Error(err))
+	}
+}
+
+// TgFetchForumTopicName returns the current forum topic name via Telegram getForumTopic (Bot API).
+func TgFetchForumTopicName(b *gotgbot.Bot, chatId, messageThreadId int64) (name string, ok bool, err error) {
+	r, err := b.RequestWithContext(context.Background(), "getForumTopic", map[string]string{
+		"chat_id":             strconv.FormatInt(chatId, 10),
+		"message_thread_id": strconv.FormatInt(messageThreadId, 10),
+	}, nil, nil)
+	if err != nil {
+		return "", false, err
+	}
+	var raw struct {
+		Ok     bool `json:"ok"`
+		Result struct {
+			Name string `json:"name"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(r, &raw); err != nil {
+		return "", false, err
+	}
+	if !raw.Ok {
+		return "", false, fmt.Errorf("getForumTopic failed: %s", string(r))
+	}
+	return raw.Result.Name, true, nil
+}
+
+// TgApplyForumTopicSyncFromWA is used by /synccontactname and /synctopicnames.
+// If the Telegram topic title still matches the last bridge-applied WA title (or already matches latest WA),
+// the forum title is updated to the latest WA canonical name when it changed.
+// If the user renamed the topic in Telegram, only the pinned metadata message is refreshed.
+func TgApplyForumTopicSyncFromWA(tgChatId, threadId int64, waKey string, waJID waTypes.JID) error {
 	tgBot := state.State.TelegramBot
-	_, err := tgBot.EditForumTopic(tgChatId, threadId, &gotgbot.EditForumTopicOpts{Name: title})
-	return err
+	logger := state.State.Logger
+	waJID = waJID.ToNonAD()
+	expected := TruncateTelegramForumTopicName(WaGetForumTopicName(waJID))
+
+	pair, pairOk := database.ChatThreadGetPair(waKey, tgChatId)
+	syncedTitle := ""
+	if pairOk {
+		syncedTitle = pair.TgForumTitleSyncedFromWA
+	}
+
+	current, ftOk, ftErr := TgFetchForumTopicName(tgBot, tgChatId, threadId)
+	shouldEditForum := false
+
+	switch {
+	case ftErr != nil || !ftOk:
+		logger.Debug("getForumTopic unavailable; updating forum title from WA",
+			zap.Error(ftErr),
+			zap.String("wa_key", waKey))
+		shouldEditForum = true
+	case current == expected:
+		shouldEditForum = false
+		if syncedTitle != expected {
+			_ = database.ChatThreadForumSyncedTitleSet(waKey, tgChatId, expected)
+		}
+	default:
+		// Telegram title differs from latest WA canonical.
+		if syncedTitle == "" {
+			// Legacy / first sync: align TG title to current WA once, then track it.
+			shouldEditForum = true
+		} else if current == syncedTitle {
+			// Topic still shows our last bridge title; WA canonical moved.
+			shouldEditForum = true
+		} else {
+			// User (or another admin) changed the forum topic name.
+			shouldEditForum = false
+		}
+	}
+
+	if shouldEditForum {
+		if _, err := tgBot.EditForumTopic(tgChatId, threadId, &gotgbot.EditForumTopicOpts{Name: expected}); err != nil {
+			return err
+		}
+		_ = database.ChatThreadForumSyncedTitleSet(waKey, tgChatId, expected)
+	}
+	TgTopicMetadataRefreshFromWA(tgChatId, threadId, waKey, waJID)
+	return nil
+}
+
+// TgSyncForumTopicTitleFromWa runs /synccontactname-style forum + metadata sync for one private topic.
+func TgSyncForumTopicTitleFromWa(tgChatId, threadId int64, waJID waTypes.JID) error {
+	j := waJID.ToNonAD()
+	return TgApplyForumTopicSyncFromWA(tgChatId, threadId, j.String(), j)
 }
 
 // TgGetOrMakeThreadFromWa resolves LID→PN, then maps WA chat → Telegram forum thread.
-// For private chats the initial topic title (on first create) is WaGetForumTopicName; titles are not updated on each message — use /synccontactname to refresh.
-// For groups, pass threadName (e.g. WaGetGroupName); if empty, WaGetGroupName is used.
+// New topics are titled from WhatsApp: private chats via WaGetForumTopicName; groups as "GROUP: <name>".
+// For groups, pass threadName when you already have a display name (e.g. from an event); if empty, the name is fetched via GetGroupInfo.
 func TgGetOrMakeThreadFromWa(waChatId waTypes.JID, tgChatId int64, threadName string) (int64, error) {
 	if waChatId.Server == waTypes.HiddenUserServer {
 		waClient := state.State.WhatsAppClient
@@ -120,17 +352,20 @@ func TgGetOrMakeThreadFromWa(waChatId waTypes.JID, tgChatId int64, threadName st
 	var title string
 	if waChatId.Server == waTypes.GroupServer {
 		if threadName == "" {
-			title = WaGetGroupName(waChatId)
+			title = WaGetForumTopicName(waChatId)
 		} else {
-			title = threadName
+			title = WaTelegramGroupTopicTitle(threadName)
 		}
 	} else {
 		title = WaGetForumTopicName(waChatId)
 	}
 
-	threadId, err := TgGetOrMakeThreadFromWa_String(waChatIdString, tgChatId, title)
+	threadId, _, err := TgGetOrMakeThreadFromWa_String(waChatIdString, tgChatId, title)
 	if err != nil {
 		return 0, err
+	}
+	if TopicMetadataIsWAChatKey(waChatIdString) {
+		TgTopicMetadataEnsurePostedForChat(tgChatId, threadId, waChatIdString, waChatId)
 	}
 	return threadId, nil
 }
@@ -169,8 +404,8 @@ func TgReplyTextByContext(b *gotgbot.Bot, c *ext.Context, text string, buttons *
 			MessageId: c.EffectiveMessage.MessageId,
 		},
 	}
-	if c.EffectiveMessage.IsTopicMessage {
-		sendOpts.MessageThreadId = c.EffectiveMessage.MessageThreadId
+	if tid := TgEffectiveMessageThreadId(c.EffectiveMessage); tid != 0 {
+		sendOpts.MessageThreadId = tid
 	}
 	if buttons != nil {
 		sendOpts.ReplyMarkup = buttons
@@ -228,8 +463,8 @@ func TgReplyWithErrorByContext(b *gotgbot.Bot, c *ext.Context, eMessage string, 
 			MessageId: c.EffectiveMessage.MessageId,
 		},
 	}
-	if c.EffectiveMessage.IsTopicMessage {
-		sendOpts.MessageThreadId = c.EffectiveMessage.MessageThreadId
+	if tid := TgEffectiveMessageThreadId(c.EffectiveMessage); tid != 0 {
+		sendOpts.MessageThreadId = tid
 	}
 	_, err := b.SendMessage(c.EffectiveChat.Id,
 		fmt.Sprintf("%s:\n\n<code>%s</code>", eMessage, html.EscapeString(e.Error())),
@@ -259,6 +494,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		waClient = state.State.WhatsAppClient
 		mentions = []string{}
 	)
+	tgThreadForPairs := TgEffectiveMessageThreadId(msgToForward)
 
 	var entities []gotgbot.ParsedMessageEntity
 	if len(msgToForward.Entities) > 0 {
@@ -404,7 +640,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		SendMessageConfirmation(b, c, cfg, msgToForward, revokeKeyboard)
 
 		err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.String(), waChatJID.String(),
-			cfg.Telegram.TargetChatID, msgToForward.MessageId, msgToForward.MessageThreadId)
+			cfg.Telegram.TargetChatID, msgToForward.MessageId, tgThreadForPairs)
 		if err != nil {
 			return TgReplyWithErrorByContext(b, c, "Failed to add to database", err)
 		}
@@ -473,7 +709,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		SendMessageConfirmation(b, c, cfg, msgToForward, revokeKeyboard)
 
 		err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.String(), waChatJID.String(),
-			cfg.Telegram.TargetChatID, msgToForward.MessageId, msgToForward.MessageThreadId)
+			cfg.Telegram.TargetChatID, msgToForward.MessageId, tgThreadForPairs)
 		if err != nil {
 			return TgReplyWithErrorByContext(b, c, "Failed to add to database", err)
 		}
@@ -539,7 +775,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		SendMessageConfirmation(b, c, cfg, msgToForward, revokeKeyboard)
 
 		err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.String(), waChatJID.String(),
-			cfg.Telegram.TargetChatID, msgToForward.MessageId, msgToForward.MessageThreadId)
+			cfg.Telegram.TargetChatID, msgToForward.MessageId, tgThreadForPairs)
 		if err != nil {
 			return TgReplyWithErrorByContext(b, c, "Failed to add to database", err)
 		}
@@ -608,7 +844,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		SendMessageConfirmation(b, c, cfg, msgToForward, revokeKeyboard)
 
 		err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.String(), waChatJID.String(),
-			cfg.Telegram.TargetChatID, msgToForward.MessageId, msgToForward.MessageThreadId)
+			cfg.Telegram.TargetChatID, msgToForward.MessageId, tgThreadForPairs)
 		if err != nil {
 			return TgReplyWithErrorByContext(b, c, "Failed to add to database", err)
 		}
@@ -672,7 +908,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		SendMessageConfirmation(b, c, cfg, msgToForward, revokeKeyboard)
 
 		err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.String(), waChatJID.String(),
-			cfg.Telegram.TargetChatID, msgToForward.MessageId, msgToForward.MessageThreadId)
+			cfg.Telegram.TargetChatID, msgToForward.MessageId, tgThreadForPairs)
 		if err != nil {
 			return TgReplyWithErrorByContext(b, c, "Failed to add to database", err)
 		}
@@ -736,7 +972,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		SendMessageConfirmation(b, c, cfg, msgToForward, revokeKeyboard)
 
 		err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.String(), waChatJID.String(),
-			cfg.Telegram.TargetChatID, msgToForward.MessageId, msgToForward.MessageThreadId)
+			cfg.Telegram.TargetChatID, msgToForward.MessageId, tgThreadForPairs)
 		if err != nil {
 			return TgReplyWithErrorByContext(b, c, "Failed to add to database", err)
 		}
@@ -801,7 +1037,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		SendMessageConfirmation(b, c, cfg, msgToForward, revokeKeyboard)
 
 		err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.String(), waChatJID.String(),
-			cfg.Telegram.TargetChatID, msgToForward.MessageId, msgToForward.MessageThreadId)
+			cfg.Telegram.TargetChatID, msgToForward.MessageId, tgThreadForPairs)
 		if err != nil {
 			return TgReplyWithErrorByContext(b, c, "Failed to add to database", err)
 		}
@@ -906,7 +1142,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		SendMessageConfirmation(b, c, cfg, msgToForward, revokeKeyboard)
 
 		err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.String(), waChatJID.String(),
-			cfg.Telegram.TargetChatID, msgToForward.MessageId, msgToForward.MessageThreadId)
+			cfg.Telegram.TargetChatID, msgToForward.MessageId, tgThreadForPairs)
 		if err != nil {
 			return TgReplyWithErrorByContext(b, c, "Failed to add to database", err)
 		}
@@ -969,7 +1205,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		SendMessageConfirmation(b, c, cfg, msgToForward, revokeKeyboard)
 
 		err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.String(), waChatJID.String(),
-			cfg.Telegram.TargetChatID, msgToForward.MessageId, msgToForward.MessageThreadId)
+			cfg.Telegram.TargetChatID, msgToForward.MessageId, tgThreadForPairs)
 		if err != nil {
 			return TgReplyWithErrorByContext(b, c, "Failed to add to database", err)
 		}
@@ -1023,7 +1259,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		SendMessageConfirmation(b, c, cfg, msgToForward, revokeKeyboard)
 
 		err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.String(), waChatJID.String(),
-			cfg.Telegram.TargetChatID, msgToForward.MessageId, msgToForward.MessageThreadId)
+			cfg.Telegram.TargetChatID, msgToForward.MessageId, tgThreadForPairs)
 		if err != nil {
 			return TgReplyWithErrorByContext(b, c, "Failed to add to database", err)
 		}
@@ -1087,7 +1323,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		SendMessageConfirmation(b, c, cfg, msgToForward, revokeKeyboard)
 
 		err = database.MsgIdAddNewPair(sentMsg.ID, waClient.Store.ID.String(), waChatJID.String(),
-			cfg.Telegram.TargetChatID, msgToForward.MessageId, msgToForward.MessageThreadId)
+			cfg.Telegram.TargetChatID, msgToForward.MessageId, tgThreadForPairs)
 		if err != nil {
 			return TgReplyWithErrorByContext(b, c, "Failed to add to database", err)
 		}

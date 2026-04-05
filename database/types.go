@@ -25,6 +25,15 @@ type ChatThreadPair struct {
 	ID         string `gorm:"primaryKey;"` // WhatsApp Chat ID
 	TgChatId   int64  // Telegram Chat ID
 	TgThreadId int64  // Telegram Thread ID (Topics)
+
+	// Pinned "topic metadata" card (1:1 and groups only; not calls/status/mentions).
+	WaDisplayName     string       `gorm:"size:512"` // WhatsApp-side title; updated on WA sync, independent of Telegram topic title
+	TgTopicCreatedAt  sql.NullTime // When the bridge first created this Telegram forum topic
+	WaDialogCreatedAt sql.NullTime // Group: WhatsApp group creation; private: usually unknown
+	MetadataTgMsgId   int64        // Telegram message id of the pinned metadata message
+	// Last forum topic title the bridge applied from WA (create / WA group rename / successful sync edit).
+	// Used on /synccontactname and /synctopicnames to detect a user-renamed topic vs WA drift.
+	TgForumTitleSyncedFromWA string `gorm:"size:128"`
 }
 
 type ContactName struct {

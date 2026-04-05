@@ -2,6 +2,7 @@ package utils
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"html"
 	"log"
@@ -106,6 +107,59 @@ func WaGetGroupName(jid types.JID) string {
 	return groupInfo.Name
 }
 
+// WaTelegramGroupTopicPrefix is prepended to WhatsApp group names in Telegram forum topic titles.
+const WaTelegramGroupTopicPrefix = "GROUP: "
+
+// WaTelegramGroupTopicTitle formats a WhatsApp group's display name for a Telegram forum topic.
+func WaTelegramGroupTopicTitle(groupName string) string {
+	name := strings.TrimSpace(groupName)
+	if name == "" {
+		name = "Unknown"
+	}
+	return WaTelegramGroupTopicPrefix + name
+}
+
+// WaSourceDisplayNameForMetadata is the WhatsApp-side title shown in the pinned topic card
+// (not the Telegram forum topic title; updates when you sync from WA).
+func WaSourceDisplayNameForMetadata(jid types.JID) string {
+	jid = jid.ToNonAD()
+	if jid.Server == types.GroupServer {
+		return WaGetGroupName(jid)
+	}
+	return WaGetForumTopicName(jid)
+}
+
+// WaChatDialogCreatedAt returns the WhatsApp chat creation time when known (groups only).
+func WaChatDialogCreatedAt(ctx context.Context, jid types.JID) sql.NullTime {
+	jid = jid.ToNonAD()
+	if jid.Server != types.GroupServer {
+		return sql.NullTime{}
+	}
+	waClient := state.State.WhatsAppClient
+	gi, err := waClient.GetGroupInfo(ctx, jid)
+	if err != nil || gi.GroupCreated.IsZero() {
+		return sql.NullTime{}
+	}
+	return sql.NullTime{Time: gi.GroupCreated.UTC(), Valid: true}
+}
+
+// TopicMetadataIsWAChatKey is true for 1:1 and group chats that get a metadata pin (not system pseudo-topics).
+func TopicMetadataIsWAChatKey(waChatKey string) bool {
+	if waChatKey == "calls" || waChatKey == "mentions" || waChatKey == "status@broadcast" {
+		return false
+	}
+	j, ok := WaParseJID(waChatKey)
+	if !ok || j.IsEmpty() {
+		return false
+	}
+	switch j.Server {
+	case types.GroupServer, types.DefaultUserServer, types.LegacyUserServer:
+		return true
+	default:
+		return false
+	}
+}
+
 // WaGetPhoneForDisplay returns the phone number string for listing (e.g. +77001234567).
 // Resolves LID to phone number when contact is stored with HiddenUserServer.
 // Uses Redis cache when configured to avoid spamming WhatsApp.
@@ -196,11 +250,11 @@ func WaSenderHTMLBlock(jid types.JID) string {
 	return fmt.Sprintf("👤 %s (%s)", name, phone)
 }
 
-// WaGetForumTopicName is used for Telegram forum topic titles for private chats:
-// "DisplayName (+phone)" using resolved phone (LID→PN when possible).
+// WaGetForumTopicName is used for Telegram forum topic titles: private chats get
+// "DisplayName (+phone)" (LID→PN when possible); groups get "GROUP: <fetched name>".
 func WaGetForumTopicName(jid types.JID) string {
 	if jid.Server == types.GroupServer {
-		return WaGetGroupName(jid)
+		return WaTelegramGroupTopicTitle(WaGetGroupName(jid))
 	}
 	if jid.ToNonAD() == state.State.WhatsAppClient.Store.ID.ToNonAD() {
 		return "You"
@@ -321,7 +375,7 @@ func WaTagAll(group types.JID, msg *waE2E.Message, msgId, msgSender string, msgI
 	}
 
 	if !msgIsFromMe {
-		tagsThreadId, err := TgGetOrMakeThreadFromWa_String("mentions", cfg.Telegram.TargetChatID, "Mentions")
+		tagsThreadId, _, err := TgGetOrMakeThreadFromWa_String("mentions", cfg.Telegram.TargetChatID, "Mentions")
 		if err != nil {
 			TgSendErrorById(tgBot, cfg.Telegram.TargetChatID, 0, "Failed to create/retreive corresponding thread id for status/calls/tags", err)
 			return

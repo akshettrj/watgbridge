@@ -102,7 +102,7 @@ func AddTelegramHandlers() {
 		},
 		waTgBridgeCommand{
 			handlers.NewCommand("synctopicnames", SyncTopicNamesHandler),
-			"Update group topic titles from WhatsApp (not private threads; use /synccontactname there)",
+			"Set group forum titles to GROUP: <name> from WhatsApp (private threads: /synccontactname)",
 		},
 		waTgBridgeCommand{
 			handlers.NewCommand("synccontactname", SyncContactNameHandler),
@@ -229,7 +229,7 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 	var err error
 
 	if msgToReplyTo != nil && msgToReplyTo.ForumTopicCreated == nil {
-		stanzaID, participantID, waChatID, err = database.MsgIdGetWaFromTg(c.EffectiveChat.Id, msgToReplyTo.MessageId, msgToForward.MessageThreadId)
+		stanzaID, participantID, waChatID, err = database.MsgIdGetWaFromTg(c.EffectiveChat.Id, msgToReplyTo.MessageId, utils.TgEffectiveMessageThreadId(msgToForward))
 		if err != nil {
 			return utils.TgReplyWithErrorByContext(b, c, "Failed to retreive a pair from database", err)
 		} else if stanzaID == "" {
@@ -240,11 +240,11 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 			waChatID = participantID
 		}
 	} else {
-		waChatID, err = database.ChatThreadGetWaFromTg(c.EffectiveChat.Id, c.EffectiveMessage.MessageThreadId)
+		waChatID, err = database.ChatThreadGetWaFromTg(c.EffectiveChat.Id, utils.TgEffectiveMessageThreadId(c.EffectiveMessage))
 		if err != nil {
 			return utils.TgReplyWithErrorByContext(b, c, "Failed to find the chat pairing between this topic and a WhatsApp chat", err)
 		} else if waChatID == "" {
-			if c.EffectiveMessage.MessageThreadId != 0 {
+			if utils.TgEffectiveMessageThreadId(c.EffectiveMessage) != 0 {
 				_, err = utils.TgReplyTextByContext(b, c, "No mapping found between current topic and a WhatsApp chat", nil, false)
 				return err
 			}
@@ -414,7 +414,7 @@ func TagCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
 		_, err := utils.TgReplyTextByContext(b, c, "Use this command inside a contact topic (a thread linked to a WA contact).", nil, false)
 		return err
 	}
-	waChatId, err := database.ChatThreadGetWaFromTg(c.EffectiveChat.Id, c.EffectiveMessage.MessageThreadId)
+	waChatId, err := database.ChatThreadGetWaFromTg(c.EffectiveChat.Id, utils.TgEffectiveMessageThreadId(c.EffectiveMessage))
 	if err != nil || waChatId == "" {
 		_, err := utils.TgReplyTextByContext(b, c, "This topic is not linked to a WhatsApp contact.", nil, false)
 		return err
@@ -756,10 +756,13 @@ func SetTargetGroupChatHandler(b *gotgbot.Bot, c *ext.Context) error {
 		return err
 	}
 
-	err = database.ChatThreadAddNewPair(groupJID.String(), cfg.Telegram.TargetChatID, c.EffectiveMessage.MessageThreadId)
+	tgThreadId := utils.TgEffectiveMessageThreadId(c.EffectiveMessage)
+	err = database.ChatThreadAddNewPair(groupJID.String(), cfg.Telegram.TargetChatID, tgThreadId)
 	if err != nil {
 		return utils.TgReplyWithErrorByContext(b, c, "Failed to add the mapping in database. Unsuccessful", err)
 	}
+
+	utils.TgTopicMetadataEnsurePostedForChat(cfg.Telegram.TargetChatID, tgThreadId, groupJID.String(), groupJID.ToNonAD())
 
 	_, err = utils.TgReplyTextByContext(b, c, "Successfully mapped", nil, false)
 	return err
@@ -777,7 +780,7 @@ func UnlinkThreadHandler(b *gotgbot.Bot, c *ext.Context) error {
 
 	var (
 		tgChatId   = c.EffectiveChat.Id
-		tgThreadId = c.EffectiveMessage.MessageThreadId
+		tgThreadId = utils.TgEffectiveMessageThreadId(c.EffectiveMessage)
 	)
 
 	waChatId, err := database.ChatThreadGetWaFromTg(tgChatId, tgThreadId)
@@ -810,7 +813,7 @@ func handleBlockUnblockUser(b *gotgbot.Bot, c *ext.Context, action events.Blockl
 
 	var (
 		tgChatId   = c.EffectiveChat.Id
-		tgThreadId = c.EffectiveMessage.MessageThreadId
+		tgThreadId = utils.TgEffectiveMessageThreadId(c.EffectiveMessage)
 	)
 
 	waChatId, err := database.ChatThreadGetWaFromTg(tgChatId, tgThreadId)
@@ -876,7 +879,7 @@ func StatusIgnoreHandler(b *gotgbot.Bot, c *ext.Context) error {
 		}
 		user = jid.User
 	} else if utils.TgMessageIsInContactTopic(state.State.Config, c.EffectiveMessage) {
-		waChatId, err := database.ChatThreadGetWaFromTg(c.EffectiveChat.Id, c.EffectiveMessage.MessageThreadId)
+		waChatId, err := database.ChatThreadGetWaFromTg(c.EffectiveChat.Id, utils.TgEffectiveMessageThreadId(c.EffectiveMessage))
 		if err != nil || waChatId == "" {
 			_, err := utils.TgReplyTextByContext(b, c, "Could not get WhatsApp chat for this topic. Use <code>/statusignore &lt;jid&gt;</code> with the contact's JID (e.g. from /findcontact).", nil, false)
 			return err
@@ -920,7 +923,7 @@ func StatusUnignoreHandler(b *gotgbot.Bot, c *ext.Context) error {
 		}
 		user = jid.User
 	} else if utils.TgMessageIsInContactTopic(state.State.Config, c.EffectiveMessage) {
-		waChatId, err := database.ChatThreadGetWaFromTg(c.EffectiveChat.Id, c.EffectiveMessage.MessageThreadId)
+		waChatId, err := database.ChatThreadGetWaFromTg(c.EffectiveChat.Id, utils.TgEffectiveMessageThreadId(c.EffectiveMessage))
 		if err != nil || waChatId == "" {
 			_, err := utils.TgReplyTextByContext(b, c, "Could not get WhatsApp chat for this topic. Use <code>/statusunignore &lt;jid&gt;</code>.", nil, false)
 			return err
@@ -981,7 +984,7 @@ func AddContactCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
 		_, err := utils.TgReplyTextByContext(b, c, "Use this command inside a WhatsApp contact topic.", nil, false)
 		return err
 	}
-	waChatId, err := database.ChatThreadGetWaFromTg(c.EffectiveChat.Id, c.EffectiveMessage.MessageThreadId)
+	waChatId, err := database.ChatThreadGetWaFromTg(c.EffectiveChat.Id, utils.TgEffectiveMessageThreadId(c.EffectiveMessage))
 	if err != nil || waChatId == "" {
 		_, err := utils.TgReplyTextByContext(b, c, "This topic is not linked to a WhatsApp contact.", nil, false)
 		return err
@@ -1033,7 +1036,7 @@ func RemoveContactCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
 			return err
 		}
 	} else if utils.TgMessageIsInContactTopic(state.State.Config, c.EffectiveMessage) {
-		waChatId, err := database.ChatThreadGetWaFromTg(c.EffectiveChat.Id, c.EffectiveMessage.MessageThreadId)
+		waChatId, err := database.ChatThreadGetWaFromTg(c.EffectiveChat.Id, utils.TgEffectiveMessageThreadId(c.EffectiveMessage))
 		if err != nil || waChatId == "" {
 			_, err := utils.TgReplyTextByContext(b, c, "This topic is not linked to a WhatsApp contact. "+usageString, nil, false)
 			return err
@@ -1088,7 +1091,7 @@ func ArchiveChatCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
 		_, err := utils.TgReplyTextByContext(b, c, "Use this command inside a topic linked to a WhatsApp chat.", nil, false)
 		return err
 	}
-	waChatId, err := database.ChatThreadGetWaFromTg(c.EffectiveChat.Id, c.EffectiveMessage.MessageThreadId)
+	waChatId, err := database.ChatThreadGetWaFromTg(c.EffectiveChat.Id, utils.TgEffectiveMessageThreadId(c.EffectiveMessage))
 	if err != nil || waChatId == "" {
 		_, err := utils.TgReplyTextByContext(b, c, "No linked WhatsApp chat for this topic.", nil, false)
 		return err
@@ -1116,7 +1119,7 @@ func RemoveTopicCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
 		return err
 	}
 	tgChatId := c.EffectiveChat.Id
-	tgThreadId := c.EffectiveMessage.MessageThreadId
+	tgThreadId := utils.TgEffectiveMessageThreadId(c.EffectiveMessage)
 	waChatId, err := database.ChatThreadGetWaFromTg(tgChatId, tgThreadId)
 	if err != nil {
 		return utils.TgReplyWithErrorByContext(b, c, "Failed to get thread pairing", err)
@@ -1207,10 +1210,13 @@ func SetTargetPrivateChatHandler(b *gotgbot.Bot, c *ext.Context) error {
 		return err
 	}
 
-	err = database.ChatThreadAddNewPair(userJID.String(), cfg.Telegram.TargetChatID, c.EffectiveMessage.MessageThreadId)
+	tgThreadId := utils.TgEffectiveMessageThreadId(c.EffectiveMessage)
+	err = database.ChatThreadAddNewPair(userJID.String(), cfg.Telegram.TargetChatID, tgThreadId)
 	if err != nil {
 		return utils.TgReplyWithErrorByContext(b, c, "Failed to add the mapping in database. Unsuccessful", err)
 	}
+
+	utils.TgTopicMetadataEnsurePostedForChat(cfg.Telegram.TargetChatID, tgThreadId, userJID.String(), userJID.ToNonAD())
 
 	_, err = utils.TgReplyTextByContext(b, c, "Successfully mapped", nil, false)
 	return err
@@ -1259,7 +1265,7 @@ func GetProfilePictureHandler(b *gotgbot.Bot, c *ext.Context) error {
 		},
 	}
 	if c.EffectiveMessage.IsTopicMessage {
-		opts.MessageThreadId = c.EffectiveMessage.MessageThreadId
+		opts.MessageThreadId = utils.TgEffectiveMessageThreadId(c.EffectiveMessage)
 	}
 	_, err = b.SendPhoto(c.EffectiveChat.Id, &gotgbot.FileReader{Data: bytes.NewReader(imgBytes)}, opts)
 	if err != nil {
@@ -1277,7 +1283,7 @@ func SyncContactNameHandler(b *gotgbot.Bot, c *ext.Context) error {
 		_, err := utils.TgReplyTextByContext(b, c, "Use <code>/synccontactname</code> inside a private contact topic (not General).", nil, false)
 		return err
 	}
-	waChatId, err := database.ChatThreadGetWaFromTg(c.EffectiveChat.Id, c.EffectiveMessage.MessageThreadId)
+	waChatId, err := database.ChatThreadGetWaFromTg(c.EffectiveChat.Id, utils.TgEffectiveMessageThreadId(c.EffectiveMessage))
 	if err != nil || waChatId == "" {
 		_, err := utils.TgReplyTextByContext(b, c, "This topic is not linked to a WhatsApp chat.", nil, false)
 		return err
@@ -1295,7 +1301,7 @@ func SyncContactNameHandler(b *gotgbot.Bot, c *ext.Context) error {
 		_, err := utils.TgReplyTextByContext(b, c, "Group topics: use <code>/synctopicnames</code> to refresh group titles.", nil, false)
 		return err
 	}
-	err = utils.TgSyncForumTopicTitleFromWa(c.EffectiveChat.Id, c.EffectiveMessage.MessageThreadId, waChatJid.ToNonAD())
+	err = utils.TgSyncForumTopicTitleFromWa(c.EffectiveChat.Id, utils.TgEffectiveMessageThreadId(c.EffectiveMessage), waChatJid.ToNonAD())
 	if err != nil {
 		return utils.TgReplyWithErrorByContext(b, c, "Failed to rename topic", err)
 	}
@@ -1311,7 +1317,7 @@ func SyncContactPhotoHandler(b *gotgbot.Bot, c *ext.Context) error {
 		_, err := utils.TgReplyTextByContext(b, c, "Use <code>/synccontactphoto</code> inside a private contact topic (not General).", nil, false)
 		return err
 	}
-	waChatId, err := database.ChatThreadGetWaFromTg(c.EffectiveChat.Id, c.EffectiveMessage.MessageThreadId)
+	waChatId, err := database.ChatThreadGetWaFromTg(c.EffectiveChat.Id, utils.TgEffectiveMessageThreadId(c.EffectiveMessage))
 	if err != nil || waChatId == "" {
 		_, err := utils.TgReplyTextByContext(b, c, "This topic is not linked to a WhatsApp chat.", nil, false)
 		return err
@@ -1352,7 +1358,7 @@ func SyncContactPhotoHandler(b *gotgbot.Bot, c *ext.Context) error {
 		return utils.TgReplyWithErrorByContext(b, c, "Failed to download profile picture", err)
 	}
 
-	threadID := c.EffectiveMessage.MessageThreadId
+	threadID := utils.TgEffectiveMessageThreadId(c.EffectiveMessage)
 	sentMsg, err := b.SendPhoto(c.EffectiveChat.Id, &gotgbot.FileReader{Data: bytes.NewReader(imgBytes)}, &gotgbot.SendPhotoOpts{
 		MessageThreadId:     threadID,
 		Caption:             "<i>WhatsApp profile photo</i>",
@@ -1400,12 +1406,7 @@ func SyncTopicNamesHandler(b *gotgbot.Bot, c *ext.Context) error {
 			continue
 		}
 
-		newName := utils.WaGetGroupName(waChatJid)
-
-		b.EditForumTopic(c.EffectiveChat.Id, tgThreadId, &gotgbot.EditForumTopicOpts{
-			Name:              newName,
-			IconCustomEmojiId: nil,
-		})
+		_ = utils.TgApplyForumTopicSyncFromWA(c.EffectiveChat.Id, tgThreadId, waChatJid.String(), waChatJid)
 		time.Sleep(5 * time.Second)
 	}
 
@@ -1478,7 +1479,7 @@ func RevokeCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
 		chatId      = c.EffectiveChat.Id
 	)
 
-	waMsgId, _, waChatId, err := database.MsgIdGetWaFromTg(chatId, msgToRevoke.MessageId, msgToRevoke.MessageThreadId)
+	waMsgId, _, waChatId, err := database.MsgIdGetWaFromTg(chatId, msgToRevoke.MessageId, utils.TgEffectiveMessageThreadId(msgToRevoke))
 	if err != nil {
 		return utils.TgReplyWithErrorByContext(b, c, "failed to retrieve WhatsApp side IDs", err)
 	}
@@ -1604,7 +1605,7 @@ func CheckChatCallbackHandler(b *gotgbot.Bot, c *ext.Context) error {
 	}
 	waChatIdString := jid.ToNonAD().String()
 	threadName := utils.WaGetContactName(jid)
-	_, err := utils.TgGetOrMakeThreadFromWa_String(waChatIdString, cfg.Telegram.TargetChatID, threadName)
+	threadId, _, err := utils.TgGetOrMakeThreadFromWa_String(waChatIdString, cfg.Telegram.TargetChatID, threadName)
 	if err != nil {
 		_, _ = cq.Answer(b, &gotgbot.AnswerCallbackQueryOpts{
 			Text:      "Failed to create topic: " + err.Error(),
@@ -1613,6 +1614,7 @@ func CheckChatCallbackHandler(b *gotgbot.Bot, c *ext.Context) error {
 		})
 		return err
 	}
+	utils.TgTopicMetadataEnsurePostedForChat(cfg.Telegram.TargetChatID, threadId, waChatIdString, jid.ToNonAD())
 	_, _ = cq.Answer(b, &gotgbot.AnswerCallbackQueryOpts{Text: "Topic created. You can chat in the new topic."})
 	_, _, _ = b.EditMessageText("Phone number exists. Use the new topic to chat.", &gotgbot.EditMessageTextOpts{
 		ChatId:      c.EffectiveChat.Id,

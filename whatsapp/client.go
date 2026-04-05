@@ -6,7 +6,6 @@ import (
 	"database/sql"
 	"fmt"
 	"html"
-	"os"
 
 	"watgbridge/crypto/sqlitekey"
 	"watgbridge/state"
@@ -14,7 +13,6 @@ import (
 	"github.com/PaulSonOfLars/gotgbot/v2"
 	_ "github.com/jackc/pgx/v5"
 	_ "github.com/mutecomm/go-sqlcipher/v4"
-	"github.com/mdp/qrterminal/v3"
 	"github.com/skip2/go-qrcode"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waCompanionReg"
@@ -139,16 +137,17 @@ func NewWhatsAppClient() error {
 				if state.State.TelegramBot != nil {
 					qrCodePNG, err := qrcode.Encode(evt.Code, qrcode.Highest, 512)
 					if err != nil {
-						state.State.TelegramBot.SendMessage(
+						_, _ = state.State.TelegramBot.SendMessage(
 							state.State.Config.Telegram.OwnerID,
 							fmt.Sprintf(
-								"Please check your terminal and scan the QR code to login to WhatsApp. Failed to encode to PNG and send here:\n<code>%s</code>",
+								"WhatsApp login QR could not be encoded as PNG. Fix the issue and restart; QR is not printed to logs or terminal.\n<code>%s</code>",
 								html.EscapeString(err.Error()),
 							),
 							&gotgbot.SendMessageOpts{},
 						)
+						logger.Warn("whatsapp qr png encode failed", zap.Error(err))
 					} else {
-						state.State.TelegramBot.SendPhoto(
+						_, _ = state.State.TelegramBot.SendPhoto(
 							state.State.Config.Telegram.OwnerID,
 							gotgbot.InputFileByReader("qrcode.png", bytes.NewReader(qrCodePNG)),
 							&gotgbot.SendPhotoOpts{
@@ -156,8 +155,9 @@ func NewWhatsAppClient() error {
 							},
 						)
 					}
+				} else {
+					logger.Warn("whatsapp qr login: telegram bot not initialized; qr not sent to terminal or logs — ensure Telegram starts before WhatsApp")
 				}
-				qrterminal.GenerateHalfBlock(evt.Code, qrterminal.L, os.Stdout)
 			} else {
 				logger.Info("received WhatsApp login event",
 					zap.Any("event", evt.Event),

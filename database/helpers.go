@@ -3,6 +3,7 @@ package database
 import (
 	"database/sql"
 	"strings"
+	"time"
 
 	"watgbridge/state"
 
@@ -170,6 +171,43 @@ func ChatThreadGetWaFromTg(tgChatId, tgThreadId int64) (string, error) {
 	res := db.Where("tg_chat_id = ? AND tg_thread_id = ?", tgChatId, tgThreadId).Find(&chatPair)
 
 	return chatPair.ID, res.Error
+}
+
+func ChatThreadGetPair(waChatId string, tgChatId int64) (ChatThreadPair, bool) {
+	db := state.State.Database
+	var p ChatThreadPair
+	res := db.Where("id = ? AND tg_chat_id = ?", waChatId, tgChatId).Find(&p)
+	if res.Error != nil {
+		return ChatThreadPair{}, false
+	}
+	return p, p.ID == waChatId && p.TgChatId == tgChatId
+}
+
+// ChatThreadTopicMetadataWrite sets pinned-card fields for a chat↔thread mapping row.
+func ChatThreadTopicMetadataWrite(waChatId string, tgChatId int64, waDisplay string, tgTopicCreated, waDialog sql.NullTime, metaMsgId int64) error {
+	db := state.State.Database
+	return db.Model(&ChatThreadPair{}).Where("id = ? AND tg_chat_id = ?", waChatId, tgChatId).Updates(map[string]interface{}{
+		"wa_display_name":       waDisplay,
+		"tg_topic_created_at":   tgTopicCreated,
+		"wa_dialog_created_at":  waDialog,
+		"metadata_tg_msg_id":    metaMsgId,
+	}).Error
+}
+
+// ChatThreadTopicMetadataSetTopicCreatedAt records when the bridge created the Telegram forum topic.
+func ChatThreadTopicMetadataSetTopicCreatedAt(waChatId string, tgChatId int64, when time.Time) error {
+	db := state.State.Database
+	return db.Model(&ChatThreadPair{}).Where("id = ? AND tg_chat_id = ?", waChatId, tgChatId).Updates(map[string]interface{}{
+		"tg_topic_created_at": sql.NullTime{Time: when.UTC(), Valid: true},
+	}).Error
+}
+
+// ChatThreadForumSyncedTitleSet records the last forum topic title applied by the bridge from WhatsApp.
+func ChatThreadForumSyncedTitleSet(waChatId string, tgChatId int64, title string) error {
+	db := state.State.Database
+	return db.Model(&ChatThreadPair{}).Where("id = ? AND tg_chat_id = ?", waChatId, tgChatId).Updates(map[string]interface{}{
+		"tg_forum_title_synced_from_wa": title,
+	}).Error
 }
 
 func ChatThreadGetAllPairs(tgChatId int64) ([]ChatThreadPair, error) {

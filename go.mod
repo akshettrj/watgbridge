@@ -9,7 +9,6 @@ require (
 	github.com/go-co-op/gocron v1.37.0
 	github.com/jackc/pgx/v5 v5.8.0
 	github.com/lithammer/fuzzysearch v1.1.8
-	github.com/mdp/qrterminal/v3 v3.2.1
 	github.com/mutecomm/go-sqlcipher/v4 v4.4.2
 	github.com/redis/go-redis/v9 v9.7.0
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
@@ -68,7 +67,5 @@ require (
 	golang.org/x/net v0.50.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.41.0 // indirect
-	golang.org/x/term v0.40.0 // indirect
 	golang.org/x/text v0.34.0 // indirect
-	rsc.io/qr v0.2.0 // indirect
 )
