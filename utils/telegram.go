@@ -63,8 +63,8 @@ func TgRegisterBotCommands(b *gotgbot.Bot, commands ...gotgbot.BotCommand) error
 }
 
 // TgMessageIsInGeneralHub is true for commands that must run in the forum "General" hub topic
-// (/list_contacts, /getwagroups, etc.). When telegram.general_thread_id is set (mapped topics),
-// the message must be in that thread.
+// (/list_contacts, /getwagroups, etc.). When telegram.general_thread_id is non-zero, the message must
+// be in that thread. When it is zero, the default General topic is used (often thread id 1 or omitted/0).
 func TgMessageIsInGeneralHub(cfg *state.Config, msg *gotgbot.Message) bool {
 	if msg == nil {
 		return false
@@ -79,8 +79,8 @@ func TgMessageIsInGeneralHub(cfg *state.Config, msg *gotgbot.Message) bool {
 	if !msg.IsTopicMessage {
 		return true
 	}
-	// Forum: no resolvable thread on this message chain → treat as hub.
-	return tid == 0
+	// Forum: default General hub — Telegram often uses thread 1 or omits (0).
+	return tid == 0 || tid == 1
 }
 
 // TgMessageIsInContactTopic is true inside a per-contact (or per-chat) WA-linked topic, not the hub.

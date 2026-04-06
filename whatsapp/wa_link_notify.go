@@ -38,7 +38,7 @@ func deleteWhatsAppQRLoginMessage() {
 		return
 	}
 	t := state.State.Config.Telegram
-	if t.TargetChatID == 0 || t.GeneralThreadID == 0 {
+	if t.TargetChatID == 0 {
 		return
 	}
 	qrLoginMu.Lock()
@@ -61,8 +61,8 @@ func sendOrUpdateWhatsAppQRToTelegram(qrPNG []byte, caption string) error {
 		return fmt.Errorf("telegram bot not initialized")
 	}
 	t := state.State.Config.Telegram
-	if t.TargetChatID == 0 || t.GeneralThreadID == 0 {
-		return fmt.Errorf("telegram.target_chat_id and telegram.general_thread_id must be set (forum General topic is required)")
+	if t.TargetChatID == 0 {
+		return fmt.Errorf("telegram.target_chat_id must be set")
 	}
 
 	qrLoginMu.Lock()
@@ -91,9 +91,11 @@ func sendOrUpdateWhatsAppQRToTelegram(qrPNG []byte, caption string) error {
 	}
 
 	opts := gotgbot.SendPhotoOpts{
-		Caption:         caption,
-		ParseMode:       gotgbot.ParseModeHTML,
-		MessageThreadId: t.GeneralThreadID,
+		Caption:   caption,
+		ParseMode: gotgbot.ParseModeHTML,
+	}
+	if t.GeneralThreadID != 0 {
+		opts.MessageThreadId = t.GeneralThreadID
 	}
 	msg, err := bot.SendPhoto(t.TargetChatID, gotgbot.InputFileByReader("qrcode.png", bytes.NewReader(qrPNG)), &opts)
 	if err != nil {
@@ -111,11 +113,12 @@ func sendWhatsAppQRTextToTelegram(text string) error {
 		return fmt.Errorf("telegram bot not initialized")
 	}
 	t := state.State.Config.Telegram
-	if t.TargetChatID == 0 || t.GeneralThreadID == 0 {
-		return fmt.Errorf("telegram.target_chat_id and telegram.general_thread_id must be set (forum General topic is required)")
+	if t.TargetChatID == 0 {
+		return fmt.Errorf("telegram.target_chat_id must be set")
 	}
-	opts := gotgbot.SendMessageOpts{
-		MessageThreadId: t.GeneralThreadID,
+	opts := gotgbot.SendMessageOpts{}
+	if t.GeneralThreadID != 0 {
+		opts.MessageThreadId = t.GeneralThreadID
 	}
 	_, err := bot.SendMessage(t.TargetChatID, text, &opts)
 	return err
@@ -147,9 +150,11 @@ func notifyWhatsAppLinked(cli *whatsmeow.Client, zl *zap.Logger) {
 	jid := cli.Store.GetJID()
 	phone := waPhoneDisplay(jid)
 
-	_, err := bot.SendMessage(t.TargetChatID, "Success linking your WA phone number to this group", &gotgbot.SendMessageOpts{
-		MessageThreadId: t.GeneralThreadID,
-	})
+	linkOpts := gotgbot.SendMessageOpts{}
+	if t.GeneralThreadID != 0 {
+		linkOpts.MessageThreadId = t.GeneralThreadID
+	}
+	_, err := bot.SendMessage(t.TargetChatID, "Success linking your WA phone number to this group", &linkOpts)
 	if err != nil {
 		zl.Warn("wa linked: general topic message failed", zap.Error(err))
 	}
@@ -179,17 +184,18 @@ func notifyWhatsAppLinked(cli *whatsmeow.Client, zl *zap.Logger) {
 	}
 
 	// Multi-mode chat-picker adds the main (control) bot to the forum so bot_administrator_rights can apply; leave after onboarding.
-	if control != nil && t.TargetChatID != 0 && t.GeneralThreadID != 0 {
+	if control != nil && t.TargetChatID != 0 {
 		farewell := fmt.Sprintf(
 			"WhatsApp is linked on <b>%s</b>. I’m leaving this group — your bridge runs here with %s. "+
 				"For settings and other bridges, open a private chat with me and send <code>/bridge_list</code>.",
 			html.EscapeString(phone),
 			botNameHTML,
 		)
-		_, fareErr := control.SendMessage(t.TargetChatID, farewell, &gotgbot.SendMessageOpts{
-			MessageThreadId: t.GeneralThreadID,
-			ParseMode:       gotgbot.ParseModeHTML,
-		})
+		fareOpts := gotgbot.SendMessageOpts{ParseMode: gotgbot.ParseModeHTML}
+		if t.GeneralThreadID != 0 {
+			fareOpts.MessageThreadId = t.GeneralThreadID
+		}
+		_, fareErr := control.SendMessage(t.TargetChatID, farewell, &fareOpts)
 		if fareErr != nil {
 			zl.Debug("wa linked: control bot farewell in group (ok if main bot was not in group)", zap.Error(fareErr))
 		}

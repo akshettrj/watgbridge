@@ -16,8 +16,9 @@ import (
 // existing standard meta topics. Groups with more topics may miss a duplicate title above this id.
 const forumMetaTopicScanLimit int64 = 250
 
-// telegramGeneralTopicThreadID is the message_thread_id of the default "General" topic in a forum supergroup
-// (see Telegram Bot API: forum General topic uses this id).
+// telegramGeneralTopicThreadID is often message_thread_id 1 for the default "General" topic, but some
+// forum setups return Not Found for getForumTopic(1). Config value 0 means "default General" (omit
+// message_thread_id when sending).
 const telegramGeneralTopicThreadID int64 = 1
 
 type forumMetaSpec struct {
@@ -88,10 +89,10 @@ func ensureFindOrCreateForumMetaTopic(bot *gotgbot.Bot, chatID int64, spec forum
 	return tid, nil
 }
 
-// resolveGeneralForumThreadID finds the General topic only (never creates it). Telegram uses
-// message_thread_id=1 for the default General topic; we retry for membership propagation, then fall back
-// to a title scan if needed.
-func resolveGeneralForumThreadID(bot *gotgbot.Bot, chatID int64) (int64, error) {
+// tryResolveGeneralForumThreadID finds the General topic only (never creates it). If Telegram does not
+// expose a resolvable thread id (common: getForumTopic(1) Not Found), returns (0, nil) — callers should
+// omit message_thread_id to target the default General topic.
+func tryResolveGeneralForumThreadID(bot *gotgbot.Bot, chatID int64) (int64, error) {
 	var lastProbeErr error
 	for attempt := 0; attempt < 12; attempt++ {
 		name, ok, err := utils.TgFetchForumTopicName(bot, chatID, telegramGeneralTopicThreadID)
@@ -106,7 +107,6 @@ func resolveGeneralForumThreadID(bot *gotgbot.Bot, chatID int64) (int64, error) 
 		}
 		time.Sleep(400 * time.Millisecond)
 	}
-	// Fallback: locate by title (e.g. rare client / rename edge cases)
 	idx, err := buildForumMetaTitleIndex(bot, chatID, 0)
 	if err != nil {
 		return 0, fmt.Errorf("scan forum topics looking for General: %w", err)
@@ -116,14 +116,18 @@ func resolveGeneralForumThreadID(bot *gotgbot.Bot, chatID int64) (int64, error) 
 		return tid, nil
 	}
 	if lastProbeErr != nil {
-		return 0, fmt.Errorf("could not find General topic (expected thread id %d in a forum supergroup): %w", telegramGeneralTopicThreadID, lastProbeErr)
+		state.State.Logger.Debug("forum meta: General not resolvable via getForumTopic; using config thread id 0 (omit message_thread_id)",
+			zap.Error(lastProbeErr))
+	} else {
+		state.State.Logger.Debug("forum meta: General not found by title scan; using config thread id 0 (omit message_thread_id)")
 	}
-	return 0, fmt.Errorf("could not find General topic in forum (expected thread id %d)", telegramGeneralTopicThreadID)
+	return 0, nil
 }
 
-// CreateStandardForumMetaTopics resolves General (find only), then find-or-creates BotMeta, Calls, Status.
+// CreateStandardForumMetaTopics resolves General when possible (find only; 0 = default General), then
+// find-or-creates BotMeta, Calls, Status.
 func CreateStandardForumMetaTopics(bot *gotgbot.Bot, chatID int64) (general, botMeta, calls, status int64, err error) {
-	generalID, err := resolveGeneralForumThreadID(bot, chatID)
+	generalID, err := tryResolveGeneralForumThreadID(bot, chatID)
 	if err != nil {
 		return 0, 0, 0, 0, err
 	}
@@ -132,15 +136,19 @@ func CreateStandardForumMetaTopics(bot *gotgbot.Bot, chatID int64) (general, bot
 	if err != nil {
 		return 0, 0, 0, 0, err
 	}
-	idx[utils.TruncateTelegramForumTopicName(standardForumMetaSpecs[0].title)] = generalID
+	if generalID != 0 {
+		idx[utils.TruncateTelegramForumTopicName(standardForumMetaSpecs[0].title)] = generalID
+	}
 
-	_, sendErr := bot.SendMessage(chatID, "Reused existing topic for "+standardForumMetaSpecs[0].reuseLabel, &gotgbot.SendMessageOpts{
-		MessageThreadId: generalID,
-	})
-	if sendErr != nil {
-		state.State.Logger.Debug("forum meta: reuse notice send failed (General)",
-			zap.Int64("thread_id", generalID),
-			zap.Error(sendErr))
+	if generalID != 0 {
+		_, sendErr := bot.SendMessage(chatID, "Reused existing topic for "+standardForumMetaSpecs[0].reuseLabel, &gotgbot.SendMessageOpts{
+			MessageThreadId: generalID,
+		})
+		if sendErr != nil {
+			state.State.Logger.Debug("forum meta: reuse notice send failed (General)",
+				zap.Int64("thread_id", generalID),
+				zap.Error(sendErr))
+		}
 	}
 
 	var ids [4]int64
@@ -162,7 +170,7 @@ func CreateStandardForumMetaTopics(bot *gotgbot.Bot, chatID int64) (general, bot
 }
 
 // EnsureForumMetaTopicsProvisioned requires a forum target group with Manage topics, then resolves General
-// (find only), find-or-creates BotMeta/Calls/Status, and persists config.
+// when possible (0 = default General), find-or-creates BotMeta/Calls/Status, and persists config.
 func EnsureForumMetaTopicsProvisioned() error {
 	cfg := state.State.Config
 	bot := state.State.TelegramBot
@@ -179,19 +187,24 @@ func EnsureForumMetaTopicsProvisioned() error {
 		sendTargetCheckFailure(msg)
 		return err
 	}
-	anySet := t.GeneralThreadID != 0 || t.BotMetaThreadID != 0 || t.CallsThreadID != 0 || t.StatusThreadID != 0
-	allSet := t.GeneralThreadID != 0 && t.BotMetaThreadID != 0 && t.CallsThreadID != 0 && t.StatusThreadID != 0
-	if anySet && !allSet {
-		return fmt.Errorf("telegram forum threads: set all four (general_thread_id, bot_meta_thread_id, calls_thread_id, status_thread_id) or omit all four for auto-provision")
+	metaAny := t.BotMetaThreadID != 0 || t.CallsThreadID != 0 || t.StatusThreadID != 0
+	metaAll := t.BotMetaThreadID != 0 && t.CallsThreadID != 0 && t.StatusThreadID != 0
+	if metaAny && !metaAll {
+		return fmt.Errorf("telegram forum threads: set all three (bot_meta_thread_id, calls_thread_id, status_thread_id) or omit all three for auto-provision")
 	}
-	if allSet {
+	if metaAll {
 		return nil
 	}
+	prevGeneral := t.GeneralThreadID
 	g, m, c, s, err := CreateStandardForumMetaTopics(bot, t.TargetChatID)
 	if err != nil {
 		return fmt.Errorf("create forum meta topics: %w", err)
 	}
-	t.GeneralThreadID = g
+	if prevGeneral != 0 {
+		t.GeneralThreadID = prevGeneral
+	} else {
+		t.GeneralThreadID = g
+	}
 	t.BotMetaThreadID = m
 	t.CallsThreadID = c
 	t.StatusThreadID = s
