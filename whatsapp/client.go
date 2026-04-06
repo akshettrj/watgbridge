@@ -167,10 +167,16 @@ func NewWhatsAppClient() error {
 		notifyWhatsAppLinked(client, logger)
 	}
 
-	logger.Info("successfully logged into WhatsApp",
-		zap.String("push_name", client.Store.PushName),
-		zap.String("jid", client.Store.ID.String()),
-	)
+	if client.Store.ID != nil {
+		logger.Info("successfully logged into WhatsApp",
+			zap.String("push_name", client.Store.PushName),
+			zap.String("jid", client.Store.ID.String()),
+		)
+	} else {
+		logger.Warn("WhatsApp session not linked (QR login timed out, cancelled, or not completed)",
+			zap.String("push_name", client.Store.PushName),
+		)
+	}
 
 	return nil
 }
