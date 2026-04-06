@@ -12,6 +12,7 @@ import (
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	gormlogger "gorm.io/gorm/logger"
 )
 
 func hasKeys(p_map *map[string]string, keys ...string) (missingKeys []string) {
@@ -32,7 +33,11 @@ func Connect() (*gorm.DB, error) {
 		return nil, fmt.Errorf("Error: key 'type' not found in database config")
 	}
 
-	gormConfig := gorm.Config{}
+	// Never log full SQL by default: INSERT/UPDATE bodies contain WA contact PII (names, JIDs).
+	// Errors still surface via returned errors; use Silent so routine queries are not printed.
+	gormConfig := gorm.Config{
+		Logger: gormlogger.Default.LogMode(gormlogger.Silent),
+	}
 
 	switch dbType {
 
