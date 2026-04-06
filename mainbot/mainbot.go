@@ -48,7 +48,7 @@ func Start(token string, manager *bridge.Manager) error {
 	dispatcher.AddHandler(handlers.NewCommand("bridge_disable", bridgeDisableHandler(manager)))
 	dispatcher.AddHandler(handlers.NewCommand("bridge_delete", bridgeDeleteHandler(manager)))
 	dispatcher.AddHandler(handlers.NewCommand("import_history", importHistoryCommandHandler()))
-	dispatcher.AddHandler(handlers.NewCallback(managedOnboardingCallbackFilter, managedOnboardingCallbackHandler()))
+	dispatcher.AddHandler(handlers.NewMessage(mainBotReplyMenuMessageFilter, mainBotReplyMenuHandler(manager)))
 	dispatcher.AddHandler(handlers.NewCallback(managedBindProceedCallbackFilter, managedBindProceedHandler(manager)))
 	dispatcher.AddHandler(handlers.NewMessage(managedChatSharedFilter, managedChatSharedHandler(manager)))
 	dispatcher.AddHandler(handlers.NewMessage(importHistoryPendingDocumentFilter, importHistoryDocumentHandler()))
@@ -95,7 +95,7 @@ func startHandler(b *gotgbot.Bot, c *ext.Context) error {
 	pm := gotgbot.ParseModeHTML
 	opts := &gotgbot.SendMessageOpts{ParseMode: pm}
 	if c.EffectiveChat.Type == gotgbot.ChatTypePrivate {
-		opts.ReplyMarkup = mainBotStartInlineMarkup()
+		opts.ReplyMarkup = mainBotMainReplyKeyboard()
 	}
 	_, err := b.SendMessage(c.EffectiveChat.Id, text, opts)
 	return err

@@ -49,75 +49,30 @@ func completePendingManagedBind(b *gotgbot.Bot, manager *bridge.Manager, user *g
 	pendingManagedLabelHints.Delete(user.Id)
 	mainBotTryLeaveTarget(b, targetChatID)
 	_, err = b.SendMessage(user.Id, resp, &gotgbot.SendMessageOpts{
-		ReplyMarkup: gotgbot.ReplyKeyboardRemove{RemoveKeyboard: true},
+		ReplyMarkup: mainBotMainReplyKeyboard(),
 	})
 	return err
 }
 
 // sendManagedBridgeChooseGroupPrompt asks the user to pick a forum group via Telegram’s chat picker (private chats only).
+// "Choose group (with topics)" is always the top row of the reply keyboard; main menu is below.
 func sendManagedBridgeChooseGroupPrompt(b *gotgbot.Bot, ownerChatID int64) error {
 	rid, err := randomManagedRequestID()
 	if err != nil {
 		_, sendErr := b.SendMessage(ownerChatID, "Could not build group picker: "+err.Error(), nil)
 		return sendErr
 	}
-	forumTrue := true
-	markup := map[string]any{
-		"keyboard": [][]map[string]any{
-			{
-				{
-					"text": "Choose group (with topics)",
-					"request_chat": map[string]any{
-						"request_id":      rid,
-						"chat_is_channel": false,
-						"chat_is_forum":   forumTrue,
-						"request_title":   true,
-						"user_administrator_rights": map[string]any{
-							"is_anonymous":           false,
-							"can_manage_chat":        true,
-							"can_delete_messages":    false,
-							"can_manage_video_chats": false,
-							"can_restrict_members":   false,
-							"can_promote_members":    true,
-							"can_change_info":        true,
-							"can_invite_users":       true,
-							"can_post_stories":       false,
-							"can_edit_stories":       false,
-							"can_delete_stories":     false,
-							"can_pin_messages":       true,
-							"can_manage_topics":      true,
-						},
-						"bot_administrator_rights": map[string]any{
-							"is_anonymous":           false,
-							"can_manage_chat":        true,
-							"can_delete_messages":    false,
-							"can_manage_video_chats": false,
-							"can_restrict_members":   false,
-							"can_promote_members":    true,
-							"can_change_info":        false,
-							"can_invite_users":       true,
-							"can_post_stories":       false,
-							"can_edit_stories":       false,
-							"can_delete_stories":     false,
-							"can_pin_messages":       false,
-							"can_manage_topics":      true,
-						},
-					},
-				},
-			},
-		},
-		"resize_keyboard":   true,
-		"one_time_keyboard": true,
-	}
-	_, err = b.RequestWithContext(context.Background(), "sendMessage", map[string]any{
-		"chat_id":      ownerChatID,
-		"parse_mode":   "HTML",
-		"text": "Tap the button, then select your <b>forum</b> group. Add this main bot as admin with <b>invite users</b>, <b>add new admins</b>, and <b>manage topics</b> when Telegram asks.\n\n" +
-			"I’ll try to add your bridge bot and grant <b>Manage topics</b>, then leave the group. " +
-			"If Telegram can’t add the bot automatically, add the bridge bot yourself and tap <b>I’m done! Proceed</b> from my next message.\n\n" +
+	mainBotReplyFlow.Delete(ownerChatID)
+	markup := ManagedBridgeChooseGroupReplyKeyboard(int64(rid))
+	_, err = b.SendMessage(ownerChatID,
+		"Tap <b>"+btnChooseGroup+"</b> (top row), then select your <b>forum</b> group. Add this main bot as admin with <b>invite users</b>, <b>add new admins</b>, and <b>manage topics</b> when Telegram asks.\n\n"+
+			"I’ll try to add your bridge bot and grant <b>Manage topics</b>, then leave the group. "+
+			"If Telegram can’t add the bot automatically, add the bridge bot yourself and tap <b>I’m done! Proceed</b> from my next message.\n\n"+
 			"<i>Or send</i> <code>/bridge_bind</code> <i>with the group id from the group profile.</i>",
-		"reply_markup": markup,
-	}, nil)
+		&gotgbot.SendMessageOpts{
+			ParseMode:   gotgbot.ParseModeHTML,
+			ReplyMarkup: markup,
+		})
 	return err
 }
 
@@ -242,7 +197,9 @@ func bridgeCancelManagedHandler() handlers.Response {
 		}
 		pendingManagedLabelHints.Delete(user.Id)
 		_ = database.BridgePendingManagedDelete(user.Id)
-		_, err := b.SendMessage(c.EffectiveChat.Id, "Cleared pending managed bridge (if any).", nil)
+		mainBotReplyFlow.Delete(user.Id)
+		_, err := b.SendMessage(c.EffectiveChat.Id, "Cleared pending managed bridge (if any).",
+			&gotgbot.SendMessageOpts{ReplyMarkup: mainBotMainReplyKeyboard()})
 		return err
 	}
 }
