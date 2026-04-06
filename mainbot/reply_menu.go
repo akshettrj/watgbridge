@@ -275,7 +275,7 @@ func sendUnlinkedManagedBotPicker(b *gotgbot.Bot, ownerUserID int64) error {
 		mainBotReplyFlow.Store(ownerUserID, flowAwaitManualManagedBotUsername)
 		_, e := b.SendMessage(ownerUserID,
 			"No idle managed bridge bots found.\n\n"+
-				"Try to input bot's name like: <code>@myveryownwatgbridgebot</code>...",
+				"Try <code>@username</code> or, if Telegram won’t resolve it, the bot’s numeric id: <code>id:1234567890</code> (BotFather / <code>getMe</code>).",
 			&gotgbot.SendMessageOpts{ParseMode: gotgbot.ParseModeHTML, ReplyMarkup: mainBotManualBotUsernamePromptReplyKeyboard()})
 		return e
 	}
