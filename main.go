@@ -293,7 +293,12 @@ func main() {
 	s := gocron.NewScheduler(time.UTC)
 	s.TagsUnique()
 	_, _ = s.Every(1).Hour().Tag("foo").Do(func() {
-		contacts, err := state.State.WhatsAppClient.Store.Contacts.GetAllContacts(context.Background())
+		wa := state.State.WhatsAppClient
+		if wa == nil || wa.Store == nil || wa.Store.ID == nil {
+			// No linked WhatsApp session (e.g. QR timeout): Store/Contacts are not safe to use.
+			return
+		}
+		contacts, err := wa.Store.Contacts.GetAllContacts(context.Background())
 		if err == nil {
 			_ = database.ContactNameBulkAddOrUpdate(contacts)
 		}
@@ -354,7 +359,7 @@ SKIP_RESTART:
 	state.State.TelegramUpdater.Idle()
 }
 
-// seedMappedForumTopics wires forum thread ids from config into local state (meta topics → ChatThreadPair, BotMeta file).
+// seedMappedForumTopics wires forum thread ids from config into local state (meta topics → ChatThreadPair, bot_meta_topic_id file).
 func seedMappedForumTopics(cfg *state.Config) {
 	tgChat := cfg.Telegram.TargetChatID
 	if cfg.Telegram.CallsThreadID != 0 && tgChat != 0 {

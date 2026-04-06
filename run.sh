@@ -39,7 +39,7 @@ Optional:
   --time-format FORMAT
   --debug true|false
   --config-path PATH
-  --version VERSION    Version string for BotMeta topic (default: git describe / short HEAD)
+  --version VERSION    Version string for Bot's meta topic (default: git describe / short HEAD)
 
   --build    docker compose up -d --build
   --help     This help

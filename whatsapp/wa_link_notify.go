@@ -21,8 +21,9 @@ import (
 )
 
 var (
-	qrLoginMu        sync.Mutex
-	qrLoginMessageID int64
+	qrLoginMu              sync.Mutex
+	qrLoginMessageID       int64
+	qrLoginMessageThreadID int64 // from SendPhoto response; used for editMessageMedia (forum requires thread id)
 )
 
 // defaultForumGeneralMessageThreadID is the usual message_thread_id for the default "General" topic when
@@ -35,6 +36,13 @@ func effectiveForumThreadIDForQRMedia(generalThreadID int64) int64 {
 		return generalThreadID
 	}
 	return defaultForumGeneralMessageThreadID
+}
+
+func threadIDForQREdit(generalThreadID int64) int64 {
+	if qrLoginMessageThreadID != 0 {
+		return qrLoginMessageThreadID
+	}
+	return effectiveForumThreadIDForQRMedia(generalThreadID)
 }
 
 // editMessageMediaWithForumThread calls editMessageMedia with message_thread_id. The generated gotgbot
@@ -69,6 +77,7 @@ func resetWhatsAppQRLoginMessageState() {
 	qrLoginMu.Lock()
 	defer qrLoginMu.Unlock()
 	qrLoginMessageID = 0
+	qrLoginMessageThreadID = 0
 }
 
 // deleteWhatsAppQRLoginMessage removes the single QR photo message after successful link (best-effort).
@@ -84,6 +93,7 @@ func deleteWhatsAppQRLoginMessage() {
 	qrLoginMu.Lock()
 	mid := qrLoginMessageID
 	qrLoginMessageID = 0
+	qrLoginMessageThreadID = 0
 	qrLoginMu.Unlock()
 	if mid == 0 {
 		return
@@ -115,25 +125,29 @@ func sendOrUpdateWhatsAppQRToTelegram(qrPNG []byte, caption string) error {
 
 	if qrLoginMessageID != 0 {
 		media.ParseMode = gotgbot.ParseModeHTML
-		opts := &gotgbot.EditMessageMediaOpts{
-			ChatId:    t.TargetChatID,
-			MessageId: qrLoginMessageID,
-		}
-		_, _, err := bot.EditMessageMedia(media, opts)
+		tid := threadIDForQREdit(t.GeneralThreadID)
+		// Forum: must pass message_thread_id (gotgbot EditMessageMedia omits it). Prefer thread id from the
+		// original SendPhoto response, else configured General, else default topic id 1.
+		_, _, err := editMessageMediaWithForumThread(bot, t.TargetChatID, qrLoginMessageID, tid, media)
 		if err != nil {
-			tid := effectiveForumThreadIDForQRMedia(t.GeneralThreadID)
-			_, _, err2 := editMessageMediaWithForumThread(bot, t.TargetChatID, qrLoginMessageID, tid, media)
-			if err2 == nil {
+			opts := &gotgbot.EditMessageMediaOpts{
+				ChatId:    t.TargetChatID,
+				MessageId: qrLoginMessageID,
+			}
+			_, _, err2 := bot.EditMessageMedia(media, opts)
+			if err2 != nil {
+				if state.State.Logger != nil {
+					state.State.Logger.Debug("whatsapp qr: editMessageMedia failed (forum thread id and plain)",
+						zap.Error(err),
+						zap.Error(err2),
+						zap.Int64("message_id", qrLoginMessageID),
+						zap.Int64("message_thread_id", tid))
+				}
+				qrLoginMessageID = 0
+				qrLoginMessageThreadID = 0
+			} else {
 				return nil
 			}
-			if state.State.Logger != nil {
-				state.State.Logger.Debug("whatsapp qr: editMessageMedia failed (plain and with forum thread id)",
-					zap.Error(err),
-					zap.Error(err2),
-					zap.Int64("message_id", qrLoginMessageID),
-					zap.Int64("message_thread_id", tid))
-			}
-			qrLoginMessageID = 0
 		} else {
 			return nil
 		}
@@ -152,6 +166,7 @@ func sendOrUpdateWhatsAppQRToTelegram(qrPNG []byte, caption string) error {
 	}
 	if msg != nil {
 		qrLoginMessageID = msg.MessageId
+		qrLoginMessageThreadID = msg.MessageThreadId
 	}
 	return nil
 }

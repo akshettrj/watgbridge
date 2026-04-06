@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"watgbridge/database"
 	"watgbridge/state"
 	"watgbridge/utils"
 
@@ -28,13 +29,25 @@ type forumMetaSpec struct {
 
 var standardForumMetaSpecs = []forumMetaSpec{
 	{"General", "general purposes"},
-	{"BotMeta", "bot's meta information"},
+	{"Bot's meta", "bot's meta information"},
 	{"Calls", "displaying calls"},
 	{"Status", "showing status broadcasts"},
 }
 
 func isGetForumTopicMissing(err error) bool {
 	return utils.TgErrForumTopicOrThreadInvalid(err)
+}
+
+// normalizeForumMetaTopicTitleKey matches Telegram forum topic titles to our canonical names.
+// Clients may show a single-letter prefix in the sidebar (e.g. "B Bot's meta"); getForumTopic names
+// can include that prefix, so we strip "X " when X is A–Z before comparing to "Bot's meta", etc.
+func normalizeForumMetaTopicTitleKey(title string) string {
+	s := strings.TrimSpace(title)
+	s = strings.TrimPrefix(s, "#")
+	if len(s) >= 3 && s[1] == ' ' && s[0] >= 'A' && s[0] <= 'Z' {
+		s = strings.TrimSpace(s[2:])
+	}
+	return utils.TruncateTelegramForumTopicName(strings.TrimSpace(s))
 }
 
 // buildForumMetaTitleIndex maps normalized topic title (first occurrence) → message_thread_id.
@@ -55,7 +68,7 @@ func buildForumMetaTitleIndex(bot *gotgbot.Bot, chatID int64, skipThreadID int64
 		if !ok {
 			continue
 		}
-		key := utils.TruncateTelegramForumTopicName(strings.TrimSpace(name))
+		key := normalizeForumMetaTopicTitleKey(name)
 		if key == "" {
 			continue
 		}
@@ -67,7 +80,7 @@ func buildForumMetaTitleIndex(bot *gotgbot.Bot, chatID int64, skipThreadID int64
 }
 
 func ensureFindOrCreateForumMetaTopic(bot *gotgbot.Bot, chatID int64, spec forumMetaSpec, idx map[string]int64) (threadID int64, err error) {
-	wantKey := utils.TruncateTelegramForumTopicName(strings.TrimSpace(spec.title))
+	wantKey := normalizeForumMetaTopicTitleKey(spec.title)
 	if tid, ok := idx[wantKey]; ok {
 		_, sendErr := bot.SendMessage(chatID, "Reused existing topic for "+spec.reuseLabel, &gotgbot.SendMessageOpts{
 			MessageThreadId: tid,
@@ -111,7 +124,7 @@ func tryResolveGeneralForumThreadID(bot *gotgbot.Bot, chatID int64) (int64, erro
 	if err != nil {
 		return 0, fmt.Errorf("scan forum topics looking for General: %w", err)
 	}
-	wantKey := utils.TruncateTelegramForumTopicName(standardForumMetaSpecs[0].title)
+	wantKey := normalizeForumMetaTopicTitleKey(standardForumMetaSpecs[0].title)
 	if tid, ok := idx[wantKey]; ok {
 		return tid, nil
 	}
@@ -125,7 +138,7 @@ func tryResolveGeneralForumThreadID(bot *gotgbot.Bot, chatID int64) (int64, erro
 }
 
 // CreateStandardForumMetaTopics resolves General when possible (find only; 0 = default General), then
-// find-or-creates BotMeta, Calls, Status.
+// find-or-creates Bot's meta, Calls, Status.
 func CreateStandardForumMetaTopics(bot *gotgbot.Bot, chatID int64) (general, botMeta, calls, status int64, err error) {
 	generalID, err := tryResolveGeneralForumThreadID(bot, chatID)
 	if err != nil {
@@ -137,7 +150,7 @@ func CreateStandardForumMetaTopics(bot *gotgbot.Bot, chatID int64) (general, bot
 		return 0, 0, 0, 0, err
 	}
 	if generalID != 0 {
-		idx[utils.TruncateTelegramForumTopicName(standardForumMetaSpecs[0].title)] = generalID
+		idx[normalizeForumMetaTopicTitleKey(standardForumMetaSpecs[0].title)] = generalID
 	}
 
 	if generalID != 0 {
@@ -170,7 +183,7 @@ func CreateStandardForumMetaTopics(bot *gotgbot.Bot, chatID int64) (general, bot
 }
 
 // EnsureForumMetaTopicsProvisioned requires a forum target group with Manage topics, then resolves General
-// when possible (0 = default General), find-or-creates BotMeta/Calls/Status, and persists config.
+// when possible (0 = default General), find-or-creates Bot's meta/Calls/Status, and persists config.
 func EnsureForumMetaTopicsProvisioned() error {
 	cfg := state.State.Config
 	bot := state.State.TelegramBot
@@ -210,6 +223,21 @@ func EnsureForumMetaTopicsProvisioned() error {
 	t.StatusThreadID = s
 	if err := cfg.SaveConfig(); err != nil {
 		return fmt.Errorf("save config after forum topics: %w", err)
+	}
+	if cfg.Telegram.BridgeRegistryID != 0 {
+		if err := database.BridgeProvisionSet(
+			cfg.Telegram.BridgeRegistryID,
+			t.GeneralThreadID,
+			t.BotMetaThreadID,
+			t.CallsThreadID,
+			t.StatusThreadID,
+			"ok",
+			"",
+		); err != nil {
+			state.State.Logger.Warn("forum meta: could not sync thread ids to bridge registry DB (child YAML may reprovision on restart)",
+				zap.Uint("bridge_registry_id", cfg.Telegram.BridgeRegistryID),
+				zap.Error(err))
+		}
 	}
 	state.State.Logger.Info("standard forum meta topics provisioned and saved thread ids to config",
 		zap.Int64("general_thread_id", g),

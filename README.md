@@ -50,7 +50,7 @@ This project is in no way affiliated with WhatsApp or Telegram. Using this can a
   - `/bridge_enable <id>`
   - `/bridge_disable <id>`
   - `/bridge_delete <id>`
-- On `/bridge_add`, bot validates bridge token/group permissions, creates topics (`General`, `BotMeta`, `Calls`), enables bridge runtime, and returns management hints.
+- On `/bridge_add`, bot validates bridge token/group permissions, creates topics (`General`, `Bot's meta`, `Calls`), enables bridge runtime, and returns management hints.
 - With `WATG_SQLITE_MASTER_KEY` set, the main process derives a key for the **registry** SQLite (if `database.type: sqlite`); each **child** bridge process gets its own derived key via environment (not written into generated bridge YAML).
 
 ## Bugs and TODO
