@@ -210,6 +210,11 @@ func TgErrForumTopicOrThreadInvalid(err error) bool {
 		return false
 	}
 	d := strings.ToUpper(te.Description)
+	// getForumTopic for a non-existent message_thread_id often returns 400 with description "Not Found" only
+	// (no TOPIC/THREAD substring), e.g. probing empty thread slots in forum_meta title scan.
+	if te.Method == "getForumTopic" && strings.TrimSpace(d) == "NOT FOUND" {
+		return true
+	}
 	return strings.Contains(d, "MESSAGE THREAD NOT FOUND") ||
 		strings.Contains(d, "THREAD NOT FOUND") ||
 		strings.Contains(d, "TOPIC_ID_INVALID") ||
