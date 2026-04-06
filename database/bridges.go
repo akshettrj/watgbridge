@@ -135,7 +135,7 @@ func BridgeDelete(ownerUserID int64, bridgeID uint) error {
 }
 
 func BridgeProvisionGet(bridgeID uint) (*BridgeProvisionState, error) {
-	db := state.State.Database
+	db := provisionStateDBOrDefault()
 	var p BridgeProvisionState
 	res := db.Where("bridge_id = ?", bridgeID).First(&p)
 	if res.Error != nil {
@@ -145,7 +145,7 @@ func BridgeProvisionGet(bridgeID uint) (*BridgeProvisionState, error) {
 }
 
 func BridgeProvisionSet(bridgeID uint, general, botMeta, calls, statusThread int64, lastCheckStatus, lastErr string) error {
-	db := state.State.Database
+	db := provisionStateDBOrDefault()
 	lastCheckStatus = strings.TrimSpace(lastCheckStatus)
 	if lastCheckStatus == "" {
 		lastCheckStatus = "ok"

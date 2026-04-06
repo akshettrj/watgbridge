@@ -242,9 +242,8 @@ func EnsureForumMetaTopicsProvisioned() error {
 				zap.Uint("bridge_registry_id", cfg.Telegram.BridgeRegistryID),
 				zap.Error(err))
 		}
-		// Multi-mode: child bridge uses a separate SQLite file, so BridgeProvisionSet above does not
-		// update the parent registry. Write a sidecar next to bridge_N.yaml so the parent can merge
-		// thread ids when regenerating child config.
+		// Multi-mode: per-bridge DB is separate from the registry; BridgeProvisionSet is routed to the
+		// registry when WATG_REGISTRY_SQLITE_PATH is set. Sidecar is a fallback if registry open fails.
 		if cfg.Path != "" {
 			if err := bridge.WriteProvisionSidecar(filepath.Dir(cfg.Path), cfg.Telegram.BridgeRegistryID,
 				t.GeneralThreadID, t.BotMetaThreadID, t.CallsThreadID, t.StatusThreadID); err != nil {

@@ -101,3 +101,35 @@ func Connect() (*gorm.DB, error) {
 
 	return nil, fmt.Errorf("Database of type '%s' is not supported", dbType)
 }
+
+// OpenRegistrySQLiteForProvision opens the multi-mode registry SQLite (SQLCipher) using the
+// watgbridge-v1/registry key derivation. Bridge children use this so BridgeProvisionSet updates the
+// same file the main process uses, independent of the per-bridge database file.
+func OpenRegistrySQLiteForProvision(absPath string) (*gorm.DB, error) {
+	gormConfig := gorm.Config{
+		Logger: gormlogger.Default.LogMode(gormlogger.Silent),
+	}
+	sqlDB, err := sql.Open("sqlite3", absPath)
+	if err != nil {
+		return nil, err
+	}
+	master, hasMaster, err := sqlitekey.MasterKeyBytesFromEnv()
+	if err != nil {
+		_ = sqlDB.Close()
+		return nil, err
+	}
+	if !hasMaster {
+		_ = sqlDB.Close()
+		return nil, fmt.Errorf("WATG_SQLITE_MASTER_KEY required for registry SQLCipher")
+	}
+	k, err := sqlitekey.DeriveKeyHex(master, "watgbridge-v1/registry")
+	if err != nil {
+		_ = sqlDB.Close()
+		return nil, err
+	}
+	if err := sqlitekey.ApplyToDB(sqlDB, k); err != nil {
+		_ = sqlDB.Close()
+		return nil, fmt.Errorf("sqlcipher registry: %w", err)
+	}
+	return gorm.Open(gormsqlcipher.New(gormsqlcipher.Config{Conn: sqlDB}), &gormConfig)
+}

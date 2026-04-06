@@ -7,10 +7,9 @@ import (
 	"path/filepath"
 )
 
-// provisionSidecar persists forum thread IDs for a bridge child process. The main process reads
-// the registry DB for BridgeProvisionState, but child processes use a separate SQLite file, so
-// BridgeProvisionSet from a child does not update what writeBridgeConfig reads. Sidecar files live
-// next to bridge_N.yaml under the manager baseDir.
+// provisionSidecar is a fallback when the bridge child cannot open the registry DB for
+// BridgeProvisionState (e.g. missing env). Primary path: child opens registry SQLite via
+// WATG_REGISTRY_SQLITE_PATH and BridgeProvisionSet updates the same DB as the parent.
 type provisionSidecar struct {
 	GeneralThreadID  int64 `json:"general_thread_id"`
 	BotMetaThreadID  int64 `json:"bot_meta_thread_id"`

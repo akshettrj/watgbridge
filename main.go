@@ -241,6 +241,24 @@ func main() {
 			zap.Error(err),
 		)
 	}
+	// Multi-mode bridge child: BridgeProvisionSet must update the registry SQLite (same rows the parent
+	// reads in writeBridgeConfig), not only the per-bridge DB opened above.
+	if cfg.Mode == "single" && cfg.Telegram.BridgeRegistryID != 0 {
+		if regPath := os.Getenv("WATG_REGISTRY_SQLITE_PATH"); regPath != "" {
+			abs, err := filepath.Abs(regPath)
+			if err != nil {
+				logger.Warn("WATG_REGISTRY_SQLITE_PATH abs failed", zap.Error(err))
+			} else if regDB, err := database.OpenRegistrySQLiteForProvision(abs); err != nil {
+				logger.Warn("open registry DB for bridge provision state; forum meta may reprovision without persisted thread ids",
+					zap.String("path", abs), zap.Error(err))
+			} else {
+				database.SetProvisionStateDB(regDB)
+				logger.Info("bridge provision state uses registry DB",
+					zap.String("path", abs),
+					zap.Uint("bridge_registry_id", cfg.Telegram.BridgeRegistryID))
+			}
+		}
+	}
 	seedMappedForumTopics(cfg)
 
 	if cfg.Mode == "multi" {

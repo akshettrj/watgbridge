@@ -30,10 +30,31 @@ func NewManager(baseDir string) *Manager {
 	}
 }
 
-func childEnviron(bridge *database.Bridge) ([]string, error) {
+// registrySQLitePathFromMainConfig returns the absolute registry DB path for multi-mode children so
+// they can open the same SQLCipher file as the main process for bridge_provision_states updates.
+func registrySQLitePathFromMainConfig() string {
+	mainCfg := state.State.Config
+	if mainCfg.Mode != "multi" {
+		return ""
+	}
+	p, ok := mainCfg.Database["path"]
+	if !ok || strings.TrimSpace(p) == "" {
+		return ""
+	}
+	p = strings.TrimSpace(p)
+	if filepath.IsAbs(p) {
+		return p
+	}
+	if mainCfg.Path == "" {
+		return ""
+	}
+	return filepath.Join(filepath.Dir(mainCfg.Path), p)
+}
+
+func childEnviron(bridge *database.Bridge, registrySQLitePath string) ([]string, error) {
 	base := os.Environ()
 	prefix := sqlitekey.EnvDerived + "="
-	out := make([]string, 0, len(base)+3)
+	out := make([]string, 0, len(base)+4)
 	for _, e := range base {
 		if strings.HasPrefix(e, prefix) {
 			continue
@@ -44,6 +65,9 @@ func childEnviron(bridge *database.Bridge) ([]string, error) {
 		fmt.Sprintf("WATG_BRIDGE_ID=%d", bridge.ID),
 		fmt.Sprintf("WATG_BRIDGE_OWNER_TELEGRAM_USER_ID=%d", bridge.OwnerUserID),
 	)
+	if registrySQLitePath != "" {
+		out = append(out, "WATG_REGISTRY_SQLITE_PATH="+registrySQLitePath)
+	}
 	master, hasMaster, err := sqlitekey.MasterKeyBytesFromEnv()
 	if err != nil {
 		return nil, err
@@ -99,7 +123,7 @@ func (m *Manager) StartBridge(bridge *database.Bridge) error {
 	cmd := exec.Command(binaryPath, "--mode=single", "--config", cfgPath)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	cmd.Env, err = childEnviron(bridge)
+	cmd.Env, err = childEnviron(bridge, registrySQLitePathFromMainConfig())
 	if err != nil {
 		return err
 	}
@@ -178,9 +202,8 @@ func (m *Manager) writeBridgeConfig(bridge *database.Bridge) (string, error) {
 		provCalls = prov.CallsThreadID
 		provStatus = prov.StatusThreadID
 	}
-	// Child processes use a different DB file; BridgeProvisionSet from child does not update the
-	// registry. Sidecar JSON is written by the child after provisioning so the parent can inject
-	// thread ids into generated YAML. Registry non-zero values win over sidecar.
+	// Fallback: if registry rows are still zero (e.g. before registry-open fix), merge sidecar JSON
+	// written by the child. Registry non-zero values win over sidecar.
 	if sg, sm, sc, ss, ok, err := ReadProvisionSidecar(m.baseDir, bridge.ID); err != nil {
 		state.State.Logger.Warn("bridge provision sidecar read failed",
 			zap.Uint("bridge_id", bridge.ID), zap.Error(err))
