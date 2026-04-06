@@ -165,12 +165,12 @@ func managedBridgeStartHandler(bridgeToken string, mainBot *gotgbot.Bot, manager
 		}
 		_, err = b.SendMessage(c.EffectiveChat.Id,
 			"<b>Hi — you're paired for this bridge bot.</b>\n\n"+
-				"Tap <b>"+btnChooseGroup+"</b> below, then pick your <b>supergroup with Topics</b>. "+
-				"When Telegram asks, grant this bot admin with <b>Manage topics</b> enabled.\n\n"+
-				"Bot: "+un,
+				"Tap <b>"+btnChooseGroup+"</b> below and pick your <b>forum supergroup</b>. "+
+				"Telegram will only ask to add <b>this</b> bot ("+un+") as admin — <b>not</b> the WaTgBridge control bot you used for /bridge_create_bot.\n\n"+
+				"Enable <b>Manage topics</b> (and basic chat admin) for this bot when prompted.",
 			&gotgbot.SendMessageOpts{
 				ParseMode:   gotgbot.ParseModeHTML,
-				ReplyMarkup: ManagedBridgeChooseGroupReplyKeyboard(int64(rid)),
+				ReplyMarkup: BridgeBotForumPickerKeyboard(int64(rid)),
 			})
 		return err
 	}

@@ -76,7 +76,7 @@ func handleManagedBotUpdate(b *gotgbot.Bot, manager *bridge.Manager, upd *manage
 	}
 	text := fmt.Sprintf("Your bridge bot is ready: <b>%s</b>\n\n"+
 		"Next: I’ll send a <b>unique pairing link</b> for <b>%s</b>. Open it in Telegram (same account as here). "+
-		"In that chat you’ll confirm pairing and tap <b>"+btnChooseGroup+"</b> to pick your forum and grant this bot <b>Manage topics</b>.\n\n"+
+		"Forum setup runs in <b>that</b> bot chat — <b>not</b> here — and only that bot is added to the group.\n\n"+
 		"<i>Pairing</i> is tied to your Telegram account until the group is linked.",
 		hint, hint)
 	_, err = b.SendMessage(ownerID, text, &gotgbot.SendMessageOpts{ParseMode: gotgbot.ParseModeHTML})

@@ -76,25 +76,28 @@ func mainBotManualBotUsernamePromptReplyKeyboard() gotgbot.ReplyKeyboardMarkup {
 	}
 }
 
-func chatAdministratorRightsForRequestChatUser() *gotgbot.ChatAdministratorRights {
+// forumBridgeBotAdminRights is what we ask Telegram to grant the bridge bot (must satisfy addBridgeFromCredentials).
+func forumBridgeBotAdminRights() *gotgbot.ChatAdministratorRights {
 	return &gotgbot.ChatAdministratorRights{
 		IsAnonymous:         false,
 		CanManageChat:       true,
 		CanDeleteMessages:   false,
 		CanManageVideoChats: false,
 		CanRestrictMembers:  false,
-		CanPromoteMembers:   true,
-		CanChangeInfo:       true,
-		CanInviteUsers:      true,
+		CanPromoteMembers:   false,
+		CanChangeInfo:       false,
+		CanInviteUsers:      false,
 		CanPostStories:      false,
 		CanEditStories:      false,
 		CanDeleteStories:    false,
-		CanPinMessages:      true,
+		CanPinMessages:      false,
 		CanManageTopics:     true,
 	}
 }
 
-func chatAdministratorRightsForRequestChatBot() *gotgbot.ChatAdministratorRights {
+// forumChooserUserAdminRights is required of the human in the target chat so they can add/promote the bridge bot.
+// Must be a superset of forumBridgeBotAdminRights (Telegram API).
+func forumChooserUserAdminRights() *gotgbot.ChatAdministratorRights {
 	return &gotgbot.ChatAdministratorRights{
 		IsAnonymous:         false,
 		CanManageChat:       true,
@@ -112,21 +115,21 @@ func chatAdministratorRightsForRequestChatBot() *gotgbot.ChatAdministratorRights
 	}
 }
 
-// ManagedBridgeChooseGroupReplyKeyboard puts "Choose group (with topics)" on the first row (required).
-func ManagedBridgeChooseGroupReplyKeyboard(requestID int64) gotgbot.ReplyKeyboardMarkup {
+// BridgeBotForumPickerKeyboard is only for DMs with the managed bridge bot: one row, no "main menu" label.
+// Telegram will add the bot that sent this keyboard — not the control/main bot.
+func BridgeBotForumPickerKeyboard(requestID int64) gotgbot.ReplyKeyboardMarkup {
 	forumTrue := true
 	req := &gotgbot.KeyboardButtonRequestChat{
-		RequestId:                requestID,
-		ChatIsChannel:            false,
-		ChatIsForum:              &forumTrue,
-		RequestTitle:             true,
-		UserAdministratorRights:  chatAdministratorRightsForRequestChatUser(),
-		BotAdministratorRights:   chatAdministratorRightsForRequestChatBot(),
+		RequestId:               requestID,
+		ChatIsChannel:           false,
+		ChatIsForum:             &forumTrue,
+		RequestTitle:            true,
+		UserAdministratorRights: forumChooserUserAdminRights(),
+		BotAdministratorRights:  forumBridgeBotAdminRights(),
 	}
 	return gotgbot.ReplyKeyboardMarkup{
 		Keyboard: [][]gotgbot.KeyboardButton{
 			{{Text: btnChooseGroup, RequestChat: req}},
-			{{Text: btnMainMenu}},
 		},
 		ResizeKeyboard:  true,
 		IsPersistent:    true,

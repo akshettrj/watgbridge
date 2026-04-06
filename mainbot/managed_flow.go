@@ -100,11 +100,15 @@ func sendManagedBridgePairingLink(mainBot *gotgbot.Bot, manager *bridge.Manager,
 	link := fmt.Sprintf("https://t.me/%s?start=%s", strings.TrimPrefix(un, "@"), pending.PairToken)
 	EnsureManagedBridgePoller(pending.BridgeBotToken, mainBot, manager)
 	mainBotReplyFlow.Delete(ownerUserID)
+	// Drop any stale reply keyboard (old “Choose group” from before the bridge-only picker).
+	_, _ = mainBot.SendMessage(ownerUserID, "\u2060", &gotgbot.SendMessageOpts{
+		ReplyMarkup: gotgbot.ReplyKeyboardRemove{RemoveKeyboard: true},
+	})
 	_, err = mainBot.SendMessage(ownerUserID,
-		"Open this link in Telegram (<b>same account</b> as here) to continue with your bridge bot:\n"+
+		"Open this link in Telegram (<b>same account</b> as here). <b>All forum steps happen in the bridge bot chat</b> — you do <b>not</b> add the control bot to the group:\n"+
 			"<a href=\""+html.EscapeString(link)+"\">"+html.EscapeString(link)+"</a>\n\n"+
-			"There you’ll confirm pairing and tap <b>"+btnChooseGroup+"</b> to pick the forum. "+
-			"Or bind manually: <code>/bridge_bind</code> &lt;group id&gt;.",
+			"In that chat, tap <b>"+btnChooseGroup+"</b> to pick the forum. "+
+			"Or bind manually from here: <code>/bridge_bind</code> &lt;group id&gt;.",
 		&gotgbot.SendMessageOpts{
 			ParseMode:   gotgbot.ParseModeHTML,
 			ReplyMarkup: mainBotMainReplyKeyboard(),
