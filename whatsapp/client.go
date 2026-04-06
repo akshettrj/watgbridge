@@ -121,6 +121,7 @@ func NewWhatsAppClient() error {
 	didFreshQRLogin := false
 	if client.Store.ID == nil {
 		didFreshQRLogin = true
+		resetWhatsAppQRLoginMessageState()
 		qrChan, _ := client.GetQRChannel(context.Background())
 		err = client.Connect()
 		if err != nil {
@@ -140,8 +141,9 @@ func NewWhatsAppClient() error {
 						}
 						logger.Warn("whatsapp qr png encode failed", zap.Error(err))
 					} else {
-						caption := "Scan this code in WhatsApp → Settings → Linked devices, on the phone you want to use for this group."
-						if sendErr := sendWhatsAppQRToTelegram(qrCodePNG, caption); sendErr != nil {
+						caption := "Scan this code in WhatsApp → Settings → Linked devices, on the phone you want to use for this group.\n\n" +
+							"<i>WhatsApp refreshes the code periodically; this single message updates — you won’t get a new photo for each refresh.</i>"
+						if sendErr := sendOrUpdateWhatsAppQRToTelegram(qrCodePNG, caption); sendErr != nil {
 							logger.Warn("whatsapp qr photo send failed", zap.Error(sendErr))
 						}
 					}

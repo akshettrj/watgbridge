@@ -7,6 +7,7 @@ import (
 	"math"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"watgbridge/state"
@@ -17,7 +18,44 @@ import (
 	"go.uber.org/zap"
 )
 
-func sendWhatsAppQRToTelegram(qrPNG []byte, caption string) error {
+var (
+	qrLoginMu        sync.Mutex
+	qrLoginMessageID int64
+)
+
+// resetWhatsAppQRLoginMessageState clears the in-memory Telegram message id for the current QR session.
+// Call when starting a new QR login flow (new process or new unlinked device) so the first code sends a fresh photo.
+func resetWhatsAppQRLoginMessageState() {
+	qrLoginMu.Lock()
+	defer qrLoginMu.Unlock()
+	qrLoginMessageID = 0
+}
+
+// deleteWhatsAppQRLoginMessage removes the single QR photo message after successful link (best-effort).
+func deleteWhatsAppQRLoginMessage() {
+	bot := state.State.TelegramBot
+	if bot == nil {
+		return
+	}
+	t := state.State.Config.Telegram
+	if t.TargetChatID == 0 || t.GeneralThreadID == 0 {
+		return
+	}
+	qrLoginMu.Lock()
+	mid := qrLoginMessageID
+	qrLoginMessageID = 0
+	qrLoginMu.Unlock()
+	if mid == 0 {
+		return
+	}
+	if _, err := bot.DeleteMessage(t.TargetChatID, mid, nil); err != nil && state.State.Logger != nil {
+		state.State.Logger.Debug("whatsapp qr login: delete qr message after link", zap.Error(err))
+	}
+}
+
+// sendOrUpdateWhatsAppQRToTelegram sends one photo on the first code event, then edits that message as WhatsApp rotates the QR.
+// This avoids flooding the forum with dozens of images (WhatsApp refreshes the code periodically).
+func sendOrUpdateWhatsAppQRToTelegram(qrPNG []byte, caption string) error {
 	bot := state.State.TelegramBot
 	if bot == nil {
 		return fmt.Errorf("telegram bot not initialized")
@@ -26,12 +64,45 @@ func sendWhatsAppQRToTelegram(qrPNG []byte, caption string) error {
 	if t.TargetChatID == 0 || t.GeneralThreadID == 0 {
 		return fmt.Errorf("telegram.target_chat_id and telegram.general_thread_id must be set (forum General topic is required)")
 	}
+
+	qrLoginMu.Lock()
+	defer qrLoginMu.Unlock()
+
+	media := gotgbot.InputMediaPhoto{
+		Media:   gotgbot.InputFileByReader("qrcode.png", bytes.NewReader(qrPNG)),
+		Caption: caption,
+	}
+
+	if qrLoginMessageID != 0 {
+		media.ParseMode = gotgbot.ParseModeHTML
+		_, _, err := bot.EditMessageMedia(media, &gotgbot.EditMessageMediaOpts{
+			ChatId:    t.TargetChatID,
+			MessageId: qrLoginMessageID,
+		})
+		if err == nil {
+			return nil
+		}
+		if state.State.Logger != nil {
+			state.State.Logger.Debug("whatsapp qr: editMessageMedia failed, sending new photo",
+				zap.Error(err),
+				zap.Int64("message_id", qrLoginMessageID))
+		}
+		qrLoginMessageID = 0
+	}
+
 	opts := gotgbot.SendPhotoOpts{
 		Caption:         caption,
+		ParseMode:       gotgbot.ParseModeHTML,
 		MessageThreadId: t.GeneralThreadID,
 	}
-	_, err := bot.SendPhoto(t.TargetChatID, gotgbot.InputFileByReader("qrcode.png", bytes.NewReader(qrPNG)), &opts)
-	return err
+	msg, err := bot.SendPhoto(t.TargetChatID, gotgbot.InputFileByReader("qrcode.png", bytes.NewReader(qrPNG)), &opts)
+	if err != nil {
+		return err
+	}
+	if msg != nil {
+		qrLoginMessageID = msg.MessageId
+	}
+	return nil
 }
 
 func sendWhatsAppQRTextToTelegram(text string) error {
@@ -63,6 +134,8 @@ func waPhoneDisplay(jid types.JID) string {
 
 // notifyWhatsAppLinked runs after a fresh QR login: message in General topic + optional DM from control (main) bot.
 func notifyWhatsAppLinked(cli *whatsmeow.Client, zl *zap.Logger) {
+	deleteWhatsAppQRLoginMessage()
+
 	cfg := state.State.Config
 	bot := state.State.TelegramBot
 	if bot == nil {
