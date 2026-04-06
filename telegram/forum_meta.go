@@ -3,6 +3,7 @@ package telegram
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"watgbridge/state"
 	"watgbridge/utils"
@@ -14,6 +15,10 @@ import (
 // forumMetaTopicScanLimit is how high we probe message_thread_id via getForumTopic when looking for
 // existing standard meta topics. Groups with more topics may miss a duplicate title above this id.
 const forumMetaTopicScanLimit int64 = 250
+
+// telegramGeneralTopicThreadID is the message_thread_id of the default "General" topic in a forum supergroup
+// (see Telegram Bot API: forum General topic uses this id).
+const telegramGeneralTopicThreadID int64 = 1
 
 type forumMetaSpec struct {
 	title      string
@@ -32,9 +37,13 @@ func isGetForumTopicMissing(err error) bool {
 }
 
 // buildForumMetaTitleIndex maps normalized topic title (first occurrence) → message_thread_id.
-func buildForumMetaTitleIndex(bot *gotgbot.Bot, chatID int64) (map[string]int64, error) {
+// skipThreadID avoids re-probing a thread we already resolved (e.g. General); pass 0 to scan all.
+func buildForumMetaTitleIndex(bot *gotgbot.Bot, chatID int64, skipThreadID int64) (map[string]int64, error) {
 	idx := make(map[string]int64)
 	for tid := int64(1); tid <= forumMetaTopicScanLimit; tid++ {
+		if skipThreadID != 0 && tid == skipThreadID {
+			continue
+		}
 		name, ok, err := utils.TgFetchForumTopicName(bot, chatID, tid)
 		if err != nil {
 			if isGetForumTopicMissing(err) {
@@ -56,7 +65,7 @@ func buildForumMetaTitleIndex(bot *gotgbot.Bot, chatID int64) (map[string]int64,
 	return idx, nil
 }
 
-func ensureOneForumMetaTopic(bot *gotgbot.Bot, chatID int64, spec forumMetaSpec, idx map[string]int64) (threadID int64, err error) {
+func ensureFindOrCreateForumMetaTopic(bot *gotgbot.Bot, chatID int64, spec forumMetaSpec, idx map[string]int64) (threadID int64, err error) {
 	wantKey := utils.TruncateTelegramForumTopicName(strings.TrimSpace(spec.title))
 	if tid, ok := idx[wantKey]; ok {
 		_, sendErr := bot.SendMessage(chatID, "Reused existing topic for "+spec.reuseLabel, &gotgbot.SendMessageOpts{
@@ -79,20 +88,66 @@ func ensureOneForumMetaTopic(bot *gotgbot.Bot, chatID int64, spec forumMetaSpec,
 	return tid, nil
 }
 
-// CreateStandardForumMetaTopics ensures General, BotMeta, Calls, and Status forum topics exist.
-// Existing topics with the same title (within the scanned thread id range) are reused; a short notice is posted in each reused topic.
+// resolveGeneralForumThreadID finds the General topic only (never creates it). Telegram uses
+// message_thread_id=1 for the default General topic; we retry for membership propagation, then fall back
+// to a title scan if needed.
+func resolveGeneralForumThreadID(bot *gotgbot.Bot, chatID int64) (int64, error) {
+	var lastProbeErr error
+	for attempt := 0; attempt < 12; attempt++ {
+		name, ok, err := utils.TgFetchForumTopicName(bot, chatID, telegramGeneralTopicThreadID)
+		if err == nil && ok && strings.TrimSpace(name) != "" {
+			return telegramGeneralTopicThreadID, nil
+		}
+		if err != nil {
+			lastProbeErr = err
+			if !utils.TgErrForumTopicOrThreadInvalid(err) {
+				return 0, fmt.Errorf("getForumTopic General (thread %d): %w", telegramGeneralTopicThreadID, err)
+			}
+		}
+		time.Sleep(400 * time.Millisecond)
+	}
+	// Fallback: locate by title (e.g. rare client / rename edge cases)
+	idx, err := buildForumMetaTitleIndex(bot, chatID, 0)
+	if err != nil {
+		return 0, fmt.Errorf("scan forum topics looking for General: %w", err)
+	}
+	wantKey := utils.TruncateTelegramForumTopicName(standardForumMetaSpecs[0].title)
+	if tid, ok := idx[wantKey]; ok {
+		return tid, nil
+	}
+	if lastProbeErr != nil {
+		return 0, fmt.Errorf("could not find General topic (expected thread id %d in a forum supergroup): %w", telegramGeneralTopicThreadID, lastProbeErr)
+	}
+	return 0, fmt.Errorf("could not find General topic in forum (expected thread id %d)", telegramGeneralTopicThreadID)
+}
+
+// CreateStandardForumMetaTopics resolves General (find only), then find-or-creates BotMeta, Calls, Status.
 func CreateStandardForumMetaTopics(bot *gotgbot.Bot, chatID int64) (general, botMeta, calls, status int64, err error) {
-	idx, err := buildForumMetaTitleIndex(bot, chatID)
+	generalID, err := resolveGeneralForumThreadID(bot, chatID)
 	if err != nil {
 		return 0, 0, 0, 0, err
 	}
+
+	idx, err := buildForumMetaTitleIndex(bot, chatID, generalID)
+	if err != nil {
+		return 0, 0, 0, 0, err
+	}
+	idx[utils.TruncateTelegramForumTopicName(standardForumMetaSpecs[0].title)] = generalID
+
+	_, sendErr := bot.SendMessage(chatID, "Reused existing topic for "+standardForumMetaSpecs[0].reuseLabel, &gotgbot.SendMessageOpts{
+		MessageThreadId: generalID,
+	})
+	if sendErr != nil {
+		state.State.Logger.Debug("forum meta: reuse notice send failed (General)",
+			zap.Int64("thread_id", generalID),
+			zap.Error(sendErr))
+	}
+
 	var ids [4]int64
-	for i := range standardForumMetaSpecs {
-		tid, e := ensureOneForumMetaTopic(bot, chatID, standardForumMetaSpecs[i], idx)
+	ids[0] = generalID
+	for i := 1; i < len(standardForumMetaSpecs); i++ {
+		tid, e := ensureFindOrCreateForumMetaTopic(bot, chatID, standardForumMetaSpecs[i], idx)
 		if e != nil {
-			if i == 0 {
-				return 0, 0, 0, 0, e
-			}
 			if i == 1 {
 				return ids[0], 0, 0, 0, e
 			}
@@ -106,8 +161,8 @@ func CreateStandardForumMetaTopics(bot *gotgbot.Bot, chatID int64) (general, bot
 	return ids[0], ids[1], ids[2], ids[3], nil
 }
 
-// EnsureForumMetaTopicsProvisioned requires a forum target group with Manage topics, then ensures all four
-// meta topic IDs exist (creates every topic in one batch if any id is missing) and persists config.
+// EnsureForumMetaTopicsProvisioned requires a forum target group with Manage topics, then resolves General
+// (find only), find-or-creates BotMeta/Calls/Status, and persists config.
 func EnsureForumMetaTopicsProvisioned() error {
 	cfg := state.State.Config
 	bot := state.State.TelegramBot
