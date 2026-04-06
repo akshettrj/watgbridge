@@ -3,11 +3,14 @@ package database
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"watgbridge/state"
+
+	"gorm.io/gorm"
 )
 
 func HashBridgeToken(token string) string {
@@ -201,6 +204,67 @@ func BridgePendingManagedGet(ownerUserID int64) (*BridgePendingManaged, error) {
 func BridgePendingManagedDelete(ownerUserID int64) error {
 	db := state.State.Database
 	return db.Where("owner_user_id = ?", ownerUserID).Delete(&BridgePendingManaged{}).Error
+}
+
+func BridgeManagedBotUpsert(ownerUserID, managedBotUserID int64, token, labelHint string) error {
+	db := state.State.Database
+	now := time.Now()
+	token = strings.TrimSpace(token)
+	labelHint = strings.TrimSpace(labelHint)
+	var row BridgeManagedBot
+	err := db.Where("owner_user_id = ? AND managed_bot_user_id = ?", ownerUserID, managedBotUserID).First(&row).Error
+	if err == nil {
+		return db.Model(&row).Updates(map[string]interface{}{
+			"bridge_bot_token": token,
+			"label_hint":       labelHint,
+			"updated_at":       now,
+		}).Error
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+	return db.Create(&BridgeManagedBot{
+		OwnerUserID:      ownerUserID,
+		ManagedBotUserID: managedBotUserID,
+		BridgeBotToken:   token,
+		LabelHint:        labelHint,
+		CreatedAt:        now,
+		UpdatedAt:        now,
+	}).Error
+}
+
+// BridgeManagedBotListUnlinked returns managed bots for this owner that are not used by any active Bridge row.
+func BridgeManagedBotListUnlinked(ownerUserID int64) ([]BridgeManagedBot, error) {
+	db := state.State.Database
+	var rows []BridgeManagedBot
+	if err := db.Where("owner_user_id = ?", ownerUserID).Order("updated_at desc").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	var bridges []Bridge
+	if err := db.Where("owner_user_id = ?", ownerUserID).Find(&bridges).Error; err != nil {
+		return nil, err
+	}
+	inUse := make(map[string]struct{}, len(bridges))
+	for _, br := range bridges {
+		inUse[HashBridgeToken(br.BridgeBotToken)] = struct{}{}
+	}
+	var out []BridgeManagedBot
+	for _, r := range rows {
+		if _, ok := inUse[HashBridgeToken(r.BridgeBotToken)]; !ok {
+			out = append(out, r)
+		}
+	}
+	return out, nil
+}
+
+func BridgeManagedBotGetByOwnerAndManagedID(ownerUserID, managedBotUserID int64) (*BridgeManagedBot, error) {
+	db := state.State.Database
+	var row BridgeManagedBot
+	res := db.Where("owner_user_id = ? AND managed_bot_user_id = ?", ownerUserID, managedBotUserID).First(&row)
+	if res.Error != nil {
+		return nil, res.Error
+	}
+	return &row, nil
 }
 
 func BridgeBuildName(ownerID int64, nextIndex int) string {

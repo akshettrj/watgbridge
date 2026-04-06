@@ -1,6 +1,7 @@
 package mainbot
 
 import (
+	"errors"
 	"fmt"
 	"html"
 	"strconv"
@@ -14,8 +15,8 @@ import (
 	"github.com/PaulSonOfLars/gotgbot/v2/ext/handlers"
 )
 
-// mbp:<targetChatID> — pending managed bridge token stays in DB (owner-scoped).
-const managedBindProceedPrefix = "mbp:"
+// mbpr:<targetChatID> — pending managed bridge token stays in DB (owner-scoped). Prefix avoids clashing with mbs: (bot select).
+const managedBindProceedPrefix = "mbpr:"
 
 func managedBindProceedCallbackData(targetChatID int64) string {
 	return managedBindProceedPrefix + strconv.FormatInt(targetChatID, 10)
@@ -75,8 +76,11 @@ func sendManagedBindRetryPrompt(b *gotgbot.Bot, ownerUserID int64, targetChatID 
 		ctx += fmt.Sprintf("• <b>Label hint:</b> %s\n", html.EscapeString(strings.TrimSpace(pending.LabelHint)))
 	}
 	body := ctx + "\nDouble-check that you've added <b>that</b> bridge bot to <b>that</b> group, turned on <b>Topics</b> (forum), " +
-		"and made the bot an <b>administrator</b> with <b>Manage topics</b> enabled.\n\n" +
-		"When you're done, tap <b>I'm done! Proceed</b> below to retry for this chat and bot."
+		"and made the bot an <b>administrator</b> with <b>Manage topics</b> enabled.\n\n"
+	if errors.Is(addErr, ErrMainBotNeedsBootstrapRights) {
+		body += "If the error is about <b>this main bot</b>, grant it <b>invite users</b>, <b>add new admins</b>, and <b>manage topics</b> in that group.\n\n"
+	}
+	body += "When you're done, tap <b>I'm done! Proceed</b> below to retry for this chat and bot."
 	text := fmt.Sprintf("<b>%s</b>\n\n%s", title, body)
 	cb := managedBindProceedCallbackData(targetChatID)
 	if len(cb) > 64 {

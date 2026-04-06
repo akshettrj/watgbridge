@@ -28,7 +28,8 @@ func isRetryableManagedBindErr(err error) bool {
 	return errors.Is(err, ErrBridgeBotCannotAccessTarget) ||
 		errors.Is(err, ErrTargetGroupNotForum) ||
 		errors.Is(err, ErrBridgeBotNotGroupMember) ||
-		errors.Is(err, ErrBridgeBotNeedsManageTopics)
+		errors.Is(err, ErrBridgeBotNeedsManageTopics) ||
+		errors.Is(err, ErrMainBotNeedsBootstrapRights)
 }
 
 // addBridgeFromCredentials validates token, forum group, provisions topics, persists the bridge, and starts the runtime.

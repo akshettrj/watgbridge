@@ -30,6 +30,13 @@ func completePendingManagedBind(b *gotgbot.Bot, manager *bridge.Manager, user *g
 	if name == "" && strings.TrimSpace(pending.LabelHint) != "" {
 		name = pending.LabelHint
 	}
+	if bootErr := maybeBootstrapBridgeInTarget(b, pending.BridgeBotToken, pending.ManagedBotUserID, targetChatID); bootErr != nil {
+		if isRetryableManagedBindErr(bootErr) {
+			return sendManagedBindRetryPrompt(b, user.Id, targetChatID, pending, bootErr)
+		}
+		_, e := b.SendMessage(user.Id, bootErr.Error(), nil)
+		return e
+	}
 	resp, addErr := addBridgeFromCredentials(b, manager, user.Id, pending.BridgeBotToken, targetChatID, name)
 	if addErr != nil {
 		if isRetryableManagedBindErr(addErr) {
@@ -40,6 +47,7 @@ func completePendingManagedBind(b *gotgbot.Bot, manager *bridge.Manager, user *g
 	}
 	_ = database.BridgePendingManagedDelete(user.Id)
 	pendingManagedLabelHints.Delete(user.Id)
+	mainBotTryLeaveTarget(b, targetChatID)
 	_, err = b.SendMessage(user.Id, resp, &gotgbot.SendMessageOpts{
 		ReplyMarkup: gotgbot.ReplyKeyboardRemove{RemoveKeyboard: true},
 	})
@@ -70,7 +78,7 @@ func sendManagedBridgeChooseGroupPrompt(b *gotgbot.Bot, ownerChatID int64) error
 							"can_delete_messages":    false,
 							"can_manage_video_chats": false,
 							"can_restrict_members":   false,
-							"can_promote_members":    false,
+							"can_promote_members":    true,
 							"can_change_info":        true,
 							"can_invite_users":       true,
 							"can_post_stories":       false,
@@ -85,9 +93,9 @@ func sendManagedBridgeChooseGroupPrompt(b *gotgbot.Bot, ownerChatID int64) error
 							"can_delete_messages":    false,
 							"can_manage_video_chats": false,
 							"can_restrict_members":   false,
-							"can_promote_members":    false,
+							"can_promote_members":    true,
 							"can_change_info":        false,
-							"can_invite_users":       false,
+							"can_invite_users":       true,
 							"can_post_stories":       false,
 							"can_edit_stories":       false,
 							"can_delete_stories":     false,
@@ -102,10 +110,12 @@ func sendManagedBridgeChooseGroupPrompt(b *gotgbot.Bot, ownerChatID int64) error
 		"one_time_keyboard": true,
 	}
 	_, err = b.RequestWithContext(context.Background(), "sendMessage", map[string]any{
-		"chat_id": ownerChatID,
-		"text": "Tap the button, then select the group where you added the bridge bot. " +
-			"If it doesn’t appear, check that topics are on and you’re an admin with permission to manage topics.\n\n" +
-			"Optional: send /bridge_bind and paste whatever number you see for that group in its profile — we’ll fix the format for you.",
+		"chat_id":      ownerChatID,
+		"parse_mode":   "HTML",
+		"text": "Tap the button, then select your <b>forum</b> group. Add this main bot as admin with <b>invite users</b>, <b>add new admins</b>, and <b>manage topics</b> when Telegram asks.\n\n" +
+			"I’ll try to add your bridge bot and grant <b>Manage topics</b>, then leave the group. " +
+			"If Telegram can’t add the bot automatically, add the bridge bot yourself and tap <b>I’m done! Proceed</b> from my next message.\n\n" +
+			"<i>Or send</i> <code>/bridge_bind</code> <i>with the group id from the group profile.</i>",
 		"reply_markup": markup,
 	}, nil)
 	return err
@@ -125,6 +135,58 @@ func suggestedManagedBotUsername() string {
 	return fmt.Sprintf("watgbridge%xbot", binary.BigEndian.Uint32(buf[:]))
 }
 
+// SendManagedBotCreationKeyboard shows the request_managed_bot keyboard (private chat; ownerUserID is the user id in DM).
+func SendManagedBotCreationKeyboard(b *gotgbot.Bot, ownerUserID int64, labelHint string) error {
+	_ = database.BridgeUserEnsure(ownerUserID)
+	if s := strings.TrimSpace(labelHint); s != "" {
+		pendingManagedLabelHints.Store(ownerUserID, s)
+	}
+	me, err := b.GetMe(nil)
+	if err != nil {
+		_, sendErr := b.SendMessage(ownerUserID, "getMe: "+err.Error(), nil)
+		return sendErr
+	}
+	if strings.TrimSpace(me.Username) == "" {
+		_, err := b.SendMessage(ownerUserID, "Give this main bot a @username in @BotFather first (needed for managed-bot creation).", nil)
+		return err
+	}
+	rid, err := randomManagedRequestID()
+	if err != nil {
+		_, sendErr := b.SendMessage(ownerUserID, "random request_id: "+err.Error(), nil)
+		return sendErr
+	}
+	sugName := "WaTgBridge"
+	sugUser := suggestedManagedBotUsername()
+	markup := map[string]any{
+		"keyboard": [][]map[string]any{
+			{
+				{
+					"text": "Create managed bridge bot",
+					"request_managed_bot": map[string]any{
+						"request_id":         rid,
+						"suggested_name":     sugName,
+						"suggested_username": sugUser,
+					},
+				},
+			},
+		},
+		"resize_keyboard":   true,
+		"one_time_keyboard": true,
+	}
+	_, err = b.RequestWithContext(context.Background(), "sendMessage", map[string]any{
+		"chat_id":      ownerUserID,
+		"text":         "Tap the button — Telegram will let you confirm the new bot. Requires Bot Management Mode on this main bot (@BotFather → Mini App → bot settings).",
+		"reply_markup": markup,
+	}, nil)
+	if err != nil {
+		_, sendErr := b.SendMessage(ownerUserID, "Could not show managed-bot keyboard (enable Bot Management Mode in @BotFather?): "+err.Error(), nil)
+		return sendErr
+	}
+	deep := fmt.Sprintf("https://t.me/newbot/%s/%s?name=%s", me.Username, sugUser, url.QueryEscape(sugName))
+	_, err = b.SendMessage(ownerUserID, "Or open: "+deep, nil)
+	return err
+}
+
 func bridgeCreateBotHandler() handlers.Response {
 	return func(b *gotgbot.Bot, c *ext.Context) error {
 		if c.EffectiveChat.Type != gotgbot.ChatTypePrivate {
@@ -135,59 +197,12 @@ func bridgeCreateBotHandler() handlers.Response {
 		if user == nil {
 			return nil
 		}
-		_ = database.BridgeUserEnsure(user.Id)
 		args := c.Args()
 		labelHint := ""
 		if len(args) > 1 {
 			labelHint = strings.TrimSpace(strings.Join(args[1:], " "))
 		}
-		if labelHint != "" {
-			pendingManagedLabelHints.Store(user.Id, labelHint)
-		}
-		me, err := b.GetMe(nil)
-		if err != nil {
-			_, sendErr := b.SendMessage(c.EffectiveChat.Id, "getMe: "+err.Error(), nil)
-			return sendErr
-		}
-		if strings.TrimSpace(me.Username) == "" {
-			_, err := b.SendMessage(c.EffectiveChat.Id, "Give this main bot a @username in @BotFather first (needed for managed-bot creation).", nil)
-			return err
-		}
-		rid, err := randomManagedRequestID()
-		if err != nil {
-			_, sendErr := b.SendMessage(c.EffectiveChat.Id, "random request_id: "+err.Error(), nil)
-			return sendErr
-		}
-		sugName := "WaTgBridge"
-		sugUser := suggestedManagedBotUsername()
-		markup := map[string]any{
-			"keyboard": [][]map[string]any{
-				{
-					{
-						"text": "Create managed bridge bot",
-						"request_managed_bot": map[string]any{
-							"request_id":         rid,
-							"suggested_name":     sugName,
-							"suggested_username": sugUser,
-						},
-					},
-				},
-			},
-			"resize_keyboard":   true,
-			"one_time_keyboard": true,
-		}
-		_, err = b.RequestWithContext(context.Background(), "sendMessage", map[string]any{
-			"chat_id":      c.EffectiveChat.Id,
-			"text":         "Tap the button — Telegram will let you confirm the new bot. Requires Bot Management Mode on this main bot (@BotFather → Mini App → bot settings).",
-			"reply_markup": markup,
-		}, nil)
-		if err != nil {
-			_, sendErr := b.SendMessage(c.EffectiveChat.Id, "Could not show managed-bot keyboard (enable Bot Management Mode in @BotFather?): "+err.Error(), nil)
-			return sendErr
-		}
-		deep := fmt.Sprintf("https://t.me/newbot/%s/%s?name=%s", me.Username, sugUser, url.QueryEscape(sugName))
-		_, err = b.SendMessage(c.EffectiveChat.Id, "Or open: "+deep, nil)
-		return err
+		return SendManagedBotCreationKeyboard(b, user.Id, labelHint)
 	}
 }
 

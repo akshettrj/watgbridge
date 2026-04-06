@@ -48,6 +48,7 @@ func Start(token string, manager *bridge.Manager) error {
 	dispatcher.AddHandler(handlers.NewCommand("bridge_disable", bridgeDisableHandler(manager)))
 	dispatcher.AddHandler(handlers.NewCommand("bridge_delete", bridgeDeleteHandler(manager)))
 	dispatcher.AddHandler(handlers.NewCommand("import_history", importHistoryCommandHandler()))
+	dispatcher.AddHandler(handlers.NewCallback(managedOnboardingCallbackFilter, managedOnboardingCallbackHandler()))
 	dispatcher.AddHandler(handlers.NewCallback(managedBindProceedCallbackFilter, managedBindProceedHandler(manager)))
 	dispatcher.AddHandler(handlers.NewMessage(managedChatSharedFilter, managedChatSharedHandler(manager)))
 	dispatcher.AddHandler(handlers.NewMessage(importHistoryPendingDocumentFilter, importHistoryDocumentHandler()))
@@ -90,9 +91,33 @@ func startHandler(b *gotgbot.Bot, c *ext.Context) error {
 	text += "<b>Chat history archive</b>: <code>/import_history &lt;bridge_id&gt;</code> then send your Telegram Desktop <code>result.json</code> or a zip of the export folder. Rows are stored in the registry SQLite for audit/search; they do <b>not</b> fill WhatsApp↔Telegram id mappings (those only come from live bridged traffic).\n\n"
 	text += "<b>Manage</b>\n"
 	text += "<code>/bridge_list</code> · <code>/bridge_enable</code> · <code>/bridge_disable</code> · <code>/bridge_delete</code> · <code>/import_history</code> · <code>/bridge_create_bot</code> · <code>/bridge_bind</code>"
+	text += "\n\n\n<b>Menu</b>"
 	pm := gotgbot.ParseModeHTML
-	_, err := b.SendMessage(c.EffectiveChat.Id, text, &gotgbot.SendMessageOpts{ParseMode: pm})
+	opts := &gotgbot.SendMessageOpts{ParseMode: pm}
+	if c.EffectiveChat.Type == gotgbot.ChatTypePrivate {
+		opts.ReplyMarkup = mainBotStartInlineMarkup()
+	}
+	_, err := b.SendMessage(c.EffectiveChat.Id, text, opts)
 	return err
+}
+
+func bridgeListTextForOwner(ownerID int64) (string, error) {
+	bridges, err := database.BridgeListByOwner(ownerID)
+	if err != nil {
+		return "", err
+	}
+	if len(bridges) == 0 {
+		return "No bridges yet. Use “New WhatsApp bridge” or /bridge_add.", nil
+	}
+	var sb strings.Builder
+	for _, br := range bridges {
+		status := "disabled"
+		if br.Enabled {
+			status = "enabled"
+		}
+		sb.WriteString(fmt.Sprintf("ID %d | %s | %s | chat %d\n", br.ID, br.Name, status, br.TelegramTargetChat))
+	}
+	return strings.TrimSuffix(sb.String(), "\n"), nil
 }
 
 func bridgeAddHandler(manager *bridge.Manager) handlers.Response {
@@ -156,24 +181,12 @@ func bridgeListHandler(b *gotgbot.Bot, c *ext.Context) error {
 	if user == nil {
 		return nil
 	}
-	bridges, err := database.BridgeListByOwner(user.Id)
+	text, err := bridgeListTextForOwner(user.Id)
 	if err != nil {
 		_, sendErr := b.SendMessage(c.EffectiveChat.Id, "Failed to list bridges", nil)
 		return sendErr
 	}
-	if len(bridges) == 0 {
-		_, sendErr := b.SendMessage(c.EffectiveChat.Id, "No bridges yet. Use /bridge_add", nil)
-		return sendErr
-	}
-	var sb strings.Builder
-	for _, bridge := range bridges {
-		status := "disabled"
-		if bridge.Enabled {
-			status = "enabled"
-		}
-		sb.WriteString(fmt.Sprintf("ID %d | %s | %s | chat %d\n", bridge.ID, bridge.Name, status, bridge.TelegramTargetChat))
-	}
-	_, err = b.SendMessage(c.EffectiveChat.Id, sb.String(), nil)
+	_, err = b.SendMessage(c.EffectiveChat.Id, text, nil)
 	return err
 }
 

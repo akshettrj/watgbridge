@@ -63,6 +63,10 @@ func handleManagedBotUpdate(b *gotgbot.Bot, upd *managedBotUpdated) error {
 		_, _ = b.SendMessage(ownerID, "Failed to save pending bridge: "+err.Error(), nil)
 		return err
 	}
+	if err := database.BridgeManagedBotUpsert(ownerID, managedID, token, labelHint); err != nil {
+		_, _ = b.SendMessage(ownerID, "Failed to save managed bot registry: "+err.Error(), nil)
+		return err
+	}
 	hint := ""
 	if un := strings.TrimSpace(upd.Bot.Username); un != "" {
 		hint = "@" + un
@@ -70,14 +74,11 @@ func handleManagedBotUpdate(b *gotgbot.Bot, upd *managedBotUpdated) error {
 		hint = fmt.Sprintf("id %d", managedID)
 	}
 	text := fmt.Sprintf("Your bridge bot is ready: <b>%s</b>\n\n"+
-		"Next:\n"+
-		"1) Create a <b>new group</b> (or use one you already have).\n"+
-		"2) In group settings, turn on <b>Topics</b>.\n"+
-		"3) Add <b>%s</b> to that group.\n"+
-		"4) Make it <b>admin</b> and enable <b>Manage topics</b>.\n\n"+
-		"I’ll send a button next — tap it and <b>select that group</b> to finish (no need to copy any id).\n\n"+
-		"<i>How pairing works:</i> I keep your new bot’s access only for you until you pick the group; "+
-		"after that, this bot is linked to that group only.",
+		"Next: I’ll send a <b>Choose group</b> button. Pick your <b>forum</b> and add this main bot as admin "+
+		"(<b>invite users</b>, <b>add new admins</b>, <b>manage topics</b>) when Telegram asks. "+
+		"I’ll try to pull <b>%s</b> in and grant <b>Manage topics</b>, then leave the group.\n\n"+
+		"<i>If automatic add fails</i>, add the bridge bot manually and use <b>I’m done! Proceed</b>.\n\n"+
+		"<i>Pairing:</i> your bridge bot token stays scoped to you until the group is linked.",
 		hint, hint)
 	_, err = b.SendMessage(ownerID, text, &gotgbot.SendMessageOpts{ParseMode: gotgbot.ParseModeHTML})
 	if err != nil {

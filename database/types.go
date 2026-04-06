@@ -106,6 +106,17 @@ type BridgePendingManaged struct {
 	UpdatedAt        time.Time `gorm:"not null"`
 }
 
+// BridgeManagedBot is every managed bridge bot created for an owner (persists after bind/delete for reuse).
+type BridgeManagedBot struct {
+	ID               uint   `gorm:"primaryKey;autoIncrement"`
+	OwnerUserID      int64  `gorm:"uniqueIndex:ux_bridge_managed_owner_bot;not null"`
+	ManagedBotUserID int64  `gorm:"uniqueIndex:ux_bridge_managed_owner_bot;not null"`
+	BridgeBotToken   string `gorm:"type:text;not null"`
+	LabelHint        string `gorm:"size:191"`
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+}
+
 // TelegramImportMessage stores Telegram Desktop JSON export rows for a bridge target chat.
 // This is archival metadata only; it does not populate MsgIdPair (WhatsApp ids are not in the export).
 type TelegramImportMessage struct {
@@ -139,6 +150,7 @@ func AutoMigrate() error {
 		&Bridge{},
 		&BridgeProvisionState{},
 		&BridgePendingManaged{},
+		&BridgeManagedBot{},
 		&TelegramImportMessage{},
 	)
 }
