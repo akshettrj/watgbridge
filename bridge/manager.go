@@ -159,6 +159,7 @@ func (m *Manager) writeBridgeConfig(bridge *database.Bridge) (string, error) {
 	if mainCfg.Telegram.MainBotToken != "" {
 		tgMap["control_bot_token"] = mainCfg.Telegram.MainBotToken
 	}
+	var provGeneral, provBotMeta, provCalls, provStatus int64
 	if prov, err := database.BridgeProvisionGet(bridge.ID); err == nil && prov != nil {
 		if prov.GeneralThreadID != 0 {
 			tgMap["general_thread_id"] = prov.GeneralThreadID
@@ -171,6 +172,30 @@ func (m *Manager) writeBridgeConfig(bridge *database.Bridge) (string, error) {
 		}
 		if prov.StatusThreadID != 0 {
 			tgMap["status_thread_id"] = prov.StatusThreadID
+		}
+		provGeneral = prov.GeneralThreadID
+		provBotMeta = prov.BotMetaThreadID
+		provCalls = prov.CallsThreadID
+		provStatus = prov.StatusThreadID
+	}
+	// Child processes use a different DB file; BridgeProvisionSet from child does not update the
+	// registry. Sidecar JSON is written by the child after provisioning so the parent can inject
+	// thread ids into generated YAML. Registry non-zero values win over sidecar.
+	if sg, sm, sc, ss, ok, err := ReadProvisionSidecar(m.baseDir, bridge.ID); err != nil {
+		state.State.Logger.Warn("bridge provision sidecar read failed",
+			zap.Uint("bridge_id", bridge.ID), zap.Error(err))
+	} else if ok {
+		if sg != 0 && provGeneral == 0 {
+			tgMap["general_thread_id"] = sg
+		}
+		if sm != 0 && provBotMeta == 0 {
+			tgMap["bot_meta_thread_id"] = sm
+		}
+		if sc != 0 && provCalls == 0 {
+			tgMap["calls_thread_id"] = sc
+		}
+		if ss != 0 && provStatus == 0 {
+			tgMap["status_thread_id"] = ss
 		}
 	}
 	payload := map[string]interface{}{

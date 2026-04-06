@@ -2,9 +2,11 @@ package telegram
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
+	"watgbridge/bridge"
 	"watgbridge/database"
 	"watgbridge/state"
 	"watgbridge/utils"
@@ -43,6 +45,8 @@ func isGetForumTopicMissing(err error) bool {
 // can include that prefix, so we strip "X " when X is A–Z before comparing to "Bot's meta", etc.
 func normalizeForumMetaTopicTitleKey(title string) string {
 	s := strings.TrimSpace(title)
+	s = strings.ReplaceAll(s, "\u2019", "'")
+	s = strings.ReplaceAll(s, "\u2018", "'")
 	s = strings.TrimPrefix(s, "#")
 	if len(s) >= 3 && s[1] == ' ' && s[0] >= 'A' && s[0] <= 'Z' {
 		s = strings.TrimSpace(s[2:])
@@ -237,6 +241,17 @@ func EnsureForumMetaTopicsProvisioned() error {
 			state.State.Logger.Warn("forum meta: could not sync thread ids to bridge registry DB (child YAML may reprovision on restart)",
 				zap.Uint("bridge_registry_id", cfg.Telegram.BridgeRegistryID),
 				zap.Error(err))
+		}
+		// Multi-mode: child bridge uses a separate SQLite file, so BridgeProvisionSet above does not
+		// update the parent registry. Write a sidecar next to bridge_N.yaml so the parent can merge
+		// thread ids when regenerating child config.
+		if cfg.Path != "" {
+			if err := bridge.WriteProvisionSidecar(filepath.Dir(cfg.Path), cfg.Telegram.BridgeRegistryID,
+				t.GeneralThreadID, t.BotMetaThreadID, t.CallsThreadID, t.StatusThreadID); err != nil {
+				state.State.Logger.Warn("forum meta: could not write provision sidecar (parent may reprovision forum topics on restart)",
+					zap.Uint("bridge_registry_id", cfg.Telegram.BridgeRegistryID),
+					zap.Error(err))
+			}
 		}
 	}
 	state.State.Logger.Info("standard forum meta topics provisioned and saved thread ids to config",
