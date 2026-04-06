@@ -2201,4 +2201,6 @@ func LogoutHandler(v *events.LoggedOut) {
 	updateText += fmt.Sprintf("<b>Reason:</b> %s", html.EscapeString(v.Reason.String()))
 
 	utils.TgSendTextById(tgBot, cfg.Telegram.OwnerID, 0, updateText)
+
+	ShowWhatsAppSessionDisabledReconnect(v.Reason.String(), logger)
 }

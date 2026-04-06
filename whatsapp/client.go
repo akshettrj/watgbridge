@@ -3,8 +3,10 @@ package whatsapp
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"html"
+	"sync/atomic"
 
 	"watgbridge/crypto/sqlitekey"
 	"watgbridge/state"
@@ -20,6 +22,11 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
 )
+
+var qrReconnectRunning int32
+
+// ErrReconnectInProgress is returned when a Reconnect is already running.
+var ErrReconnectInProgress = errors.New("reconnect already in progress")
 
 type whatsmeowLogger struct {
 	logger *zap.SugaredLogger
@@ -122,39 +129,13 @@ func NewWhatsAppClient() error {
 	if client.Store.ID == nil {
 		didFreshQRLogin = true
 		resetWhatsAppQRLoginMessageState()
-		qrChan, _ := client.GetQRChannel(context.Background())
 		err = client.Connect()
 		if err != nil {
 			return fmt.Errorf("could not connect to Whatsapp for login : %s", err)
 		}
-		for evt := range qrChan {
-			if evt.Event == "code" {
-				if state.State.TelegramBot != nil {
-					qrCodePNG, err := qrcode.Encode(evt.Code, qrcode.Highest, 512)
-					if err != nil {
-						msg := fmt.Sprintf(
-							"WhatsApp login QR could not be encoded as PNG. Fix the issue and restart; QR is not printed to logs or terminal.\n<code>%s</code>",
-							html.EscapeString(err.Error()),
-						)
-						if sendErr := sendWhatsAppQRTextToTelegram(msg); sendErr != nil {
-							logger.Warn("whatsapp qr error text send failed", zap.Error(sendErr))
-						}
-						logger.Warn("whatsapp qr png encode failed", zap.Error(err))
-					} else {
-						caption := "Scan this code in WhatsApp → Settings → Linked devices, on the phone you want to use for this group.\n\n" +
-							"<i>WhatsApp refreshes the code periodically; this single message updates — you won’t get a new photo for each refresh.</i>"
-						if sendErr := sendOrUpdateWhatsAppQRToTelegram(qrCodePNG, caption); sendErr != nil {
-							logger.Warn("whatsapp qr photo send failed", zap.Error(sendErr))
-						}
-					}
-				} else {
-					logger.Warn("whatsapp qr login: telegram bot not initialized; qr not sent to terminal or logs — ensure Telegram starts before WhatsApp")
-				}
-			} else {
-				logger.Info("received WhatsApp login event",
-					zap.Any("event", evt.Event),
-				)
-			}
+		runQRCodeLoop(context.Background(), client, logger)
+		if client.Store.ID == nil {
+			OnWhatsAppQRSessionClosed(logger)
 		}
 	} else {
 		err = client.Connect()
@@ -173,10 +154,69 @@ func NewWhatsAppClient() error {
 			zap.String("jid", client.Store.ID.String()),
 		)
 	} else {
-		logger.Warn("WhatsApp session not linked (QR login timed out, cancelled, or not completed)",
+		logger.Debug("WhatsApp session not linked after QR channel closed",
 			zap.String("push_name", client.Store.PushName),
 		)
 	}
 
+	return nil
+}
+
+// runQRCodeLoop consumes QR pairing codes until the channel closes (timeout / completion).
+func runQRCodeLoop(ctx context.Context, client *whatsmeow.Client, logger *zap.Logger) {
+	qrChan, _ := client.GetQRChannel(ctx)
+	for evt := range qrChan {
+		if evt.Event != "code" {
+			continue
+		}
+		if state.State.TelegramBot == nil {
+			logger.Warn("whatsapp qr login: telegram bot not initialized; qr not sent to terminal or logs — ensure Telegram starts before WhatsApp")
+			continue
+		}
+		qrCodePNG, err := qrcode.Encode(evt.Code, qrcode.Highest, 512)
+		if err != nil {
+			msg := fmt.Sprintf(
+				"WhatsApp login QR could not be encoded as PNG. Fix the issue and restart; QR is not printed to logs or terminal.\n<code>%s</code>",
+				html.EscapeString(err.Error()),
+			)
+			if sendErr := sendWhatsAppQRTextToTelegram(msg); sendErr != nil {
+				logger.Warn("whatsapp qr error text send failed", zap.Error(sendErr))
+			}
+			logger.Warn("whatsapp qr png encode failed", zap.Error(err))
+			continue
+		}
+		OnWhatsAppQRCodeReceived(qrCodePNG)
+	}
+}
+
+// StartWhatsAppQRReconnect disconnects and starts a new pairing session (Reconnect button).
+// Applies reconnect rate limit only after Connect succeeds (new pairing window is open).
+func StartWhatsAppQRReconnect(logger *zap.Logger) error {
+	if !atomic.CompareAndSwapInt32(&qrReconnectRunning, 0, 1) {
+		return ErrReconnectInProgress
+	}
+	defer atomic.StoreInt32(&qrReconnectRunning, 0)
+
+	client := state.State.WhatsAppClient
+	if client == nil {
+		return fmt.Errorf("WhatsApp client not initialized")
+	}
+	ctx := context.Background()
+	client.Disconnect()
+	if err := client.Connect(); err != nil {
+		return fmt.Errorf("connect: %w", err)
+	}
+	if client.Store.ID != nil {
+		return fmt.Errorf("already logged in")
+	}
+	resetWhatsAppQRLoginMessageState()
+	deleteSessionClosedMessageIfAny()
+	applyReconnectCooldown()
+	runQRCodeLoop(ctx, client, logger)
+	if client.Store.ID != nil {
+		notifyWhatsAppLinked(client, logger)
+		return nil
+	}
+	OnWhatsAppQRSessionClosed(logger)
 	return nil
 }

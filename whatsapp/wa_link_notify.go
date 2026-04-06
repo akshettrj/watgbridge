@@ -2,8 +2,7 @@ package whatsapp
 
 import (
 	"bytes"
-	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"math"
@@ -20,67 +19,114 @@ import (
 	"go.uber.org/zap"
 )
 
+// CallbackDataReconnect is Telegram inline button for starting a new QR session (≤64 bytes).
+const CallbackDataReconnect = "watg_qr_rec"
+
+// reconnectCooldownTiers: after each successful Reconnect, the next allowed attempt is after this wait.
+// After the last tier, index wraps to 0 (5 min again).
+var reconnectCooldownTiers = []time.Duration{
+	5 * time.Minute,
+	15 * time.Minute,
+	time.Hour,
+	3 * time.Hour,
+	6 * time.Hour,
+	12 * time.Hour,
+	24 * time.Hour,
+}
+
 var (
-	qrLoginMu              sync.Mutex
-	qrLoginMessageID       int64
-	qrLoginMessageThreadID int64 // from SendPhoto response; used for editMessageMedia (forum requires thread id)
+	qrLoginMu sync.Mutex
+	// Active QR photo message (rotating codes).
+	qrLoginMessageID int64
+	qrLastPNG        []byte
+	// Session-closed / logged-out notice with Reconnect button.
+	qrSessionClosedMessageID int64
+
+	reconnectMu            sync.Mutex
+	reconnectNextAllowedAt time.Time
+	reconnectTierIndex     int
 )
 
-// defaultForumGeneralMessageThreadID is the usual message_thread_id for the default "General" topic when
-// telegram.general_thread_id is 0 (Bot API omits it on send). gotgbot's EditMessageMedia does not pass
-// message_thread_id, which breaks in-place media edits in forum supergroups unless we supply it here.
-const defaultForumGeneralMessageThreadID int64 = 1
-
-func effectiveForumThreadIDForQRMedia(generalThreadID int64) int64 {
-	if generalThreadID != 0 {
-		return generalThreadID
+func qrReconnectKeyboard() gotgbot.InlineKeyboardMarkup {
+	return gotgbot.InlineKeyboardMarkup{
+		InlineKeyboard: [][]gotgbot.InlineKeyboardButton{
+			{{Text: "Reconnect", CallbackData: CallbackDataReconnect}},
+		},
 	}
-	return defaultForumGeneralMessageThreadID
 }
 
-func threadIDForQREdit(generalThreadID int64) int64 {
-	if qrLoginMessageThreadID != 0 {
-		return qrLoginMessageThreadID
+func qrLoginCaptionHTML() string {
+	loc := time.UTC
+	if state.State.LocalLocation != nil {
+		loc = state.State.LocalLocation
 	}
-	return effectiveForumThreadIDForQRMedia(generalThreadID)
+	updated := html.EscapeString(time.Now().In(loc).Format("Mon 2 Jan 15:04:05"))
+	return "Scan this code in WhatsApp → Settings → Linked devices, on the phone you want to use for this group.\n\n" +
+		"Last updated: " + updated
 }
 
-// editMessageMediaWithForumThread calls editMessageMedia with message_thread_id. The generated gotgbot
-// EditMessageMediaOpts omits this field, so forum topic photo updates would otherwise fail.
-func editMessageMediaWithForumThread(bot *gotgbot.Bot, chatID, messageID, messageThreadID int64, media gotgbot.InputMedia) (*gotgbot.Message, bool, error) {
-	v := map[string]any{
-		"media":      media,
-		"chat_id":    chatID,
-		"message_id": messageID,
-	}
-	if messageThreadID != 0 {
-		v["message_thread_id"] = messageThreadID
-	}
-	r, err := bot.RequestWithContext(context.Background(), "editMessageMedia", v, nil)
-	if err != nil {
-		return nil, false, err
-	}
-	var m gotgbot.Message
-	if err := json.Unmarshal(r, &m); err != nil {
-		var b bool
-		if err := json.Unmarshal(r, &b); err != nil {
-			return nil, false, err
-		}
-		return nil, b, nil
-	}
-	return &m, true, nil
-}
-
-// resetWhatsAppQRLoginMessageState clears the in-memory Telegram message id for the current QR session.
-// Call when starting a new QR login flow (new process or new unlinked device) so the first code sends a fresh photo.
+// resetWhatsAppQRLoginMessageState clears QR message tracking for a new pairing attempt.
 func resetWhatsAppQRLoginMessageState() {
 	qrLoginMu.Lock()
 	defer qrLoginMu.Unlock()
 	qrLoginMessageID = 0
-	qrLoginMessageThreadID = 0
+	qrLastPNG = nil
 }
 
-// deleteWhatsAppQRLoginMessage removes the single QR photo message after successful link (best-effort).
+func resetReconnectRateLimit() {
+	reconnectMu.Lock()
+	defer reconnectMu.Unlock()
+	reconnectNextAllowedAt = time.Time{}
+	reconnectTierIndex = 0
+}
+
+// ReconnectAllowed returns whether Reconnect is allowed now, and the next allowed time if not.
+func ReconnectAllowed() (ok bool, nextAt time.Time) {
+	reconnectMu.Lock()
+	defer reconnectMu.Unlock()
+	if reconnectNextAllowedAt.IsZero() || !time.Now().Before(reconnectNextAllowedAt) {
+		return true, time.Time{}
+	}
+	return false, reconnectNextAllowedAt
+}
+
+func applyReconnectCooldown() {
+	reconnectMu.Lock()
+	defer reconnectMu.Unlock()
+	reconnectNextAllowedAt = time.Now().Add(reconnectCooldownTiers[reconnectTierIndex])
+	reconnectTierIndex = (reconnectTierIndex + 1) % len(reconnectCooldownTiers)
+}
+
+func formatNextReconnectTime(t time.Time) string {
+	loc := time.UTC
+	if state.State.LocalLocation != nil {
+		loc = state.State.LocalLocation
+	}
+	return t.In(loc).Format("Mon 2 Jan 2006 15:04:05 MST")
+}
+
+func deleteSessionClosedMessageIfAny() {
+	bot := state.State.TelegramBot
+	if bot == nil {
+		return
+	}
+	t := state.State.Config.Telegram
+	if t.TargetChatID == 0 {
+		return
+	}
+	qrLoginMu.Lock()
+	mid := qrSessionClosedMessageID
+	qrSessionClosedMessageID = 0
+	qrLoginMu.Unlock()
+	if mid == 0 {
+		return
+	}
+	if _, err := bot.DeleteMessage(t.TargetChatID, mid, nil); err != nil && state.State.Logger != nil {
+		state.State.Logger.Debug("whatsapp qr: delete session-closed notice", zap.Error(err))
+	}
+}
+
+// deleteWhatsAppQRLoginMessage removes the QR photo after successful link and resets reconnect limits.
 func deleteWhatsAppQRLoginMessage() {
 	bot := state.State.TelegramBot
 	if bot == nil {
@@ -93,19 +139,19 @@ func deleteWhatsAppQRLoginMessage() {
 	qrLoginMu.Lock()
 	mid := qrLoginMessageID
 	qrLoginMessageID = 0
-	qrLoginMessageThreadID = 0
+	qrLastPNG = nil
 	qrLoginMu.Unlock()
-	if mid == 0 {
-		return
+	if mid != 0 {
+		if _, err := bot.DeleteMessage(t.TargetChatID, mid, nil); err != nil && state.State.Logger != nil {
+			state.State.Logger.Debug("whatsapp qr login: delete qr message after link", zap.Error(err))
+		}
 	}
-	if _, err := bot.DeleteMessage(t.TargetChatID, mid, nil); err != nil && state.State.Logger != nil {
-		state.State.Logger.Debug("whatsapp qr login: delete qr message after link", zap.Error(err))
-	}
+	deleteSessionClosedMessageIfAny()
+	resetReconnectRateLimit()
 }
 
-// sendOrUpdateWhatsAppQRToTelegram sends one photo on the first code event, then edits that message as WhatsApp rotates the QR.
-// This avoids flooding the forum with dozens of images (WhatsApp refreshes the code periodically).
-func sendOrUpdateWhatsAppQRToTelegram(qrPNG []byte, caption string) error {
+// sendWhatsAppQRPhotoToTelegram deletes the previous QR photo (if any) and sends a new one (auto-updates on each WA code).
+func sendWhatsAppQRPhotoToTelegram(qrPNG []byte) error {
 	bot := state.State.TelegramBot
 	if bot == nil {
 		return fmt.Errorf("telegram bot not initialized")
@@ -118,41 +164,20 @@ func sendOrUpdateWhatsAppQRToTelegram(qrPNG []byte, caption string) error {
 	qrLoginMu.Lock()
 	defer qrLoginMu.Unlock()
 
-	media := gotgbot.InputMediaPhoto{
-		Media:   gotgbot.InputFileByReader("qrcode.png", bytes.NewReader(qrPNG)),
-		Caption: caption,
-	}
+	buf := make([]byte, len(qrPNG))
+	copy(buf, qrPNG)
+	qrLastPNG = buf
+
+	deleteSessionClosedMessageLocked(bot, t.TargetChatID)
 
 	if qrLoginMessageID != 0 {
-		media.ParseMode = gotgbot.ParseModeHTML
-		tid := threadIDForQREdit(t.GeneralThreadID)
-		// Forum: must pass message_thread_id (gotgbot EditMessageMedia omits it). Prefer thread id from the
-		// original SendPhoto response, else configured General, else default topic id 1.
-		_, _, err := editMessageMediaWithForumThread(bot, t.TargetChatID, qrLoginMessageID, tid, media)
-		if err != nil {
-			opts := &gotgbot.EditMessageMediaOpts{
-				ChatId:    t.TargetChatID,
-				MessageId: qrLoginMessageID,
-			}
-			_, _, err2 := bot.EditMessageMedia(media, opts)
-			if err2 != nil {
-				if state.State.Logger != nil {
-					state.State.Logger.Debug("whatsapp qr: editMessageMedia failed (forum thread id and plain)",
-						zap.Error(err),
-						zap.Error(err2),
-						zap.Int64("message_id", qrLoginMessageID),
-						zap.Int64("message_thread_id", tid))
-				}
-				qrLoginMessageID = 0
-				qrLoginMessageThreadID = 0
-			} else {
-				return nil
-			}
-		} else {
-			return nil
+		if _, err := bot.DeleteMessage(t.TargetChatID, qrLoginMessageID, nil); err != nil && state.State.Logger != nil {
+			state.State.Logger.Debug("whatsapp qr: delete previous qr photo", zap.Error(err))
 		}
+		qrLoginMessageID = 0
 	}
 
+	caption := qrLoginCaptionHTML()
 	opts := gotgbot.SendPhotoOpts{
 		Caption:   caption,
 		ParseMode: gotgbot.ParseModeHTML,
@@ -166,8 +191,153 @@ func sendOrUpdateWhatsAppQRToTelegram(qrPNG []byte, caption string) error {
 	}
 	if msg != nil {
 		qrLoginMessageID = msg.MessageId
-		qrLoginMessageThreadID = msg.MessageThreadId
 	}
+	return nil
+}
+
+func deleteSessionClosedMessageLocked(bot *gotgbot.Bot, chatID int64) {
+	if qrSessionClosedMessageID == 0 {
+		return
+	}
+	mid := qrSessionClosedMessageID
+	qrSessionClosedMessageID = 0
+	if _, err := bot.DeleteMessage(chatID, mid, nil); err != nil && state.State.Logger != nil {
+		state.State.Logger.Debug("whatsapp qr: delete session-closed notice before new qr", zap.Error(err))
+	}
+}
+
+// OnWhatsAppQRCodeReceived updates the buffered QR and posts/updates Telegram (delete old + new photo).
+func OnWhatsAppQRCodeReceived(qrPNG []byte) {
+	if err := sendWhatsAppQRPhotoToTelegram(qrPNG); err != nil && state.State.Logger != nil {
+		state.State.Logger.Warn("whatsapp qr photo send failed", zap.Error(err))
+	}
+}
+
+// OnWhatsAppQRSessionClosed shows that the pairing session ended and offers Reconnect.
+func OnWhatsAppQRSessionClosed(logger *zap.Logger) {
+	bot := state.State.TelegramBot
+	if bot == nil {
+		return
+	}
+	cfg := state.State.Config.Telegram
+	if cfg.TargetChatID == 0 {
+		return
+	}
+
+	qrLoginMu.Lock()
+	if qrLoginMessageID != 0 {
+		mid := qrLoginMessageID
+		qrLoginMessageID = 0
+		qrLastPNG = nil
+		qrLoginMu.Unlock()
+		if _, err := bot.DeleteMessage(cfg.TargetChatID, mid, nil); err != nil && logger != nil {
+			logger.Debug("whatsapp qr: delete qr on session closed", zap.Error(err))
+		}
+	} else {
+		qrLoginMu.Unlock()
+	}
+
+	body := "<b>WhatsApp pairing session ended</b>\n\n" +
+		"The QR session closed before your device linked (timeout or disconnect). " +
+		"Tap <b>Reconnect</b> to start a new QR login when you are ready."
+	postSessionNoticeWithReconnect(bot, body, logger)
+}
+
+// ShowWhatsAppSessionDisabledReconnect posts the same Reconnect affordance after logout / disabled session.
+func ShowWhatsAppSessionDisabledReconnect(reason string, logger *zap.Logger) {
+	bot := state.State.TelegramBot
+	if bot == nil {
+		return
+	}
+	t := state.State.Config.Telegram
+	if t.TargetChatID == 0 {
+		return
+	}
+	reason = strings.TrimSpace(reason)
+	body := "<b>WhatsApp session disconnected</b>\n\n"
+	if reason != "" {
+		body += html.EscapeString(reason) + "\n\n"
+	}
+	body += "Tap <b>Reconnect</b> to sign in again with a new QR code."
+	postSessionNoticeWithReconnect(bot, body, logger)
+}
+
+func postSessionNoticeWithReconnect(bot *gotgbot.Bot, bodyHTML string, logger *zap.Logger) {
+	t := state.State.Config.Telegram
+	if t.TargetChatID == 0 {
+		return
+	}
+	qrLoginMu.Lock()
+	if qrSessionClosedMessageID != 0 {
+		mid := qrSessionClosedMessageID
+		qrSessionClosedMessageID = 0
+		qrLoginMu.Unlock()
+		if _, err := bot.DeleteMessage(t.TargetChatID, mid, nil); err != nil && logger != nil {
+			logger.Debug("whatsapp qr: replace old session notice", zap.Error(err))
+		}
+	} else {
+		qrLoginMu.Unlock()
+	}
+
+	kb := qrReconnectKeyboard()
+	opts := gotgbot.SendMessageOpts{
+		ParseMode:   gotgbot.ParseModeHTML,
+		ReplyMarkup: &kb,
+	}
+	if t.GeneralThreadID != 0 {
+		opts.MessageThreadId = t.GeneralThreadID
+	}
+	msg, err := bot.SendMessage(t.TargetChatID, bodyHTML, &opts)
+	if err != nil {
+		if logger != nil {
+			logger.Warn("whatsapp session notice send failed", zap.Error(err))
+		}
+		return
+	}
+	if msg != nil {
+		qrLoginMu.Lock()
+		qrSessionClosedMessageID = msg.MessageId
+		qrLoginMu.Unlock()
+	}
+}
+
+// HandleReconnectCallback starts a new QR session if rate limit allows.
+func HandleReconnectCallback(b *gotgbot.Bot, cq *gotgbot.CallbackQuery, chatID int64) error {
+	if cq == nil {
+		return nil
+	}
+	cfg := state.State.Config.Telegram
+	if chatID != cfg.TargetChatID {
+		_, _ = cq.Answer(b, &gotgbot.AnswerCallbackQueryOpts{Text: "Wrong chat.", ShowAlert: true})
+		return nil
+	}
+
+	ok, nextAt := ReconnectAllowed()
+	if !ok {
+		_, _ = cq.Answer(b, &gotgbot.AnswerCallbackQueryOpts{
+			Text:      "Next reconnect: " + formatNextReconnectTime(nextAt),
+			ShowAlert: true,
+		})
+		return nil
+	}
+
+	if state.State.WhatsAppClient == nil {
+		_, _ = cq.Answer(b, &gotgbot.AnswerCallbackQueryOpts{Text: "WhatsApp client not ready.", ShowAlert: true})
+		return nil
+	}
+
+	_, _ = cq.Answer(b, &gotgbot.AnswerCallbackQueryOpts{Text: "Starting new QR session…"})
+
+	zl := state.State.Logger
+	go func() {
+		if err := StartWhatsAppQRReconnect(zl); err != nil && zl != nil {
+			if errors.Is(err, ErrReconnectInProgress) {
+				return
+			}
+			zl.Warn("whatsapp reconnect failed", zap.Error(err))
+			_ = sendWhatsAppQRTextToTelegram("Reconnect failed: " + err.Error())
+		}
+	}()
 	return nil
 }
 
@@ -247,7 +417,6 @@ func notifyWhatsAppLinked(cli *whatsmeow.Client, zl *zap.Logger) {
 		}
 	}
 
-	// Multi-mode chat-picker adds the main (control) bot to the forum so bot_administrator_rights can apply; leave after onboarding.
 	if control != nil && t.TargetChatID != 0 {
 		farewell := fmt.Sprintf(
 			"WhatsApp is linked on <b>%s</b>. I’m leaving this group — your bridge runs here with %s. "+

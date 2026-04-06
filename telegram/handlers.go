@@ -18,6 +18,7 @@ import (
 	"watgbridge/database"
 	"watgbridge/state"
 	"watgbridge/utils"
+	"watgbridge/whatsapp"
 
 	"github.com/PaulSonOfLars/gotgbot/v2"
 	"github.com/PaulSonOfLars/gotgbot/v2/ext"
@@ -210,6 +211,24 @@ func AddTelegramHandlers() {
 		func(cq *gotgbot.CallbackQuery) bool {
 			return strings.HasPrefix(cq.Data, "check_chat_")
 		}, CheckChatCallbackHandler), DispatcherCallbackHandlerGroup)
+	dispatcher.AddHandlerToGroup(handlers.NewCallback(
+		func(cq *gotgbot.CallbackQuery) bool {
+			return cq.Data == whatsapp.CallbackDataReconnect
+		}, WhatsAppQRReconnectCallbackHandler), DispatcherCallbackHandlerGroup)
+}
+
+func WhatsAppQRReconnectCallbackHandler(b *gotgbot.Bot, c *ext.Context) error {
+	if !utils.TgUpdateIsAuthorized(b, c) {
+		return nil
+	}
+	cq := c.CallbackQuery
+	if cq == nil || cq.Data != whatsapp.CallbackDataReconnect {
+		return nil
+	}
+	if c.EffectiveChat == nil {
+		return nil
+	}
+	return whatsapp.HandleReconnectCallback(b, cq, c.EffectiveChat.Id)
 }
 
 func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
