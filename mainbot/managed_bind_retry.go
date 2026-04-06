@@ -1,7 +1,6 @@
 package mainbot
 
 import (
-	"errors"
 	"fmt"
 	"html"
 	"strconv"
@@ -22,10 +21,10 @@ func managedBindProceedCallbackData(targetChatID int64) string {
 	return managedBindProceedPrefix + strconv.FormatInt(targetChatID, 10)
 }
 
-func formatManagedBindTargetForumHTML(mainBot *gotgbot.Bot, targetChatID int64) string {
-	chat, err := mainBot.GetChat(targetChatID, nil)
+func formatManagedBindTargetForumHTML(notifyBot *gotgbot.Bot, targetChatID int64) string {
+	chat, err := notifyBot.GetChat(targetChatID, nil)
 	if err != nil || chat == nil {
-		return fmt.Sprintf("Forum / group <code>%d</code> <i>(title unavailable — add this main bot to the group or use the id from the group’s profile)</i>", targetChatID)
+		return fmt.Sprintf("Forum / group <code>%d</code> <i>(title unavailable — ensure the bridge bot is in that group or use the id from the group’s profile)</i>", targetChatID)
 	}
 	title := strings.TrimSpace(chat.Title)
 	if title == "" {
@@ -77,9 +76,6 @@ func sendManagedBindRetryPrompt(b *gotgbot.Bot, ownerUserID int64, targetChatID 
 	}
 	body := ctx + "\nDouble-check that you've added <b>that</b> bridge bot to <b>that</b> group, turned on <b>Topics</b> (forum), " +
 		"and made the bot an <b>administrator</b> with <b>Manage topics</b> enabled.\n\n"
-	if errors.Is(addErr, ErrMainBotNeedsBootstrapRights) {
-		body += "If the error is about <b>this main bot</b>, grant it <b>invite users</b>, <b>add new admins</b>, and <b>manage topics</b> in that group.\n\n"
-	}
 	body += "When you're done, tap <b>I'm done! Proceed</b> below to retry for this chat and bot."
 	text := fmt.Sprintf("<b>%s</b>\n\n%s", title, body)
 	cb := managedBindProceedCallbackData(targetChatID)
@@ -102,7 +98,7 @@ func managedBindProceedCallbackFilter(cq *gotgbot.CallbackQuery) bool {
 	return cq != nil && strings.HasPrefix(cq.Data, managedBindProceedPrefix)
 }
 
-func managedBindProceedHandler(manager *bridge.Manager) handlers.Response {
+func managedBindProceedHandler(mainBot *gotgbot.Bot, manager *bridge.Manager) handlers.Response {
 	return func(b *gotgbot.Bot, c *ext.Context) error {
 		cq := c.CallbackQuery
 		if cq == nil || cq.From.Id == 0 {
@@ -122,6 +118,12 @@ func managedBindProceedHandler(manager *bridge.Manager) handlers.Response {
 		}
 		_, _ = cq.Answer(b, &gotgbot.AnswerCallbackQueryOpts{})
 		from := cq.From
-		return completePendingManagedBind(b, manager, &from, targetChatID, "")
+		var opts *ManagedBindOpts
+		meMain, _ := mainBot.GetMe(nil)
+		meB, _ := b.GetMe(nil)
+		if meMain != nil && meB != nil && meMain.Id != meB.Id {
+			opts = &ManagedBindOpts{NotifyBot: b}
+		}
+		return completePendingManagedBind(mainBot, manager, &from, targetChatID, "", opts)
 	}
 }

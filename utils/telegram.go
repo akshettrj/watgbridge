@@ -37,7 +37,7 @@ const (
 )
 
 // CheckContactPingMessage is posted in the contact forum topic when the user confirms "Send ping" from /check.
-const CheckContactPingMessage = "###\n⚙️ Bridge bot message\n\nPing!\n###"
+const CheckContactPingMessage = "\n⚙️ Bridge bot message\n\nPing!"
 
 // TgEffectiveMessageThreadId returns the forum topic thread id for DB routing.
 // Telegram (and some clients) omit message_thread_id on the outer message when the user

@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"fmt"
+	"html"
 	"net/url"
 	"strconv"
 	"strings"
@@ -17,61 +18,96 @@ import (
 	"github.com/PaulSonOfLars/gotgbot/v2/ext/handlers"
 )
 
-func completePendingManagedBind(b *gotgbot.Bot, manager *bridge.Manager, user *gotgbot.User, targetChatID int64, labelArg string) error {
+// ManagedBindOpts controls which bot sends retry prompts and bind errors (main vs managed bridge bot DMs).
+type ManagedBindOpts struct {
+	// NotifyBot sends retry prompts and non-retryable errors; defaults to mainBot when nil.
+	NotifyBot *gotgbot.Bot
+}
+
+func completePendingManagedBind(mainBot *gotgbot.Bot, manager *bridge.Manager, user *gotgbot.User, targetChatID int64, labelArg string, opts *ManagedBindOpts) error {
 	if user == nil {
 		return nil
 	}
+	notify := mainBot
+	if opts != nil && opts.NotifyBot != nil {
+		notify = opts.NotifyBot
+	}
+
 	pending, err := database.BridgePendingManagedGet(user.Id)
 	if err != nil {
-		_, e := b.SendMessage(user.Id, "No pending bridge bot. Use /bridge_create_bot first.", nil)
+		_, e := notify.SendMessage(user.Id, "No pending bridge bot. Use /bridge_create_bot first.", nil)
 		return e
 	}
 	name := strings.TrimSpace(labelArg)
 	if name == "" && strings.TrimSpace(pending.LabelHint) != "" {
 		name = pending.LabelHint
 	}
-	if bootErr := maybeBootstrapBridgeInTarget(b, pending.BridgeBotToken, pending.ManagedBotUserID, targetChatID); bootErr != nil {
-		if isRetryableManagedBindErr(bootErr) {
-			return sendManagedBindRetryPrompt(b, user.Id, targetChatID, pending, bootErr)
-		}
-		_, e := b.SendMessage(user.Id, bootErr.Error(), nil)
-		return e
-	}
-	resp, addErr := addBridgeFromCredentials(b, manager, user.Id, pending.BridgeBotToken, targetChatID, name)
+	// Stop temporary getUpdates on the bridge token before the bridge child process starts (same token cannot poll twice).
+	tok := strings.TrimSpace(pending.BridgeBotToken)
+	stopManagedBridgePollerForBridgeToken(tok)
+	resp, addErr := addBridgeFromCredentials(mainBot, manager, user.Id, pending.BridgeBotToken, targetChatID, name)
 	if addErr != nil {
+		EnsureManagedBridgePoller(tok, mainBot, manager)
 		if isRetryableManagedBindErr(addErr) {
-			return sendManagedBindRetryPrompt(b, user.Id, targetChatID, pending, addErr)
+			return sendManagedBindRetryPrompt(notify, user.Id, targetChatID, pending, addErr)
 		}
-		_, e := b.SendMessage(user.Id, addErr.Error(), nil)
+		_, e := notify.SendMessage(user.Id, addErr.Error(), nil)
 		return e
 	}
 	_ = database.BridgePendingManagedDelete(user.Id)
 	pendingManagedLabelHints.Delete(user.Id)
-	mainBotTryLeaveTarget(b, targetChatID)
-	_, err = b.SendMessage(user.Id, resp, &gotgbot.SendMessageOpts{
+	_, err = mainBot.SendMessage(user.Id, resp, &gotgbot.SendMessageOpts{
 		ReplyMarkup: mainBotMainReplyKeyboard(),
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	if opts != nil && opts.NotifyBot != nil && opts.NotifyBot != mainBot {
+		_, _ = opts.NotifyBot.SendMessage(user.Id, "Bridge linked — details are in the main bot chat above.", &gotgbot.SendMessageOpts{
+			ReplyMarkup: gotgbot.ReplyKeyboardRemove{RemoveKeyboard: true},
+		})
+	}
+	return nil
 }
 
-// sendManagedBridgeChooseGroupPrompt asks the user to pick a forum group via Telegram’s chat picker (private chats only).
-// "Choose group (with topics)" is always the top row of the reply keyboard; main menu is below.
-func sendManagedBridgeChooseGroupPrompt(b *gotgbot.Bot, ownerChatID int64) error {
-	rid, err := randomManagedRequestID()
-	if err != nil {
-		_, sendErr := b.SendMessage(ownerChatID, "Could not build group picker: "+err.Error(), nil)
-		return sendErr
+// sendManagedBridgePairingLink posts a unique t.me/<bridge>?start=… link and starts polling that bridge token for /start + chat_shared.
+func sendManagedBridgePairingLink(mainBot *gotgbot.Bot, manager *bridge.Manager, ownerUserID int64) error {
+	pending, err := database.BridgePendingManagedGet(ownerUserID)
+	if err != nil || pending == nil {
+		_, e := mainBot.SendMessage(ownerUserID, "No pending bridge bot.", nil)
+		return e
 	}
-	mainBotReplyFlow.Delete(ownerChatID)
-	markup := ManagedBridgeChooseGroupReplyKeyboard(int64(rid))
-	_, err = b.SendMessage(ownerChatID,
-		"Tap <b>"+btnChooseGroup+"</b> (top row), then select your <b>forum</b> group. Add this main bot as admin with <b>invite users</b>, <b>add new admins</b>, and <b>manage topics</b> when Telegram asks.\n\n"+
-			"I’ll try to add your bridge bot and grant <b>Manage topics</b>, then leave the group. "+
-			"If Telegram can’t add the bot automatically, add the bridge bot yourself and tap <b>I’m done! Proceed</b> from my next message.\n\n"+
-			"<i>Or send</i> <code>/bridge_bind</code> <i>with the group id from the group profile.</i>",
+	if strings.TrimSpace(pending.PairToken) == "" {
+		_, e := mainBot.SendMessage(ownerUserID, "Pairing token missing — run /bridge_cancel_managed and set up the bridge again.", nil)
+		return e
+	}
+	bridgeBot, err := gotgbot.NewBot(pending.BridgeBotToken, nil)
+	if err != nil {
+		return err
+	}
+	me, err := bridgeBot.GetMe(nil)
+	if err != nil || me.Id == 0 {
+		_, e := mainBot.SendMessage(ownerUserID, "Could not load the bridge bot profile.", nil)
+		return e
+	}
+	un := strings.TrimSpace(me.Username)
+	if un == "" {
+		_, e := mainBot.SendMessage(ownerUserID,
+			"Give this bridge bot a @username in @BotFather, then run /bridge_cancel_managed and repeat the managed-bridge step.",
+			nil)
+		return e
+	}
+	link := fmt.Sprintf("https://t.me/%s?start=%s", strings.TrimPrefix(un, "@"), pending.PairToken)
+	EnsureManagedBridgePoller(pending.BridgeBotToken, mainBot, manager)
+	mainBotReplyFlow.Delete(ownerUserID)
+	_, err = mainBot.SendMessage(ownerUserID,
+		"Open this link in Telegram (<b>same account</b> as here) to continue with your bridge bot:\n"+
+			"<a href=\""+html.EscapeString(link)+"\">"+html.EscapeString(link)+"</a>\n\n"+
+			"There you’ll confirm pairing and tap <b>"+btnChooseGroup+"</b> to pick the forum. "+
+			"Or bind manually: <code>/bridge_bind</code> &lt;group id&gt;.",
 		&gotgbot.SendMessageOpts{
 			ParseMode:   gotgbot.ParseModeHTML,
-			ReplyMarkup: markup,
+			ReplyMarkup: mainBotMainReplyKeyboard(),
 		})
 	return err
 }
@@ -170,9 +206,9 @@ func bridgeBindHandler(manager *bridge.Manager) handlers.Response {
 		args := c.Args()
 		if len(args) < 2 {
 			_, err := b.SendMessage(c.EffectiveChat.Id,
-				"Use the “Choose group (with topics)” button from my message after your bridge bot was created.\n\n"+
-					"Or send: /bridge_bind <numbers from group info> [optional label]",
-				nil)
+				"Open the pairing link the main bot sent for your managed bridge bot, or send:\n"+
+					"<code>/bridge_bind</code> &lt;group id from group info&gt; [optional label]",
+				&gotgbot.SendMessageOpts{ParseMode: gotgbot.ParseModeHTML})
 			return err
 		}
 		rawID, err := strconv.ParseInt(strings.TrimSpace(args[1]), 10, 64)
@@ -185,7 +221,7 @@ func bridgeBindHandler(manager *bridge.Manager) handlers.Response {
 		if len(args) > 2 {
 			name = strings.TrimSpace(strings.Join(args[2:], " "))
 		}
-		return completePendingManagedBind(b, manager, user, targetChatID, name)
+		return completePendingManagedBind(b, manager, user, targetChatID, name, nil)
 	}
 }
 
@@ -195,6 +231,7 @@ func bridgeCancelManagedHandler() handlers.Response {
 		if user == nil {
 			return nil
 		}
+		stopManagedBridgePollerForOwner(user.Id)
 		pendingManagedLabelHints.Delete(user.Id)
 		_ = database.BridgePendingManagedDelete(user.Id)
 		mainBotReplyFlow.Delete(user.Id)

@@ -186,7 +186,7 @@ func matchesUnlinkedManagedBotButton(ownerUserID int64, text string) bool {
 	return false
 }
 
-func mainBotReplyMenuHandler(_ *bridge.Manager) handlers.Response {
+func mainBotReplyMenuHandler(manager *bridge.Manager) handlers.Response {
 	return func(b *gotgbot.Bot, c *ext.Context) error {
 		m := c.Message
 		if m == nil || m.From == nil {
@@ -238,11 +238,11 @@ func mainBotReplyMenuHandler(_ *bridge.Manager) handlers.Response {
 			if fk, ok := v.(mainBotFlowKind); ok {
 				switch fk {
 				case flowAwaitManualManagedBotUsername:
-					return handleManualManagedBotUsernameEntry(b, uid, t)
+					return handleManualManagedBotUsernameEntry(b, manager, uid, t)
 				case flowAwaitManagedBotPick:
 					if managedID, ok := lookupUnlinkedManagedBotIDByLabel(uid, t); ok {
 						mainBotReplyFlow.Delete(uid)
-						return selectManagedBotForBind(b, uid, managedID)
+						return selectManagedBotForBind(b, manager, uid, managedID)
 					}
 				}
 			}
@@ -333,7 +333,7 @@ func managedBotShortLabel(token string, managedUserID int64) string {
 	return name + " · id" + strconv.FormatInt(me.Id, 10)
 }
 
-func selectManagedBotForBind(b *gotgbot.Bot, ownerUserID, managedBotUserID int64) error {
+func selectManagedBotForBind(b *gotgbot.Bot, manager *bridge.Manager, ownerUserID, managedBotUserID int64) error {
 	row, err := database.BridgeManagedBotGetByOwnerAndManagedID(ownerUserID, managedBotUserID)
 	if err != nil || row == nil {
 		_, e := b.SendMessage(ownerUserID, "That bot is not in your registry (anymore).", &gotgbot.SendMessageOpts{ReplyMarkup: mainBotMainReplyKeyboard()})
@@ -344,10 +344,10 @@ func selectManagedBotForBind(b *gotgbot.Bot, ownerUserID, managedBotUserID int64
 		return e
 	}
 	_, err = b.SendMessage(ownerUserID,
-		"Selected. Next: pick the forum group — I’ll join briefly, try to add this bot as admin with <b>Manage topics</b>, then leave.",
+		"Selected. Next: I’ll send a <b>pairing link</b> for that bridge bot — open it to pick the forum and grant <b>Manage topics</b>.",
 		&gotgbot.SendMessageOpts{ParseMode: gotgbot.ParseModeHTML})
 	if err != nil {
 		return err
 	}
-	return sendManagedBridgeChooseGroupPrompt(b, ownerUserID)
+	return sendManagedBridgePairingLink(b, manager, ownerUserID)
 }

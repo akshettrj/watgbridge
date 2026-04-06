@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"watgbridge/bridge"
 	"watgbridge/database"
 
 	"github.com/PaulSonOfLars/gotgbot/v2"
@@ -15,7 +16,7 @@ import (
 
 // handleManualManagedBotUsernameEntry resolves a managed bridge bot via getManagedBotToken.
 // Input can be @username / t.me (getChat → id) or numeric bot user id (id:… / 8+ digits) when getChat is unreliable.
-func handleManualManagedBotUsernameEntry(b *gotgbot.Bot, ownerUserID int64, text string) error {
+func handleManualManagedBotUsernameEntry(b *gotgbot.Bot, manager *bridge.Manager, ownerUserID int64, text string) error {
 	botUserID, handle, err := parseManualBotIdentity(text)
 	if err != nil {
 		_, e := b.SendMessage(ownerUserID,
@@ -82,12 +83,12 @@ func handleManualManagedBotUsernameEntry(b *gotgbot.Bot, ownerUserID int64, text
 	mainBotReplyFlow.Delete(ownerUserID)
 	label := formatBotMentionForOwner(handle, me)
 	_, err = b.SendMessage(ownerUserID,
-		"Using "+label+". Next: pick the forum group — I’ll join briefly, try to add this bot as admin with <b>Manage topics</b>, then leave.",
+		"Using "+label+". Next: I’ll send a <b>pairing link</b> — open it in Telegram to pick the forum and grant <b>Manage topics</b>.",
 		&gotgbot.SendMessageOpts{ParseMode: gotgbot.ParseModeHTML})
 	if err != nil {
 		return err
 	}
-	return sendManagedBridgeChooseGroupPrompt(b, ownerUserID)
+	return sendManagedBridgePairingLink(b, manager, ownerUserID)
 }
 
 func formatBotMentionForOwner(usernameHandle string, me *gotgbot.User) string {

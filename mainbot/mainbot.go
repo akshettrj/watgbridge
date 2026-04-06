@@ -49,11 +49,10 @@ func Start(token string, manager *bridge.Manager) error {
 	dispatcher.AddHandler(handlers.NewCommand("bridge_delete", bridgeDeleteHandler(manager)))
 	dispatcher.AddHandler(handlers.NewCommand("import_history", importHistoryCommandHandler()))
 	dispatcher.AddHandler(handlers.NewMessage(mainBotReplyMenuMessageFilter, mainBotReplyMenuHandler(manager)))
-	dispatcher.AddHandler(handlers.NewCallback(managedBindProceedCallbackFilter, managedBindProceedHandler(manager)))
-	dispatcher.AddHandler(handlers.NewMessage(managedChatSharedFilter, managedChatSharedHandler(manager)))
+	dispatcher.AddHandler(handlers.NewCallback(managedBindProceedCallbackFilter, managedBindProceedHandler(bot, manager)))
 	dispatcher.AddHandler(handlers.NewMessage(importHistoryPendingDocumentFilter, importHistoryDocumentHandler()))
 
-	relay := newManagedRelayDispatcher(dispatcher)
+	relay := newManagedRelayDispatcher(dispatcher, manager)
 	updater := ext.NewUpdater(relay, &ext.UpdaterOpts{
 		UnhandledErrFunc: func(err error) {
 			fmt.Printf("main bot updater error: %v\n", err)
@@ -87,7 +86,7 @@ func startHandler(b *gotgbot.Bot, c *ext.Context) error {
 	text += "1) Supergroup with Topics.\n"
 	text += "2) Add the bridge bot with <b>Manage Topics</b>.\n"
 	text += "3) <code>/bridge_add …</code> or managed flow below creates <b>General</b>, <b>BotMeta</b>, <b>Calls</b>, and <b>Status</b> topics.\n\n"
-	text += "<b>Managed bridge bot</b> (Telegram <a href=\"https://core.telegram.org/bots/features#managed-bots\">managed bots</a>): in @BotFather enable <i>Bot Management Mode</i> for this main bot. Then <code>/bridge_create_bot</code> [label], follow the steps, use <b>Choose group</b> to finish (or <code>/bridge_bind</code> with numbers from group info). <code>/bridge_cancel_managed</code> clears a pending setup.\n\n"
+	text += "<b>Managed bridge bot</b> (Telegram <a href=\"https://core.telegram.org/bots/features#managed-bots\">managed bots</a>): in @BotFather enable <i>Bot Management Mode</i> for this main bot. Then <code>/bridge_create_bot</code> [label], open the <b>pairing link</b> to your bridge bot, then use <b>Choose group</b> there (or <code>/bridge_bind</code> with the group id). <code>/bridge_cancel_managed</code> clears a pending setup.\n\n"
 	text += "<b>Chat history archive</b>: <code>/import_history &lt;bridge_id&gt;</code> then send your Telegram Desktop <code>result.json</code> or a zip of the export folder. Rows are stored in the registry SQLite for audit/search; they do <b>not</b> fill WhatsApp↔Telegram id mappings (those only come from live bridged traffic).\n\n"
 	text += "<b>Manage</b>\n"
 	text += "<code>/bridge_list</code> · <code>/bridge_enable</code> · <code>/bridge_disable</code> · <code>/bridge_delete</code> · <code>/import_history</code> · <code>/bridge_create_bot</code> · <code>/bridge_bind</code>"

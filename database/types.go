@@ -101,6 +101,7 @@ type BridgePendingManaged struct {
 	OwnerUserID      int64     `gorm:"primaryKey;autoIncrement:false"`
 	ManagedBotUserID int64     `gorm:"not null"`
 	BridgeBotToken   string    `gorm:"type:text;not null"`
+	PairToken        string    `gorm:"size:64;index"` // deep-link ?start= for bridge bot DM (64 hex chars)
 	LabelHint        string    `gorm:"size:191"`
 	CreatedAt        time.Time `gorm:"not null"`
 	UpdatedAt        time.Time `gorm:"not null"`

@@ -3,17 +3,20 @@ package mainbot
 import (
 	"encoding/json"
 
+	"watgbridge/bridge"
+
 	"github.com/PaulSonOfLars/gotgbot/v2"
 	"github.com/PaulSonOfLars/gotgbot/v2/ext"
 )
 
 // managedRelayDispatcher peels off managed_bot updates before gotgbot unmarshals them (the library's Update type omits this field).
 type managedRelayDispatcher struct {
-	inner *ext.Dispatcher
+	inner   *ext.Dispatcher
+	manager *bridge.Manager
 }
 
-func newManagedRelayDispatcher(inner *ext.Dispatcher) ext.UpdateDispatcher {
-	return &managedRelayDispatcher{inner: inner}
+func newManagedRelayDispatcher(inner *ext.Dispatcher, manager *bridge.Manager) ext.UpdateDispatcher {
+	return &managedRelayDispatcher{inner: inner, manager: manager}
 }
 
 func (m *managedRelayDispatcher) Start(b *gotgbot.Bot, updates <-chan json.RawMessage) {
@@ -29,7 +32,7 @@ func (m *managedRelayDispatcher) Start(b *gotgbot.Bot, updates <-chan json.RawMe
 				continue
 			}
 			if probe.ManagedBot != nil {
-				_ = handleManagedBotUpdate(b, probe.ManagedBot)
+				_ = handleManagedBotUpdate(b, m.manager, probe.ManagedBot)
 				continue
 			}
 			relay <- raw

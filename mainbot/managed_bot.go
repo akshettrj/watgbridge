@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	"watgbridge/bridge"
 	"watgbridge/database"
 
 	"github.com/PaulSonOfLars/gotgbot/v2"
@@ -35,7 +36,7 @@ func tgGetManagedBotToken(b *gotgbot.Bot, managedBotUserID int64) (string, error
 	return strings.TrimSpace(token), nil
 }
 
-func handleManagedBotUpdate(b *gotgbot.Bot, upd *managedBotUpdated) error {
+func handleManagedBotUpdate(b *gotgbot.Bot, manager *bridge.Manager, upd *managedBotUpdated) error {
 	if upd == nil || upd.User == nil || upd.Bot == nil {
 		return nil
 	}
@@ -74,15 +75,13 @@ func handleManagedBotUpdate(b *gotgbot.Bot, upd *managedBotUpdated) error {
 		hint = fmt.Sprintf("id %d", managedID)
 	}
 	text := fmt.Sprintf("Your bridge bot is ready: <b>%s</b>\n\n"+
-		"Next: I’ll send a <b>Choose group</b> button. Pick your <b>forum</b> and add this main bot as admin "+
-		"(<b>invite users</b>, <b>add new admins</b>, <b>manage topics</b>) when Telegram asks. "+
-		"I’ll try to pull <b>%s</b> in and grant <b>Manage topics</b>, then leave the group.\n\n"+
-		"<i>If automatic add fails</i>, add the bridge bot manually and use <b>I’m done! Proceed</b>.\n\n"+
-		"<i>Pairing:</i> your bridge bot token stays scoped to you until the group is linked.",
+		"Next: I’ll send a <b>unique pairing link</b> for <b>%s</b>. Open it in Telegram (same account as here). "+
+		"In that chat you’ll confirm pairing and tap <b>"+btnChooseGroup+"</b> to pick your forum and grant this bot <b>Manage topics</b>.\n\n"+
+		"<i>Pairing</i> is tied to your Telegram account until the group is linked.",
 		hint, hint)
 	_, err = b.SendMessage(ownerID, text, &gotgbot.SendMessageOpts{ParseMode: gotgbot.ParseModeHTML})
 	if err != nil {
 		return err
 	}
-	return sendManagedBridgeChooseGroupPrompt(b, ownerID)
+	return sendManagedBridgePairingLink(b, manager, ownerID)
 }

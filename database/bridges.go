@@ -1,6 +1,7 @@
 package database
 
 import (
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -177,13 +178,26 @@ func BridgeProvisionSet(bridgeID uint, general, botMeta, calls, statusThread int
 	return nil
 }
 
+func randomPairToken() (string, error) {
+	var b [32]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b[:]), nil
+}
+
 func BridgePendingManagedUpsert(ownerUserID, managedBotUserID int64, token, labelHint string) error {
 	db := state.State.Database
 	now := time.Now()
+	pairTok, err := randomPairToken()
+	if err != nil {
+		return err
+	}
 	row := BridgePendingManaged{
 		OwnerUserID:      ownerUserID,
 		ManagedBotUserID: managedBotUserID,
 		BridgeBotToken:   strings.TrimSpace(token),
+		PairToken:        pairTok,
 		LabelHint:        strings.TrimSpace(labelHint),
 		CreatedAt:        now,
 		UpdatedAt:        now,
@@ -195,6 +209,21 @@ func BridgePendingManagedGet(ownerUserID int64) (*BridgePendingManaged, error) {
 	db := state.State.Database
 	var row BridgePendingManaged
 	res := db.Where("owner_user_id = ?", ownerUserID).First(&row)
+	if res.Error != nil {
+		return nil, res.Error
+	}
+	return &row, nil
+}
+
+// BridgePendingManagedGetByPairToken resolves a pending managed bind by /start deep-link payload (WaTgBridge bridge bot).
+func BridgePendingManagedGetByPairToken(pairToken string) (*BridgePendingManaged, error) {
+	pairToken = strings.TrimSpace(pairToken)
+	if pairToken == "" {
+		return nil, gorm.ErrRecordNotFound
+	}
+	db := state.State.Database
+	var row BridgePendingManaged
+	res := db.Where("pair_token = ?", pairToken).First(&row)
 	if res.Error != nil {
 		return nil, res.Error
 	}
