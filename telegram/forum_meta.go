@@ -186,6 +186,20 @@ func CreateStandardForumMetaTopics(bot *gotgbot.Bot, chatID int64) (general, bot
 	return ids[0], ids[1], ids[2], ids[3], nil
 }
 
+func forumThreadExists(bot *gotgbot.Bot, chatID, threadID int64) (bool, error) {
+	if threadID == 0 {
+		return true, nil
+	}
+	_, ok, err := utils.TgFetchForumTopicName(bot, chatID, threadID)
+	if err != nil {
+		if isGetForumTopicMissing(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return ok, nil
+}
+
 // EnsureForumMetaTopicsProvisioned requires a forum target group with Manage topics, then resolves General
 // when possible (0 = default General), find-or-creates Bot's meta/Calls/Status, and persists config.
 func EnsureForumMetaTopicsProvisioned() error {
@@ -210,7 +224,29 @@ func EnsureForumMetaTopicsProvisioned() error {
 		return fmt.Errorf("telegram forum threads: set all three (bot_meta_thread_id, calls_thread_id, status_thread_id) or omit all three for auto-provision")
 	}
 	if metaAll {
-		return nil
+		botMetaExists, err := forumThreadExists(bot, t.TargetChatID, t.BotMetaThreadID)
+		if err != nil {
+			return fmt.Errorf("check existing bot_meta_thread_id=%d: %w", t.BotMetaThreadID, err)
+		}
+		callsExists, err := forumThreadExists(bot, t.TargetChatID, t.CallsThreadID)
+		if err != nil {
+			return fmt.Errorf("check existing calls_thread_id=%d: %w", t.CallsThreadID, err)
+		}
+		statusExists, err := forumThreadExists(bot, t.TargetChatID, t.StatusThreadID)
+		if err != nil {
+			return fmt.Errorf("check existing status_thread_id=%d: %w", t.StatusThreadID, err)
+		}
+		if botMetaExists && callsExists && statusExists {
+			return nil
+		}
+		state.State.Logger.Warn("forum meta topics missing despite configured thread ids; reprovisioning",
+			zap.Int64("bot_meta_thread_id", t.BotMetaThreadID),
+			zap.Int64("calls_thread_id", t.CallsThreadID),
+			zap.Int64("status_thread_id", t.StatusThreadID),
+			zap.Bool("bot_meta_exists", botMetaExists),
+			zap.Bool("calls_exists", callsExists),
+			zap.Bool("status_exists", statusExists),
+		)
 	}
 	prevGeneral := t.GeneralThreadID
 	g, m, c, s, err := CreateStandardForumMetaTopics(bot, t.TargetChatID)
