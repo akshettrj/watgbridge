@@ -17,8 +17,9 @@ import (
 )
 
 // forumMetaTopicScanLimit is how high we probe message_thread_id via getForumTopic when looking for
-// existing standard meta topics. Groups with more topics may miss a duplicate title above this id.
-const forumMetaTopicScanLimit int64 = 250
+// existing topics by title. Telegram has no list-forum-topics API; IDs can exceed 250 in busy groups.
+// We also seed from saved config thread ids first (see seedForumMetaIndexFromHints).
+const forumMetaTopicScanLimit int64 = 4096
 
 // telegramGeneralTopicThreadID is message_thread_id 1 for the default "General" topic in Telegram
 // forums. Config value 0 means "default General" (omit message_thread_id when sending).
@@ -41,6 +42,14 @@ var standardForumMetaSpecs = []forumMetaSpec{
 	{"💻 Bot's meta", "bot's meta information"},
 	{"🔮 Calls", "displaying calls"},
 	{"📱 Status", "showing status broadcasts"},
+}
+
+// ForumMetaHints carries optional thread ids from config or bridge_provision_states (0 = unknown).
+type ForumMetaHints struct {
+	GeneralThreadID int64
+	BotMetaThreadID int64
+	CallsThreadID   int64
+	StatusThreadID  int64
 }
 
 func isGetForumTopicMissing(err error) bool {
@@ -129,10 +138,50 @@ func normalizeForumMetaTopicTitleKey(title string) string {
 	return utils.TruncateTelegramForumTopicName(strings.TrimSpace(s))
 }
 
-// buildForumMetaTitleIndex maps normalized topic title (first occurrence) → message_thread_id.
-// skipThreadID avoids re-probing a thread we already resolved (e.g. General); pass 0 to scan all.
-func buildForumMetaTitleIndex(bot *gotgbot.Bot, chatID int64, skipThreadID int64) (map[string]int64, error) {
+// seedForumMetaIndexFromHints maps normalized titles for specific message_thread_ids (from config /
+// registry) so we reuse topics whose ids are above the linear scan limit or not hit during scan order.
+func seedForumMetaIndexFromHints(bot *gotgbot.Bot, chatID int64, skipThreadID int64, threadIDs []int64) map[string]int64 {
 	idx := make(map[string]int64)
+	seenTid := make(map[int64]struct{}, len(threadIDs))
+	for _, tid := range threadIDs {
+		if tid == 0 || (skipThreadID != 0 && tid == skipThreadID) {
+			continue
+		}
+		if _, dup := seenTid[tid]; dup {
+			continue
+		}
+		seenTid[tid] = struct{}{}
+		name, ok, err := utils.TgFetchForumTopicName(bot, chatID, tid)
+		if err != nil {
+			if isGetForumTopicMissing(err) {
+				continue
+			}
+			state.State.Logger.Debug("forum meta: seed hint getForumTopic failed",
+				zap.Int64("thread_id", tid), zap.Error(err))
+			continue
+		}
+		if !ok {
+			continue
+		}
+		key := normalizeForumMetaTopicTitleKey(name)
+		if key == "" {
+			continue
+		}
+		if _, have := idx[key]; !have {
+			idx[key] = tid
+		}
+	}
+	return idx
+}
+
+// buildForumMetaTitleIndex maps normalized topic title (first occurrence) → message_thread_id.
+// seed (if non-nil) is merged first so hinted thread ids win; scan only fills keys not yet present.
+// skipThreadID avoids re-probing a thread we already resolved (e.g. General); pass 0 to scan all.
+func buildForumMetaTitleIndex(bot *gotgbot.Bot, chatID int64, skipThreadID int64, seed map[string]int64) (map[string]int64, error) {
+	idx := make(map[string]int64)
+	for k, v := range seed {
+		idx[k] = v
+	}
 	for tid := int64(1); tid <= forumMetaTopicScanLimit; tid++ {
 		if skipThreadID != 0 && tid == skipThreadID {
 			continue
@@ -158,29 +207,20 @@ func buildForumMetaTitleIndex(bot *gotgbot.Bot, chatID int64, skipThreadID int64
 	return idx, nil
 }
 
-func ensureFindOrCreateForumMetaTopic(bot *gotgbot.Bot, chatID int64, spec forumMetaSpec, idx map[string]int64) (threadID int64, err error) {
+func ensureFindOrCreateForumMetaTopic(bot *gotgbot.Bot, chatID int64, spec forumMetaSpec, idx map[string]int64) (threadID int64, created bool, err error) {
 	wantKey := normalizeForumMetaTopicTitleKey(spec.title)
 	if tid, ok := idx[wantKey]; ok {
-		_, sendErr := bot.SendMessage(chatID, "Reused existing topic for "+spec.reuseLabel, &gotgbot.SendMessageOpts{
-			MessageThreadId: tid,
-		})
-		if sendErr != nil {
-			state.State.Logger.Debug("forum meta: reuse notice send failed",
-				zap.String("title", spec.title),
-				zap.Int64("thread_id", tid),
-				zap.Error(sendErr))
-		}
-		return tid, nil
+		return tid, false, nil
 	}
 	name := utils.TruncateTelegramForumTopicName(spec.title)
 	opts := &gotgbot.CreateForumTopicOpts{IconColor: forumMetaTopicIconColor}
-	created, err := bot.CreateForumTopic(chatID, name, opts)
+	createdTopic, err := bot.CreateForumTopic(chatID, name, opts)
 	if err != nil {
-		return 0, err
+		return 0, false, err
 	}
-	tid := created.MessageThreadId
+	tid := createdTopic.MessageThreadId
 	idx[wantKey] = tid
-	return tid, nil
+	return tid, true, nil
 }
 
 // tryResolveGeneralForumThreadID finds the General topic only (never creates it). If Telegram does not
@@ -204,7 +244,7 @@ func tryResolveGeneralForumThreadID(bot *gotgbot.Bot, chatID int64) (int64, erro
 		}
 		time.Sleep(400 * time.Millisecond)
 	}
-	idx, err := buildForumMetaTitleIndex(bot, chatID, 0)
+	idx, err := buildForumMetaTitleIndex(bot, chatID, 0, nil)
 	if err != nil {
 		return 0, fmt.Errorf("scan forum topics looking for General: %w", err)
 	}
@@ -221,15 +261,56 @@ func tryResolveGeneralForumThreadID(bot *gotgbot.Bot, chatID int64) (int64, erro
 	return 0, nil
 }
 
+func resolveGeneralWithHint(bot *gotgbot.Bot, chatID int64, hintGeneral int64) (int64, error) {
+	if hintGeneral != 0 {
+		ok, err := forumThreadTitleMatchesSpec(bot, chatID, hintGeneral, standardForumMetaSpecs[0].title)
+		if err != nil {
+			return 0, err
+		}
+		if ok {
+			return hintGeneral, nil
+		}
+	}
+	return tryResolveGeneralForumThreadID(bot, chatID)
+}
+
+// resolveForumMetaRole uses a saved hint when the topic still exists and matches; otherwise the title
+// index or createForumTopic (emoji title + blue icon).
+func resolveForumMetaRole(bot *gotgbot.Bot, chatID int64, spec forumMetaSpec, hint int64, idx map[string]int64) (threadID int64, created bool, err error) {
+	wantKey := normalizeForumMetaTopicTitleKey(spec.title)
+	if hint != 0 {
+		ok, err := forumThreadTitleMatchesSpec(bot, chatID, hint, spec.title)
+		if err != nil {
+			return 0, false, err
+		}
+		if ok {
+			idx[wantKey] = hint
+			return hint, false, nil
+		}
+	}
+	if tid, ok := idx[wantKey]; ok {
+		return tid, false, nil
+	}
+	return ensureFindOrCreateForumMetaTopic(bot, chatID, spec, idx)
+}
+
 // CreateStandardForumMetaTopics resolves General when possible (find only; 0 = default General), then
-// find-or-creates Bot's meta, Calls, Status.
-func CreateStandardForumMetaTopics(bot *gotgbot.Bot, chatID int64) (general, botMeta, calls, status int64, err error) {
-	generalID, err := tryResolveGeneralForumThreadID(bot, chatID)
+// find-or-creates Bot's meta, Calls, Status. Pass hints from config/registry so existing thread ids are
+// validated first (no duplicate topics when mappings are already correct).
+func CreateStandardForumMetaTopics(bot *gotgbot.Bot, chatID int64, hints ForumMetaHints) (general, botMeta, calls, status int64, err error) {
+	generalID, err := resolveGeneralWithHint(bot, chatID, hints.GeneralThreadID)
 	if err != nil {
 		return 0, 0, 0, 0, err
 	}
 
-	idx, err := buildForumMetaTitleIndex(bot, chatID, generalID)
+	seedTIDs := []int64{
+		generalID,
+		hints.BotMetaThreadID,
+		hints.CallsThreadID,
+		hints.StatusThreadID,
+	}
+	seed := seedForumMetaIndexFromHints(bot, chatID, generalID, seedTIDs)
+	idx, err := buildForumMetaTitleIndex(bot, chatID, generalID, seed)
 	if err != nil {
 		return 0, 0, 0, 0, err
 	}
@@ -237,21 +318,19 @@ func CreateStandardForumMetaTopics(bot *gotgbot.Bot, chatID int64) (general, bot
 		idx[normalizeForumMetaTopicTitleKey(standardForumMetaSpecs[0].title)] = generalID
 	}
 
-	if generalID != 0 {
-		_, sendErr := bot.SendMessage(chatID, "Reused existing topic for "+standardForumMetaSpecs[0].reuseLabel, &gotgbot.SendMessageOpts{
-			MessageThreadId: generalID,
-		})
-		if sendErr != nil {
-			state.State.Logger.Debug("forum meta: reuse notice send failed (General)",
-				zap.Int64("thread_id", generalID),
-				zap.Error(sendErr))
-		}
-	}
-
 	var ids [4]int64
 	ids[0] = generalID
 	for i := 1; i < len(standardForumMetaSpecs); i++ {
-		tid, e := ensureFindOrCreateForumMetaTopic(bot, chatID, standardForumMetaSpecs[i], idx)
+		h := int64(0)
+		switch i {
+		case 1:
+			h = hints.BotMetaThreadID
+		case 2:
+			h = hints.CallsThreadID
+		case 3:
+			h = hints.StatusThreadID
+		}
+		tid, _, e := resolveForumMetaRole(bot, chatID, standardForumMetaSpecs[i], h, idx)
 		if e != nil {
 			if i == 1 {
 				return ids[0], 0, 0, 0, e
@@ -264,6 +343,41 @@ func CreateStandardForumMetaTopics(bot *gotgbot.Bot, chatID int64) (general, bot
 		ids[i] = tid
 	}
 	return ids[0], ids[1], ids[2], ids[3], nil
+}
+
+func effectiveGeneralThreadID(prevFromConfig int64, resolved int64) int64 {
+	if prevFromConfig != 0 {
+		return prevFromConfig
+	}
+	return resolved
+}
+
+func syncForumMetaRegistryState(cfg *state.Config) {
+	t := &cfg.Telegram
+	if t.BridgeRegistryID == 0 {
+		return
+	}
+	if err := database.BridgeProvisionSet(
+		t.BridgeRegistryID,
+		t.GeneralThreadID,
+		t.BotMetaThreadID,
+		t.CallsThreadID,
+		t.StatusThreadID,
+		"ok",
+		"",
+	); err != nil {
+		state.State.Logger.Warn("forum meta: could not sync thread ids to bridge registry DB (child YAML may reprovision on restart)",
+			zap.Uint("bridge_registry_id", t.BridgeRegistryID),
+			zap.Error(err))
+	}
+	if cfg.Path != "" {
+		if err := bridge.WriteProvisionSidecar(filepath.Dir(cfg.Path), t.BridgeRegistryID,
+			t.GeneralThreadID, t.BotMetaThreadID, t.CallsThreadID, t.StatusThreadID); err != nil {
+			state.State.Logger.Warn("forum meta: could not write provision sidecar (parent may reprovision forum topics on restart)",
+				zap.Uint("bridge_registry_id", t.BridgeRegistryID),
+				zap.Error(err))
+		}
+	}
 }
 
 // forumThreadTitleMatchesSpec returns true if getForumTopic resolves and the name matches canonicalTitle
@@ -305,11 +419,7 @@ func EnsureForumMetaTopicsProvisioned() error {
 		sendTargetCheckFailure(msg)
 		return err
 	}
-	metaAny := t.BotMetaThreadID != 0 || t.CallsThreadID != 0 || t.StatusThreadID != 0
 	metaAll := t.BotMetaThreadID != 0 && t.CallsThreadID != 0 && t.StatusThreadID != 0
-	if metaAny && !metaAll {
-		return fmt.Errorf("telegram forum threads: set all three (bot_meta_thread_id, calls_thread_id, status_thread_id) or omit all three for auto-provision")
-	}
 	if metaAll {
 		botMetaOK, err := forumThreadTitleMatchesSpec(bot, t.TargetChatID, t.BotMetaThreadID, standardForumMetaSpecs[1].title)
 		if err != nil {
@@ -324,6 +434,12 @@ func EnsureForumMetaTopicsProvisioned() error {
 			return fmt.Errorf("check existing status_thread_id=%d: %w", t.StatusThreadID, err)
 		}
 		if botMetaOK && callsOK && statusOK {
+			syncForumMetaRegistryState(cfg)
+			state.State.Logger.Debug("forum meta thread ids unchanged; skipped topic creation",
+				zap.Int64("bot_meta_thread_id", t.BotMetaThreadID),
+				zap.Int64("calls_thread_id", t.CallsThreadID),
+				zap.Int64("status_thread_id", t.StatusThreadID),
+			)
 			return nil
 		}
 		state.State.Logger.Warn("forum meta thread ids stale or wrong topic; reprovisioning",
@@ -336,51 +452,40 @@ func EnsureForumMetaTopicsProvisioned() error {
 		)
 	}
 	prevGeneral := t.GeneralThreadID
-	g, m, c, s, err := CreateStandardForumMetaTopics(bot, t.TargetChatID)
+	hints := ForumMetaHints{
+		GeneralThreadID: t.GeneralThreadID,
+		BotMetaThreadID: t.BotMetaThreadID,
+		CallsThreadID:   t.CallsThreadID,
+		StatusThreadID:  t.StatusThreadID,
+	}
+	g, m, c, s, err := CreateStandardForumMetaTopics(bot, t.TargetChatID, hints)
 	if err != nil {
 		return fmt.Errorf("create forum meta topics: %w", err)
 	}
-	if prevGeneral != 0 {
-		t.GeneralThreadID = prevGeneral
-	} else {
-		t.GeneralThreadID = g
-	}
+	effG := effectiveGeneralThreadID(prevGeneral, g)
+	changed := t.BotMetaThreadID != m || t.CallsThreadID != c || t.StatusThreadID != s || t.GeneralThreadID != effG
+	t.GeneralThreadID = effG
 	t.BotMetaThreadID = m
 	t.CallsThreadID = c
 	t.StatusThreadID = s
-	if err := cfg.SaveConfig(); err != nil {
-		return fmt.Errorf("save config after forum topics: %w", err)
-	}
-	if cfg.Telegram.BridgeRegistryID != 0 {
-		if err := database.BridgeProvisionSet(
-			cfg.Telegram.BridgeRegistryID,
-			t.GeneralThreadID,
-			t.BotMetaThreadID,
-			t.CallsThreadID,
-			t.StatusThreadID,
-			"ok",
-			"",
-		); err != nil {
-			state.State.Logger.Warn("forum meta: could not sync thread ids to bridge registry DB (child YAML may reprovision on restart)",
-				zap.Uint("bridge_registry_id", cfg.Telegram.BridgeRegistryID),
-				zap.Error(err))
+	if changed {
+		if err := cfg.SaveConfig(); err != nil {
+			return fmt.Errorf("save config after forum topics: %w", err)
 		}
-		// Multi-mode: per-bridge DB is separate from the registry; BridgeProvisionSet is routed to the
-		// registry when WATG_REGISTRY_SQLITE_PATH is set. Sidecar is a fallback if registry open fails.
-		if cfg.Path != "" {
-			if err := bridge.WriteProvisionSidecar(filepath.Dir(cfg.Path), cfg.Telegram.BridgeRegistryID,
-				t.GeneralThreadID, t.BotMetaThreadID, t.CallsThreadID, t.StatusThreadID); err != nil {
-				state.State.Logger.Warn("forum meta: could not write provision sidecar (parent may reprovision forum topics on restart)",
-					zap.Uint("bridge_registry_id", cfg.Telegram.BridgeRegistryID),
-					zap.Error(err))
-			}
-		}
+		state.State.Logger.Info("standard forum meta topics provisioned and saved thread ids to config",
+			zap.Int64("general_thread_id", effG),
+			zap.Int64("bot_meta_thread_id", m),
+			zap.Int64("calls_thread_id", c),
+			zap.Int64("status_thread_id", s),
+		)
+	} else {
+		state.State.Logger.Debug("forum meta thread ids unchanged after reconcile; skipped config write",
+			zap.Int64("general_thread_id", effG),
+			zap.Int64("bot_meta_thread_id", m),
+			zap.Int64("calls_thread_id", c),
+			zap.Int64("status_thread_id", s),
+		)
 	}
-	state.State.Logger.Info("standard forum meta topics provisioned and saved thread ids to config",
-		zap.Int64("general_thread_id", g),
-		zap.Int64("bot_meta_thread_id", m),
-		zap.Int64("calls_thread_id", c),
-		zap.Int64("status_thread_id", s),
-	)
+	syncForumMetaRegistryState(cfg)
 	return nil
 }
