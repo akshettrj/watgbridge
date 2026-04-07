@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"watgbridge/bridge"
 	"watgbridge/database"
@@ -19,37 +20,111 @@ import (
 // existing standard meta topics. Groups with more topics may miss a duplicate title above this id.
 const forumMetaTopicScanLimit int64 = 250
 
-// telegramGeneralTopicThreadID is often message_thread_id 1 for the default "General" topic, but some
-// forum setups return Not Found for getForumTopic(1). Config value 0 means "default General" (omit
-// message_thread_id when sending).
+// telegramGeneralTopicThreadID is message_thread_id 1 for the default "General" topic in Telegram
+// forums. Config value 0 means "default General" (omit message_thread_id when sending).
 const telegramGeneralTopicThreadID int64 = 1
+
+// forumMetaTopicIconColor is Telegram Bot API icon_color 0x6FB9F0 (light blue) — same family as the
+// default forum topic chip style (see createForumTopic icon_color allowed values).
+const forumMetaTopicIconColor int64 = 7322096
 
 type forumMetaSpec struct {
 	title      string
 	reuseLabel string
 }
 
+// Titles include leading emoji + Bot API icon_color so topics match the usual forum look. Matching
+// still uses normalizeForumMetaTopicTitleKey (emoji / "B " prefixes stripped) so plain "Bot's meta"
+// topics reuse correctly.
 var standardForumMetaSpecs = []forumMetaSpec{
 	{"General", "general purposes"},
-	{"Bot's meta", "bot's meta information"},
-	{"Calls", "displaying calls"},
-	{"Status", "showing status broadcasts"},
+	{"💻 Bot's meta", "bot's meta information"},
+	{"🔮 Calls", "displaying calls"},
+	{"📱 Status", "showing status broadcasts"},
 }
 
 func isGetForumTopicMissing(err error) bool {
 	return utils.TgErrForumTopicOrThreadInvalid(err)
 }
 
+// isEmojiSequenceRune matches leading decoration many clients add before the real title (e.g. "💻 Bot's meta").
+func isEmojiSequenceRune(r rune) bool {
+	switch r {
+	case 0x200D, 0xFE0F: // ZWJ, VS16
+		return true
+	}
+	if r >= 0x1F000 && r <= 0x1FAFF {
+		return true
+	}
+	if r >= 0x2600 && r <= 0x27BF {
+		return true
+	}
+	if r >= 0x231A && r <= 0x23FF {
+		return true
+	}
+	if r >= 0x2B50 && r <= 0x2B55 {
+		return true
+	}
+	if r >= 0x1F600 && r <= 0x1F64F {
+		return true
+	}
+	// Regional indicators (flag sequences)
+	if r >= 0x1F1E6 && r <= 0x1F1FF {
+		return true
+	}
+	return false
+}
+
+// stripLeadingEmojiCluster removes one leading emoji cluster (incl. ZWJ/VS16 continuations) from the title.
+func stripLeadingEmojiCluster(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return s
+	}
+	i := 0
+	for i < len(s) {
+		r, w := utf8.DecodeRuneInString(s[i:])
+		if w == 0 {
+			break
+		}
+		if isEmojiSequenceRune(r) {
+			i += w
+			continue
+		}
+		break
+	}
+	if i == 0 {
+		return s
+	}
+	return strings.TrimSpace(s[i:])
+}
+
 // normalizeForumMetaTopicTitleKey matches Telegram forum topic titles to our canonical names.
 // Clients may show a single-letter prefix in the sidebar (e.g. "B Bot's meta"); getForumTopic names
 // can include that prefix, so we strip "X " when X is A–Z before comparing to "Bot's meta", etc.
+// Users often set emoji icons on topics (e.g. "💻 Bot's meta"); we strip leading emoji so those reuse
+// the same logical topic as plain "Bot's meta".
 func normalizeForumMetaTopicTitleKey(title string) string {
 	s := strings.TrimSpace(title)
 	s = strings.ReplaceAll(s, "\u2019", "'")
 	s = strings.ReplaceAll(s, "\u2018", "'")
-	s = strings.TrimPrefix(s, "#")
-	if len(s) >= 3 && s[1] == ' ' && s[0] >= 'A' && s[0] <= 'Z' {
-		s = strings.TrimSpace(s[2:])
+	for {
+		before := s
+		s = strings.TrimSpace(s)
+		s = strings.TrimPrefix(s, "#")
+		s = strings.TrimSpace(s)
+		if len(s) >= 3 && s[1] == ' ' && s[0] >= 'A' && s[0] <= 'Z' {
+			s = strings.TrimSpace(s[2:])
+			continue
+		}
+		next := stripLeadingEmojiCluster(s)
+		if next != s {
+			s = next
+			continue
+		}
+		if s == before {
+			break
+		}
 	}
 	return utils.TruncateTelegramForumTopicName(strings.TrimSpace(s))
 }
@@ -97,7 +172,9 @@ func ensureFindOrCreateForumMetaTopic(bot *gotgbot.Bot, chatID int64, spec forum
 		}
 		return tid, nil
 	}
-	created, err := bot.CreateForumTopic(chatID, spec.title, nil)
+	name := utils.TruncateTelegramForumTopicName(spec.title)
+	opts := &gotgbot.CreateForumTopicOpts{IconColor: forumMetaTopicIconColor}
+	created, err := bot.CreateForumTopic(chatID, name, opts)
 	if err != nil {
 		return 0, err
 	}
@@ -113,14 +190,17 @@ func tryResolveGeneralForumThreadID(bot *gotgbot.Bot, chatID int64) (int64, erro
 	var lastProbeErr error
 	for attempt := 0; attempt < 12; attempt++ {
 		name, ok, err := utils.TgFetchForumTopicName(bot, chatID, telegramGeneralTopicThreadID)
-		if err == nil && ok && strings.TrimSpace(name) != "" {
-			return telegramGeneralTopicThreadID, nil
-		}
 		if err != nil {
 			lastProbeErr = err
 			if !utils.TgErrForumTopicOrThreadInvalid(err) {
 				return 0, fmt.Errorf("getForumTopic General (thread %d): %w", telegramGeneralTopicThreadID, err)
 			}
+			time.Sleep(400 * time.Millisecond)
+			continue
+		}
+		if ok && strings.TrimSpace(name) != "" {
+			// Default General is always message_thread_id 1 in Telegram forums.
+			return telegramGeneralTopicThreadID, nil
 		}
 		time.Sleep(400 * time.Millisecond)
 	}
@@ -186,18 +266,25 @@ func CreateStandardForumMetaTopics(bot *gotgbot.Bot, chatID int64) (general, bot
 	return ids[0], ids[1], ids[2], ids[3], nil
 }
 
-func forumThreadExists(bot *gotgbot.Bot, chatID, threadID int64) (bool, error) {
+// forumThreadTitleMatchesSpec returns true if getForumTopic resolves and the name matches canonicalTitle
+// after normalization (emoji / letter prefixes, etc.).
+func forumThreadTitleMatchesSpec(bot *gotgbot.Bot, chatID, threadID int64, canonicalTitle string) (bool, error) {
 	if threadID == 0 {
 		return true, nil
 	}
-	_, ok, err := utils.TgFetchForumTopicName(bot, chatID, threadID)
+	name, ok, err := utils.TgFetchForumTopicName(bot, chatID, threadID)
 	if err != nil {
 		if isGetForumTopicMissing(err) {
 			return false, nil
 		}
 		return false, err
 	}
-	return ok, nil
+	if !ok {
+		return false, nil
+	}
+	want := normalizeForumMetaTopicTitleKey(canonicalTitle)
+	got := normalizeForumMetaTopicTitleKey(name)
+	return got == want, nil
 }
 
 // EnsureForumMetaTopicsProvisioned requires a forum target group with Manage topics, then resolves General
@@ -224,28 +311,28 @@ func EnsureForumMetaTopicsProvisioned() error {
 		return fmt.Errorf("telegram forum threads: set all three (bot_meta_thread_id, calls_thread_id, status_thread_id) or omit all three for auto-provision")
 	}
 	if metaAll {
-		botMetaExists, err := forumThreadExists(bot, t.TargetChatID, t.BotMetaThreadID)
+		botMetaOK, err := forumThreadTitleMatchesSpec(bot, t.TargetChatID, t.BotMetaThreadID, standardForumMetaSpecs[1].title)
 		if err != nil {
 			return fmt.Errorf("check existing bot_meta_thread_id=%d: %w", t.BotMetaThreadID, err)
 		}
-		callsExists, err := forumThreadExists(bot, t.TargetChatID, t.CallsThreadID)
+		callsOK, err := forumThreadTitleMatchesSpec(bot, t.TargetChatID, t.CallsThreadID, standardForumMetaSpecs[2].title)
 		if err != nil {
 			return fmt.Errorf("check existing calls_thread_id=%d: %w", t.CallsThreadID, err)
 		}
-		statusExists, err := forumThreadExists(bot, t.TargetChatID, t.StatusThreadID)
+		statusOK, err := forumThreadTitleMatchesSpec(bot, t.TargetChatID, t.StatusThreadID, standardForumMetaSpecs[3].title)
 		if err != nil {
 			return fmt.Errorf("check existing status_thread_id=%d: %w", t.StatusThreadID, err)
 		}
-		if botMetaExists && callsExists && statusExists {
+		if botMetaOK && callsOK && statusOK {
 			return nil
 		}
-		state.State.Logger.Warn("forum meta topics missing despite configured thread ids; reprovisioning",
+		state.State.Logger.Warn("forum meta thread ids stale or wrong topic; reprovisioning",
 			zap.Int64("bot_meta_thread_id", t.BotMetaThreadID),
 			zap.Int64("calls_thread_id", t.CallsThreadID),
 			zap.Int64("status_thread_id", t.StatusThreadID),
-			zap.Bool("bot_meta_exists", botMetaExists),
-			zap.Bool("calls_exists", callsExists),
-			zap.Bool("status_exists", statusExists),
+			zap.Bool("bot_meta_ok", botMetaOK),
+			zap.Bool("calls_ok", callsOK),
+			zap.Bool("status_ok", statusOK),
 		)
 	}
 	prevGeneral := t.GeneralThreadID
