@@ -35,14 +35,13 @@ type forumMetaSpec struct {
 	reuseLabel string
 }
 
-// Titles include leading emoji + Bot API icon_color so topics match the usual forum look. Matching
-// still uses normalizeForumMetaTopicTitleKey (emoji / "B " prefixes stripped) so plain "Bot's meta"
-// topics reuse correctly.
+// Titles are plain text; icon appearance is handled by Telegram topic icon settings.
+// Matching still uses normalizeForumMetaTopicTitleKey so legacy emoji-prefixed titles reuse correctly.
 var standardForumMetaSpecs = []forumMetaSpec{
 	{"General", "general purposes"},
-	{"💻 Bot's meta", "bot's meta information"},
-	{"🔮 Calls", "displaying calls"},
-	{"📱 Status", "showing status broadcasts"},
+	{"Bot's meta", "bot's meta information"},
+	{"Calls", "displaying calls"},
+	{"Status", "showing status broadcasts"},
 }
 
 // ForumMetaHints carries optional thread ids from config or bridge_provision_states (0 = unknown).
