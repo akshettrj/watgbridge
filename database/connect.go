@@ -3,6 +3,8 @@ package database
 import (
 	"database/sql"
 	"fmt"
+	"os"
+	"strings"
 
 	"watgbridge/crypto/sqlitekey"
 	"watgbridge/internal/gormsqlcipher"
@@ -105,6 +107,10 @@ func Connect() (*gorm.DB, error) {
 // OpenRegistrySQLiteForProvision opens the multi-mode registry SQLite (SQLCipher) using the
 // watgbridge-v1/registry key derivation. Bridge children use this so BridgeProvisionSet updates the
 // same file the main process uses, independent of the per-bridge database file.
+//
+// Key resolution: WATG_REGISTRY_SQLCIPHER_KEY_HEX (64 hex, same derivation as main) first — set by
+// the multi-mode parent when spawning children so they need not have WATG_SQLITE_MASTER_KEY; else
+// WATG_SQLITE_MASTER_KEY + derive watgbridge-v1/registry.
 func OpenRegistrySQLiteForProvision(absPath string) (*gorm.DB, error) {
 	gormConfig := gorm.Config{
 		Logger: gormlogger.Default.LogMode(gormlogger.Silent),
@@ -113,19 +119,24 @@ func OpenRegistrySQLiteForProvision(absPath string) (*gorm.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	master, hasMaster, err := sqlitekey.MasterKeyBytesFromEnv()
-	if err != nil {
-		_ = sqlDB.Close()
-		return nil, err
-	}
-	if !hasMaster {
-		_ = sqlDB.Close()
-		return nil, fmt.Errorf("WATG_SQLITE_MASTER_KEY required for registry SQLCipher")
-	}
-	k, err := sqlitekey.DeriveKeyHex(master, "watgbridge-v1/registry")
-	if err != nil {
-		_ = sqlDB.Close()
-		return nil, err
+	var k string
+	if regHex := strings.TrimSpace(os.Getenv(sqlitekey.EnvRegistryDerived)); regHex != "" {
+		k = regHex
+	} else {
+		master, hasMaster, err := sqlitekey.MasterKeyBytesFromEnv()
+		if err != nil {
+			_ = sqlDB.Close()
+			return nil, err
+		}
+		if !hasMaster {
+			_ = sqlDB.Close()
+			return nil, fmt.Errorf("set %s or WATG_SQLITE_MASTER_KEY for registry SQLCipher", sqlitekey.EnvRegistryDerived)
+		}
+		k, err = sqlitekey.DeriveKeyHex(master, "watgbridge-v1/registry")
+		if err != nil {
+			_ = sqlDB.Close()
+			return nil, err
+		}
 	}
 	if err := sqlitekey.ApplyToDB(sqlDB, k); err != nil {
 		_ = sqlDB.Close()

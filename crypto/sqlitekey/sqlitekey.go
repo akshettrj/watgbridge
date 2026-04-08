@@ -13,8 +13,9 @@ import (
 )
 
 const (
-	EnvMaster  = "WATG_SQLITE_MASTER_KEY"
-	EnvDerived = "WATG_SQLCIPHER_KEY_HEX"
+	EnvMaster          = "WATG_SQLITE_MASTER_KEY"
+	EnvDerived         = "WATG_SQLCIPHER_KEY_HEX"
+	EnvRegistryDerived = "WATG_REGISTRY_SQLCIPHER_KEY_HEX"
 )
 
 // MasterKeyBytesFromEnv returns the 32-byte master key from WATG_SQLITE_MASTER_KEY (64 hex chars).

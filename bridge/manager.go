@@ -52,9 +52,30 @@ func registrySQLitePathFromMainConfig() string {
 }
 
 func childEnviron(bridge *database.Bridge, registrySQLitePath string) ([]string, error) {
+	// Parent may only have WATG_SQLCIPHER_KEY_HEX (registry key for multi+sqlite main). We strip that
+	// below and set per-bridge WATG_SQLCIPHER_KEY_HEX, so pass the registry key explicitly for
+	// OpenRegistrySQLiteForProvision.
+	regHex := strings.TrimSpace(os.Getenv(sqlitekey.EnvRegistryDerived))
+	if regHex == "" {
+		regHex = strings.TrimSpace(os.Getenv(sqlitekey.EnvDerived))
+	}
+	if regHex == "" && registrySQLitePath != "" {
+		master, ok, err := sqlitekey.MasterKeyBytesFromEnv()
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			var derr error
+			regHex, derr = sqlitekey.DeriveKeyHex(master, "watgbridge-v1/registry")
+			if derr != nil {
+				return nil, derr
+			}
+		}
+	}
+
 	base := os.Environ()
 	prefix := sqlitekey.EnvDerived + "="
-	out := make([]string, 0, len(base)+4)
+	out := make([]string, 0, len(base)+6)
 	for _, e := range base {
 		if strings.HasPrefix(e, prefix) {
 			continue
@@ -67,6 +88,9 @@ func childEnviron(bridge *database.Bridge, registrySQLitePath string) ([]string,
 	)
 	if registrySQLitePath != "" {
 		out = append(out, "WATG_REGISTRY_SQLITE_PATH="+registrySQLitePath)
+		if regHex != "" {
+			out = append(out, sqlitekey.EnvRegistryDerived+"="+regHex)
+		}
 	}
 	master, hasMaster, err := sqlitekey.MasterKeyBytesFromEnv()
 	if err != nil {
