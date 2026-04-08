@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -50,6 +51,95 @@ type ForumMetaHints struct {
 	BotMetaThreadID int64
 	CallsThreadID   int64
 	StatusThreadID  int64
+}
+
+// ForumMetaProbeState marks which meta slots were already verified by sendMessage probe in the current
+// provision run (avoids duplicate probes when some topics fail and we reconcile).
+type ForumMetaProbeState struct {
+	BotMeta bool
+	Calls   bool
+	Status  bool
+}
+
+var forumMetaIconStickersMu sync.Mutex
+var forumMetaIconStickers []gotgbot.Sticker
+
+func forumMetaGetIconStickers(bot *gotgbot.Bot) []gotgbot.Sticker {
+	forumMetaIconStickersMu.Lock()
+	defer forumMetaIconStickersMu.Unlock()
+	if forumMetaIconStickers != nil {
+		return forumMetaIconStickers
+	}
+	stickers, err := bot.GetForumTopicIconStickers(nil)
+	if err != nil {
+		state.State.Logger.Debug("forum meta: GetForumTopicIconStickers failed", zap.Error(err))
+		return nil
+	}
+	forumMetaIconStickers = stickers
+	return forumMetaIconStickers
+}
+
+// forumMetaLeadingEmojiPrefix returns the leading emoji cluster in the title (for matching forum icon stickers).
+func forumMetaLeadingEmojiPrefix(title string) string {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return ""
+	}
+	i := 0
+	for i < len(title) {
+		r, w := utf8.DecodeRuneInString(title[i:])
+		if w == 0 {
+			break
+		}
+		if isEmojiSequenceRune(r) {
+			i += w
+			continue
+		}
+		break
+	}
+	if i == 0 {
+		return ""
+	}
+	return title[:i]
+}
+
+func pickForumMetaIconCustomEmojiID(bot *gotgbot.Bot, specTitle string) string {
+	want := forumMetaLeadingEmojiPrefix(specTitle)
+	if want == "" {
+		return ""
+	}
+	stickers := forumMetaGetIconStickers(bot)
+	for _, s := range stickers {
+		if s.CustomEmojiId != "" && s.Emoji == want {
+			return s.CustomEmojiId
+		}
+	}
+	for _, s := range stickers {
+		if s.CustomEmojiId != "" && strings.HasPrefix(s.Emoji, want) {
+			return s.CustomEmojiId
+		}
+	}
+	return ""
+}
+
+func applyForumMetaTopicIcon(bot *gotgbot.Bot, chatID, threadID int64, spec forumMetaSpec) {
+	if threadID == 0 {
+		return
+	}
+	id := pickForumMetaIconCustomEmojiID(bot, spec.title)
+	if id == "" {
+		return
+	}
+	idCopy := id
+	_, err := bot.EditForumTopic(chatID, threadID, &gotgbot.EditForumTopicOpts{
+		IconCustomEmojiId: &idCopy,
+	})
+	if err != nil && !utils.TgEditForumTopicUnchanged(err) {
+		state.State.Logger.Debug("forum meta: EditForumTopic custom emoji icon",
+			zap.String("title", spec.title),
+			zap.Int64("thread_id", threadID),
+			zap.Error(err))
+	}
 }
 
 func isGetForumTopicMissing(err error) bool {
@@ -213,7 +303,12 @@ func ensureFindOrCreateForumMetaTopic(bot *gotgbot.Bot, chatID int64, spec forum
 		return tid, false, nil
 	}
 	name := utils.TruncateTelegramForumTopicName(spec.title)
-	opts := &gotgbot.CreateForumTopicOpts{IconColor: forumMetaTopicIconColor}
+	opts := &gotgbot.CreateForumTopicOpts{}
+	if emojiID := pickForumMetaIconCustomEmojiID(bot, spec.title); emojiID != "" {
+		opts.IconCustomEmojiId = emojiID
+	} else {
+		opts.IconColor = forumMetaTopicIconColor
+	}
 	createdTopic, err := bot.CreateForumTopic(chatID, name, opts)
 	if err != nil {
 		return 0, false, err
@@ -274,21 +369,28 @@ func resolveGeneralWithHint(bot *gotgbot.Bot, chatID int64, hintGeneral int64) (
 	return tryResolveGeneralForumThreadID(bot, chatID)
 }
 
-// resolveForumMetaRole uses a saved hint when the topic still exists and matches; otherwise the title
-// index or createForumTopic (emoji title + blue icon).
-func resolveForumMetaRole(bot *gotgbot.Bot, chatID int64, spec forumMetaSpec, hint int64, idx map[string]int64) (threadID int64, created bool, err error) {
+// resolveForumMetaRole uses a sendMessage probe when hint is set (unless preProbed), then the title
+// index or createForumTopic (emoji title + icon sticker or blue icon_color).
+func resolveForumMetaRole(bot *gotgbot.Bot, chatID int64, spec forumMetaSpec, hint int64, idx map[string]int64, preProbed bool) (threadID int64, created bool, err error) {
 	wantKey := normalizeForumMetaTopicTitleKey(spec.title)
 	if hint != 0 {
-		ok, err := forumThreadTitleMatchesSpec(bot, chatID, hint, spec.title)
+		if preProbed {
+			idx[wantKey] = hint
+			applyForumMetaTopicIcon(bot, chatID, hint, spec)
+			return hint, false, nil
+		}
+		ok, err := forumMetaProbeTopicAlive(bot, chatID, hint, spec.title)
 		if err != nil {
 			return 0, false, err
 		}
 		if ok {
 			idx[wantKey] = hint
+			applyForumMetaTopicIcon(bot, chatID, hint, spec)
 			return hint, false, nil
 		}
 	}
 	if tid, ok := idx[wantKey]; ok {
+		applyForumMetaTopicIcon(bot, chatID, tid, spec)
 		return tid, false, nil
 	}
 	return ensureFindOrCreateForumMetaTopic(bot, chatID, spec, idx)
@@ -297,7 +399,7 @@ func resolveForumMetaRole(bot *gotgbot.Bot, chatID int64, spec forumMetaSpec, hi
 // CreateStandardForumMetaTopics resolves General when possible (find only; 0 = default General), then
 // find-or-creates Bot's meta, Calls, Status. Pass hints from config/registry so existing thread ids are
 // validated first (no duplicate topics when mappings are already correct).
-func CreateStandardForumMetaTopics(bot *gotgbot.Bot, chatID int64, hints ForumMetaHints) (general, botMeta, calls, status int64, err error) {
+func CreateStandardForumMetaTopics(bot *gotgbot.Bot, chatID int64, hints ForumMetaHints, preProbed ForumMetaProbeState) (general, botMeta, calls, status int64, err error) {
 	generalID, err := resolveGeneralWithHint(bot, chatID, hints.GeneralThreadID)
 	if err != nil {
 		return 0, 0, 0, 0, err
@@ -322,15 +424,19 @@ func CreateStandardForumMetaTopics(bot *gotgbot.Bot, chatID int64, hints ForumMe
 	ids[0] = generalID
 	for i := 1; i < len(standardForumMetaSpecs); i++ {
 		h := int64(0)
+		pre := false
 		switch i {
 		case 1:
 			h = hints.BotMetaThreadID
+			pre = preProbed.BotMeta
 		case 2:
 			h = hints.CallsThreadID
+			pre = preProbed.Calls
 		case 3:
 			h = hints.StatusThreadID
+			pre = preProbed.Status
 		}
-		tid, _, e := resolveForumMetaRole(bot, chatID, standardForumMetaSpecs[i], h, idx)
+		tid, _, e := resolveForumMetaRole(bot, chatID, standardForumMetaSpecs[i], h, idx, pre)
 		if e != nil {
 			if i == 1 {
 				return ids[0], 0, 0, 0, e
@@ -420,45 +526,52 @@ func EnsureForumMetaTopicsProvisioned() error {
 		return err
 	}
 	metaAll := t.BotMetaThreadID != 0 && t.CallsThreadID != 0 && t.StatusThreadID != 0
-	if metaAll {
-		botMetaOK, err := forumThreadTitleMatchesSpec(bot, t.TargetChatID, t.BotMetaThreadID, standardForumMetaSpecs[1].title)
-		if err != nil {
-			return fmt.Errorf("check existing bot_meta_thread_id=%d: %w", t.BotMetaThreadID, err)
-		}
-		callsOK, err := forumThreadTitleMatchesSpec(bot, t.TargetChatID, t.CallsThreadID, standardForumMetaSpecs[2].title)
-		if err != nil {
-			return fmt.Errorf("check existing calls_thread_id=%d: %w", t.CallsThreadID, err)
-		}
-		statusOK, err := forumThreadTitleMatchesSpec(bot, t.TargetChatID, t.StatusThreadID, standardForumMetaSpecs[3].title)
-		if err != nil {
-			return fmt.Errorf("check existing status_thread_id=%d: %w", t.StatusThreadID, err)
-		}
-		if botMetaOK && callsOK && statusOK {
-			syncForumMetaRegistryState(cfg)
-			state.State.Logger.Debug("forum meta thread ids unchanged; skipped topic creation",
-				zap.Int64("bot_meta_thread_id", t.BotMetaThreadID),
-				zap.Int64("calls_thread_id", t.CallsThreadID),
-				zap.Int64("status_thread_id", t.StatusThreadID),
-			)
-			return nil
-		}
-		state.State.Logger.Warn("forum meta thread ids stale or wrong topic; reprovisioning",
-			zap.Int64("bot_meta_thread_id", t.BotMetaThreadID),
-			zap.Int64("calls_thread_id", t.CallsThreadID),
-			zap.Int64("status_thread_id", t.StatusThreadID),
-			zap.Bool("bot_meta_ok", botMetaOK),
-			zap.Bool("calls_ok", callsOK),
-			zap.Bool("status_ok", statusOK),
-		)
-	}
-	prevGeneral := t.GeneralThreadID
 	hints := ForumMetaHints{
 		GeneralThreadID: t.GeneralThreadID,
 		BotMetaThreadID: t.BotMetaThreadID,
 		CallsThreadID:   t.CallsThreadID,
 		StatusThreadID:  t.StatusThreadID,
 	}
-	g, m, c, s, err := CreateStandardForumMetaTopics(bot, t.TargetChatID, hints)
+	preProbed := ForumMetaProbeState{}
+	if metaAll {
+		bmOk, cOk, sOk, err := forumMetaProbeThreeMeta(bot, t.TargetChatID, t.BotMetaThreadID, t.CallsThreadID, t.StatusThreadID)
+		if err != nil {
+			return fmt.Errorf("forum meta: probe meta topics: %w", err)
+		}
+		if bmOk && cOk && sOk {
+			for i, tid := range []int64{t.BotMetaThreadID, t.CallsThreadID, t.StatusThreadID} {
+				applyForumMetaTopicIcon(bot, t.TargetChatID, tid, standardForumMetaSpecs[1+i])
+			}
+			syncForumMetaRegistryState(cfg)
+			state.State.Logger.Debug("forum meta: probes ok, skipped topic creation",
+				zap.Int64("bot_meta_thread_id", t.BotMetaThreadID),
+				zap.Int64("calls_thread_id", t.CallsThreadID),
+				zap.Int64("status_thread_id", t.StatusThreadID),
+			)
+			return nil
+		}
+		state.State.Logger.Warn("forum meta: probe failed for some topics; reprovisioning",
+			zap.Int64("bot_meta_thread_id", t.BotMetaThreadID),
+			zap.Int64("calls_thread_id", t.CallsThreadID),
+			zap.Int64("status_thread_id", t.StatusThreadID),
+			zap.Bool("bot_meta_ok", bmOk),
+			zap.Bool("calls_ok", cOk),
+			zap.Bool("status_ok", sOk),
+		)
+		preProbed = ForumMetaProbeState{BotMeta: bmOk, Calls: cOk, Status: sOk}
+		hints.BotMetaThreadID, hints.CallsThreadID, hints.StatusThreadID = 0, 0, 0
+		if bmOk {
+			hints.BotMetaThreadID = t.BotMetaThreadID
+		}
+		if cOk {
+			hints.CallsThreadID = t.CallsThreadID
+		}
+		if sOk {
+			hints.StatusThreadID = t.StatusThreadID
+		}
+	}
+	prevGeneral := t.GeneralThreadID
+	g, m, c, s, err := CreateStandardForumMetaTopics(bot, t.TargetChatID, hints, preProbed)
 	if err != nil {
 		return fmt.Errorf("create forum meta topics: %w", err)
 	}

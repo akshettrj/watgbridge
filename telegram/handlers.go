@@ -236,6 +236,10 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 		return nil
 	}
 
+	if c.EffectiveMessage != nil && IsForumMetaProbeReply(c.EffectiveMessage) {
+		return nil
+	}
+
 	for _, command := range commands {
 		if command.command.CheckUpdate(b, c) {
 			return nil
