@@ -2,11 +2,9 @@ package telegram
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
 	"sync"
 
-	"watgbridge/bridge"
 	"watgbridge/database"
 	"watgbridge/state"
 	"watgbridge/utils"
@@ -26,6 +24,17 @@ type forumMetaSpec struct {
 	title string
 	// iconEmoji is matched against GetForumTopicIconStickers; it is not part of the topic title.
 	iconEmoji string
+}
+
+// singleModeForumMetaBridgeID is the bridge_provision_states row used when BridgeRegistryID is 0
+// (single deployment: thread ids live in the local app DB, not the multi-mode registry).
+const singleModeForumMetaBridgeID uint = 1
+
+func forumMetaProvisionBridgeID(cfg *state.Config) uint {
+	if cfg.Telegram.BridgeRegistryID != 0 {
+		return cfg.Telegram.BridgeRegistryID
+	}
+	return singleModeForumMetaBridgeID
 }
 
 // Plain topic titles; icons come from iconEmoji + Telegram forum sticker set.
@@ -102,15 +111,12 @@ func applyForumMetaTopicIcon(bot *gotgbot.Bot, chatID, threadID int64, spec foru
 	}
 }
 
-// ApplyForumMetaThreadIDsFromProvisionDB overwrites telegram thread ids from bridge_provision_states
-// when the bridge has a registry id and the DB row has non-zero ids. Call after DB connect and
-// before EnsureForumMetaTopicsProvisioned so persisted ids take precedence over YAML.
+// ApplyForumMetaThreadIDsFromProvisionDB loads telegram thread ids from bridge_provision_states
+// (registry bridge_id when BridgeRegistryID is set, else singleModeForumMetaBridgeID on the local DB).
+// Call after DB connect and before EnsureForumMetaTopicsProvisioned.
 func ApplyForumMetaThreadIDsFromProvisionDB(cfg *state.Config) {
 	t := &cfg.Telegram
-	if t.BridgeRegistryID == 0 {
-		return
-	}
-	p, err := database.BridgeProvisionGet(t.BridgeRegistryID)
+	p, err := database.BridgeProvisionGet(forumMetaProvisionBridgeID(cfg))
 	if err != nil || p == nil {
 		return
 	}
@@ -213,11 +219,9 @@ func effectiveGeneralThreadID(prevFromConfig int64, resolved int64) int64 {
 
 func syncForumMetaRegistryState(cfg *state.Config) {
 	t := &cfg.Telegram
-	if t.BridgeRegistryID == 0 {
-		return
-	}
+	bid := forumMetaProvisionBridgeID(cfg)
 	if err := database.BridgeProvisionSet(
-		t.BridgeRegistryID,
+		bid,
 		t.GeneralThreadID,
 		t.BotMetaThreadID,
 		t.CallsThreadID,
@@ -225,21 +229,13 @@ func syncForumMetaRegistryState(cfg *state.Config) {
 		"ok",
 		"",
 	); err != nil {
-		state.State.Logger.Warn("forum meta: could not sync thread ids to bridge registry DB (child YAML may reprovision on restart)",
-			zap.Uint("bridge_registry_id", t.BridgeRegistryID),
+		state.State.Logger.Warn("forum meta: could not persist thread ids to bridge_provision_states",
+			zap.Uint("provision_bridge_id", bid),
 			zap.Error(err))
-	}
-	if cfg.Path != "" {
-		if err := bridge.WriteProvisionSidecar(filepath.Dir(cfg.Path), t.BridgeRegistryID,
-			t.GeneralThreadID, t.BotMetaThreadID, t.CallsThreadID, t.StatusThreadID); err != nil {
-			state.State.Logger.Warn("forum meta: could not write provision sidecar (parent may reprovision forum topics on restart)",
-				zap.Uint("bridge_registry_id", t.BridgeRegistryID),
-				zap.Error(err))
-		}
 	}
 }
 
-// EnsureForumMetaTopicsProvisioned loads persisted thread ids from the registry DB when available,
+// EnsureForumMetaTopicsProvisioned loads persisted thread ids from bridge_provision_states when available,
 // then probes each slot (send + delete); creates topics only when the stored id is missing or dead.
 func EnsureForumMetaTopicsProvisioned() error {
 	cfg := state.State.Config
@@ -278,17 +274,14 @@ func EnsureForumMetaTopicsProvisioned() error {
 	t.CallsThreadID = c
 	t.StatusThreadID = s
 	if changed {
-		if err := cfg.SaveConfig(); err != nil {
-			return fmt.Errorf("save config after forum topics: %w", err)
-		}
-		state.State.Logger.Info("standard forum meta topics provisioned and saved thread ids to config",
+		state.State.Logger.Info("standard forum meta topics provisioned",
 			zap.Int64("general_thread_id", effG),
 			zap.Int64("bot_meta_thread_id", m),
 			zap.Int64("calls_thread_id", c),
 			zap.Int64("status_thread_id", s),
 		)
 	} else {
-		state.State.Logger.Debug("forum meta thread ids unchanged after reconcile; skipped config write",
+		state.State.Logger.Debug("forum meta thread ids unchanged after reconcile",
 			zap.Int64("general_thread_id", effG),
 			zap.Int64("bot_meta_thread_id", m),
 			zap.Int64("calls_thread_id", c),

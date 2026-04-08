@@ -43,11 +43,11 @@ type Config struct {
 		Reactions           bool    `yaml:"reactions" mapstructure:"reactions"`
 		// ISO 3166-1 alpha-2 default region for parsing national numbers (no +) in General → /check-style flow; empty = require +country code.
 		CheckPhoneDefaultRegion string `yaml:"check_phone_default_region" mapstructure:"check_phone_default_region"`
-		// Forum hub topics (multi mode / mapped topics): 0 = legacy behavior (thread id 0 = hub).
-		GeneralThreadID int64 `yaml:"general_thread_id" mapstructure:"general_thread_id"`
-		BotMetaThreadID int64 `yaml:"bot_meta_thread_id" mapstructure:"bot_meta_thread_id"`
-		CallsThreadID   int64 `yaml:"calls_thread_id" mapstructure:"calls_thread_id"`
-		StatusThreadID  int64 `yaml:"status_thread_id" mapstructure:"status_thread_id"`
+		// Forum hub topics: runtime only — persisted in bridge_provision_states (not YAML).
+		GeneralThreadID int64 `yaml:"-" mapstructure:"-"`
+		BotMetaThreadID int64 `yaml:"-" mapstructure:"-"`
+		CallsThreadID   int64 `yaml:"-" mapstructure:"-"`
+		StatusThreadID  int64 `yaml:"-" mapstructure:"-"`
 		// Child bridge (multi mode): main/control bot token — used only to DM the owner when WhatsApp links.
 		ControlBotToken string `yaml:"control_bot_token" mapstructure:"control_bot_token"`
 		// Child bridge: registry row id (bridges.id), for owner-facing messages.

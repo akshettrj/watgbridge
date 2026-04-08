@@ -241,8 +241,8 @@ func main() {
 			zap.Error(err),
 		)
 	}
-	// Multi-mode bridge child: BridgeProvisionSet must update the registry SQLite (same rows the parent
-	// reads in writeBridgeConfig), not only the per-bridge DB opened above.
+	// Multi-mode bridge child: BridgeProvisionSet must use the registry SQLite (same DB as the parent),
+	// not only the per-bridge DB opened above. Single-mode uses bridge_provision_states on the local DB.
 	if cfg.Mode == "single" && cfg.Telegram.BridgeRegistryID != 0 {
 		if regPath := os.Getenv("WATG_REGISTRY_SQLITE_PATH"); regPath != "" {
 			abs, err := filepath.Abs(regPath)

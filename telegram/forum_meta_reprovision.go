@@ -48,9 +48,6 @@ func handleForumMetaThreadSendFailure(chatID, threadID int64, sendErr error) {
 	}
 	forumMetaReprovisionMu.Lock()
 	defer forumMetaReprovisionMu.Unlock()
-	if err := cfg.SaveConfig(); err != nil {
-		state.State.Logger.Warn("forum meta: save after clearing stale meta thread id", zap.Error(err))
-	}
 	if err := EnsureForumMetaTopicsProvisioned(); err != nil {
 		state.State.Logger.Warn("forum meta: reprovision after send failure", zap.Error(err))
 	}
