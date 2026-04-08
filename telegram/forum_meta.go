@@ -40,9 +40,9 @@ type forumMetaSpec struct {
 // topics reuse correctly.
 var standardForumMetaSpecs = []forumMetaSpec{
 	{"General", "general purposes"},
-	{"Bot's meta", "bot's meta information"},
-	{"Calls", "displaying calls"},
-	{"Status", "showing status broadcasts"},
+	{"💻 Bot's meta", "bot's meta information"},
+	{"🔮 Calls", "displaying calls"},
+	{"📱 Status", "showing status broadcasts"},
 }
 
 // ForumMetaHints carries optional thread ids from config or bridge_provision_states (0 = unknown).
