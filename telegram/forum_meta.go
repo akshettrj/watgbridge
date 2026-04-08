@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"watgbridge/bridge"
 	"watgbridge/database"
@@ -43,6 +44,103 @@ type ForumMetaHints struct {
 	BotMetaThreadID int64
 	CallsThreadID   int64
 	StatusThreadID  int64
+}
+
+func isEmojiSequenceRune(r rune) bool {
+	switch r {
+	case 0x200D, 0xFE0F:
+		return true
+	}
+	if r >= 0x1F000 && r <= 0x1FAFF {
+		return true
+	}
+	if r >= 0x2600 && r <= 0x27BF {
+		return true
+	}
+	if r >= 0x231A && r <= 0x23FF {
+		return true
+	}
+	if r >= 0x2B50 && r <= 0x2B55 {
+		return true
+	}
+	if r >= 0x1F600 && r <= 0x1F64F {
+		return true
+	}
+	if r >= 0x1F1E6 && r <= 0x1F1FF {
+		return true
+	}
+	return false
+}
+
+func stripLeadingEmojiCluster(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return s
+	}
+	i := 0
+	for i < len(s) {
+		r, w := utf8.DecodeRuneInString(s[i:])
+		if w == 0 {
+			break
+		}
+		if isEmojiSequenceRune(r) {
+			i += w
+			continue
+		}
+		break
+	}
+	if i == 0 {
+		return s
+	}
+	return strings.TrimSpace(s[i:])
+}
+
+// normalizeForumMetaTopicTitleKey compares getForumTopic names to our canonical spec titles.
+func normalizeForumMetaTopicTitleKey(title string) string {
+	s := strings.TrimSpace(title)
+	s = strings.ReplaceAll(s, "\u2019", "'")
+	s = strings.ReplaceAll(s, "\u2018", "'")
+	for {
+		before := s
+		s = strings.TrimSpace(s)
+		s = strings.TrimPrefix(s, "#")
+		s = strings.TrimSpace(s)
+		if len(s) >= 3 && s[1] == ' ' && s[0] >= 'A' && s[0] <= 'Z' {
+			s = strings.TrimSpace(s[2:])
+			continue
+		}
+		next := stripLeadingEmojiCluster(s)
+		if next != s {
+			s = next
+			continue
+		}
+		if s == before {
+			break
+		}
+	}
+	return utils.TruncateTelegramForumTopicName(strings.TrimSpace(s))
+}
+
+// forumMetaPersistedTopicPresent is true when getForumTopic succeeds for this id and the title matches
+// our spec (after normalization). If the user deleted the topic, getForumTopic fails → false → we recreate.
+// This is a single id lookup, not a scan of all forum topics.
+func forumMetaPersistedTopicPresent(bot *gotgbot.Bot, chatID, threadID int64, spec forumMetaSpec) (bool, error) {
+	if threadID == 0 {
+		return false, nil
+	}
+	name, ok, err := utils.TgFetchForumTopicName(bot, chatID, threadID)
+	if err != nil {
+		if utils.TgErrForumTopicOrThreadInvalid(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	if !ok {
+		return false, nil
+	}
+	want := normalizeForumMetaTopicTitleKey(spec.title)
+	got := normalizeForumMetaTopicTitleKey(name)
+	return got == want, nil
 }
 
 var forumMetaIconStickersMu sync.Mutex
@@ -130,13 +228,26 @@ func ApplyForumMetaThreadIDsFromProvisionDB(cfg *state.Config) {
 
 func resolveGeneralThreadID(bot *gotgbot.Bot, chatID int64, hint int64) (int64, error) {
 	if hint != 0 {
-		ok, err := forumMetaProbeTopicAlive(bot, chatID, hint, standardForumMetaSpecs[0].title)
+		present, err := forumMetaPersistedTopicPresent(bot, chatID, hint, standardForumMetaSpecs[0])
 		if err != nil {
 			return 0, err
 		}
-		if ok {
-			return hint, nil
+		if present {
+			ok, err := forumMetaProbeTopicAlive(bot, chatID, hint, standardForumMetaSpecs[0].title)
+			if err != nil {
+				return 0, err
+			}
+			if ok {
+				return hint, nil
+			}
 		}
+	}
+	present, err := forumMetaPersistedTopicPresent(bot, chatID, telegramGeneralTopicThreadID, standardForumMetaSpecs[0])
+	if err != nil {
+		return 0, err
+	}
+	if !present {
+		return 0, nil
 	}
 	ok, err := forumMetaProbeTopicAlive(bot, chatID, telegramGeneralTopicThreadID, standardForumMetaSpecs[0].title)
 	if err != nil {
@@ -165,13 +276,19 @@ func createForumMetaTopic(bot *gotgbot.Bot, chatID int64, spec forumMetaSpec) (i
 
 func provisionMetaSlot(bot *gotgbot.Bot, chatID int64, spec forumMetaSpec, threadID int64) (int64, error) {
 	if threadID != 0 {
-		ok, err := forumMetaProbeTopicAlive(bot, chatID, threadID, spec.title)
+		present, err := forumMetaPersistedTopicPresent(bot, chatID, threadID, spec)
 		if err != nil {
 			return 0, err
 		}
-		if ok {
-			applyForumMetaTopicIcon(bot, chatID, threadID, spec)
-			return threadID, nil
+		if present {
+			ok, err := forumMetaProbeTopicAlive(bot, chatID, threadID, spec.title)
+			if err != nil {
+				return 0, err
+			}
+			if ok {
+				applyForumMetaTopicIcon(bot, chatID, threadID, spec)
+				return threadID, nil
+			}
 		}
 	}
 	tid, err := createForumMetaTopic(bot, chatID, spec)
@@ -183,7 +300,8 @@ func provisionMetaSlot(bot *gotgbot.Bot, chatID int64, spec forumMetaSpec, threa
 }
 
 // CreateStandardForumMetaTopics resolves General (probe only; never creates), then for Bot's meta,
-// Calls, Status: probe saved thread id with sendMessage; if missing, create topic and apply icon.
+// Calls, Status: getForumTopic on saved id (detects manual delete), then sendMessage probe; if either
+// fails, create topic and apply icon.
 func CreateStandardForumMetaTopics(bot *gotgbot.Bot, chatID int64, hints ForumMetaHints) (general, botMeta, calls, status int64, err error) {
 	g, err := resolveGeneralThreadID(bot, chatID, hints.GeneralThreadID)
 	if err != nil {
