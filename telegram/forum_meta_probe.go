@@ -53,14 +53,15 @@ func forumMetaProbeMessageText(topicDisplayName string) string {
 }
 
 // forumMetaProbeTopicAlive sends a probe message to the forum thread. On success it deletes the message
-// immediately (after briefly registering for reply-ignore). Returns (true, nil) if the topic exists;
-// (false, nil) if Telegram reports the thread/topic invalid; (_, err) on hard errors after retries.
+// immediately (after briefly registering for reply-ignore). Returns (true, nil) if send succeeded;
+// (false, nil) if the topic should be recreated (invalid thread, or any non-retryable SendMessage error);
+// (false, err) only after retries exhausted on retryable (network/rate limit) failures.
 func forumMetaProbeTopicAlive(bot *gotgbot.Bot, chatID, threadID int64, topicDisplayName string) (bool, error) {
 	if threadID == 0 {
 		return false, nil
 	}
 	text := forumMetaProbeMessageText(topicDisplayName)
-	var lastErr error
+	var lastRetryable error
 	for attempt := 0; attempt < forumMetaProbeMaxAttempts; attempt++ {
 		if attempt > 0 {
 			shift := attempt - 1
@@ -86,14 +87,24 @@ func forumMetaProbeTopicAlive(bot *gotgbot.Bot, chatID, threadID int64, topicDis
 			}
 			return true, nil
 		}
-		lastErr = err
 		if utils.TgErrForumTopicOrThreadInvalid(err) {
 			return false, nil
 		}
-		state.State.Logger.Debug("forum meta: probe sendMessage retry",
-			zap.Int("attempt", attempt+1),
+		if utils.TgErrForumMetaProbeRetryable(err) {
+			lastRetryable = err
+			state.State.Logger.Debug("forum meta: probe sendMessage retry (retryable)",
+				zap.Int("attempt", attempt+1),
+				zap.Int64("thread_id", threadID),
+				zap.Error(err))
+			continue
+		}
+		state.State.Logger.Debug("forum meta: probe sendMessage failed; treating topic as stale (recreate)",
 			zap.Int64("thread_id", threadID),
 			zap.Error(err))
+		return false, nil
 	}
-	return false, fmt.Errorf("probe sendMessage after %d attempts: %w", forumMetaProbeMaxAttempts, lastErr)
+	if lastRetryable != nil {
+		return false, fmt.Errorf("probe sendMessage after %d attempts: %w", forumMetaProbeMaxAttempts, lastRetryable)
+	}
+	return false, fmt.Errorf("probe sendMessage after %d attempts", forumMetaProbeMaxAttempts)
 }

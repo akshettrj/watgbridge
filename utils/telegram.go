@@ -223,6 +223,40 @@ func TgErrForumTopicOrThreadInvalid(err error) bool {
 		(strings.Contains(d, "NOT FOUND") && (strings.Contains(d, "TOPIC") || strings.Contains(d, "THREAD")))
 }
 
+// TgErrForumMetaProbeRetryable is true for transient failures where retrying SendMessage may succeed
+// (rate limits, Telegram 5xx, timeouts). If false, forum meta probe may treat the error as a dead topic.
+func TgErrForumMetaProbeRetryable(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	var te *gotgbot.TelegramError
+	if errors.As(err, &te) {
+		if te.Code == 429 {
+			return true
+		}
+		if te.Code >= 500 {
+			return true
+		}
+		d := strings.ToUpper(te.Description)
+		if strings.Contains(d, "TOO MANY REQUESTS") || strings.Contains(d, "RETRY AFTER") {
+			return true
+		}
+	}
+	msg := strings.ToLower(err.Error())
+	if strings.Contains(msg, "timeout") ||
+		strings.Contains(msg, "connection reset") ||
+		strings.Contains(msg, "connection refused") ||
+		strings.Contains(msg, "broken pipe") ||
+		strings.Contains(msg, "tls handshake") ||
+		strings.Contains(msg, "eof") {
+		return true
+	}
+	return false
+}
+
 // TgErrMessageThreadMissing is true for sendMessage failures when the target forum thread no longer exists.
 func TgErrMessageThreadMissing(err error) bool {
 	return TgErrForumTopicOrThreadInvalid(err)
