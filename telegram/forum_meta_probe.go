@@ -13,7 +13,6 @@ import (
 )
 
 const (
-	forumMetaProbeDeleteAfter = 5 * time.Minute
 	forumMetaProbeMaxAttempts = 6
 	forumMetaProbeRetryBase   = 250 * time.Millisecond
 )
@@ -50,11 +49,11 @@ func IsForumMetaProbeReply(msg *gotgbot.Message) bool {
 func forumMetaProbeMessageText(topicDisplayName string) string {
 	return "DO NOT REPLY TO THIS!\n\n" +
 		"Checking " + topicDisplayName + " existence...\n\n" +
-		"This is a service message and it will be deleted in few minutes."
+		"This is a service message; it will be deleted immediately."
 }
 
-// forumMetaProbeTopicAlive sends a probe message to the forum thread. On success it registers the
-// message for reply-ignore and schedules deletion. Returns (true, nil) if the topic exists;
+// forumMetaProbeTopicAlive sends a probe message to the forum thread. On success it deletes the message
+// immediately (after briefly registering for reply-ignore). Returns (true, nil) if the topic exists;
 // (false, nil) if Telegram reports the thread/topic invalid; (_, err) on hard errors after retries.
 func forumMetaProbeTopicAlive(bot *gotgbot.Bot, chatID, threadID int64, topicDisplayName string) (bool, error) {
 	if threadID == 0 {
@@ -77,7 +76,14 @@ func forumMetaProbeTopicAlive(bot *gotgbot.Bot, chatID, threadID int64, topicDis
 		if err == nil {
 			mid := sent.MessageId
 			RegisterForumMetaProbeMessage(chatID, mid)
-			go forumMetaScheduleProbeMessageDelete(bot, chatID, mid)
+			_, delErr := bot.DeleteMessage(chatID, mid, nil)
+			unregisterForumMetaProbeMessage(chatID, mid)
+			if delErr != nil {
+				state.State.Logger.Debug("forum meta: instant delete probe message",
+					zap.Int64("chat_id", chatID),
+					zap.Int64("message_id", mid),
+					zap.Error(delErr))
+			}
 			return true, nil
 		}
 		lastErr = err
@@ -92,33 +98,45 @@ func forumMetaProbeTopicAlive(bot *gotgbot.Bot, chatID, threadID int64, topicDis
 	return false, fmt.Errorf("probe sendMessage after %d attempts: %w", forumMetaProbeMaxAttempts, lastErr)
 }
 
-func forumMetaScheduleProbeMessageDelete(bot *gotgbot.Bot, chatID, messageID int64) {
-	time.Sleep(forumMetaProbeDeleteAfter)
-	unregisterForumMetaProbeMessage(chatID, messageID)
-	_, err := bot.DeleteMessage(chatID, messageID, nil)
-	if err != nil {
-		state.State.Logger.Debug("forum meta: delete probe message",
-			zap.Int64("chat_id", chatID),
-			zap.Int64("message_id", messageID),
-			zap.Error(err))
-	}
-}
-
-// forumMetaProbeThreeMeta runs probes for bot meta / calls / status. Each bool is true iff the probe succeeded.
+// forumMetaProbeThreeMeta runs probes for bot meta / calls / status in parallel.
 func forumMetaProbeThreeMeta(bot *gotgbot.Bot, chatID, botMetaTid, callsTid, statusTid int64) (botMetaOK, callsOK, statusOK bool, err error) {
 	specs := standardForumMetaSpecs
-	var e error
-	botMetaOK, e = forumMetaProbeTopicAlive(bot, chatID, botMetaTid, specs[1].title)
-	if e != nil {
-		return false, false, false, e
+	var out [3]bool
+	var firstErr error
+	var errMu sync.Mutex
+	var wg sync.WaitGroup
+	setErr := func(e error) {
+		if e == nil {
+			return
+		}
+		errMu.Lock()
+		defer errMu.Unlock()
+		if firstErr == nil {
+			firstErr = e
+		}
 	}
-	callsOK, e = forumMetaProbeTopicAlive(bot, chatID, callsTid, specs[2].title)
-	if e != nil {
-		return false, false, false, e
+	wg.Add(3)
+	go func() {
+		defer wg.Done()
+		ok, e := forumMetaProbeTopicAlive(bot, chatID, botMetaTid, specs[1].title)
+		out[0] = ok
+		setErr(e)
+	}()
+	go func() {
+		defer wg.Done()
+		ok, e := forumMetaProbeTopicAlive(bot, chatID, callsTid, specs[2].title)
+		out[1] = ok
+		setErr(e)
+	}()
+	go func() {
+		defer wg.Done()
+		ok, e := forumMetaProbeTopicAlive(bot, chatID, statusTid, specs[3].title)
+		out[2] = ok
+		setErr(e)
+	}()
+	wg.Wait()
+	if firstErr != nil {
+		return false, false, false, firstErr
 	}
-	statusOK, e = forumMetaProbeTopicAlive(bot, chatID, statusTid, specs[3].title)
-	if e != nil {
-		return false, false, false, e
-	}
-	return botMetaOK, callsOK, statusOK, nil
+	return out[0], out[1], out[2], nil
 }

@@ -300,6 +300,9 @@ func TgTopicMetadataEnsurePostedForChat(tgChatId, tgThreadId int64, waKey string
 	})
 	if err != nil || sent == nil {
 		logger.Warn("topic metadata send", zap.Error(err))
+		if err != nil {
+			TgNotifyForumMetaSendFailure(tgChatId, tgThreadId, err)
+		}
 		return
 	}
 	if pinErr := TgPinChatMessageInThread(b, tgChatId, sent.MessageId, tgThreadId, true); pinErr != nil {
@@ -549,9 +552,26 @@ func TgReplyHTMLByContext(b *gotgbot.Bot, c *ext.Context, text string, buttons *
 	return b.SendMessage(c.EffectiveChat.Id, text, sendOpts)
 }
 
+// ForumMetaOnThreadSendFailure is set by the telegram package to reprovision stale meta forum topics.
+var ForumMetaOnThreadSendFailure func(chatID, threadID int64, err error)
+
+// TgNotifyForumMetaSendFailure invokes meta-topic reprovision when a send fails with a dead forum thread.
+func TgNotifyForumMetaSendFailure(chatID, threadID int64, err error) {
+	if err == nil || threadID == 0 || ForumMetaOnThreadSendFailure == nil {
+		return
+	}
+	if !TgErrForumTopicOrThreadInvalid(err) {
+		return
+	}
+	ForumMetaOnThreadSendFailure(chatID, threadID, err)
+}
+
 func TgSendTextById(b *gotgbot.Bot, chatId int64, threadId int64, text string) error {
 	_, err := b.SendMessage(chatId, text, &gotgbot.SendMessageOpts{
 		MessageThreadId: threadId})
+	if err != nil {
+		TgNotifyForumMetaSendFailure(chatId, threadId, err)
+	}
 	return err
 }
 
@@ -610,6 +630,9 @@ func TgSendErrorById(b *gotgbot.Bot, chatId, threadId int64, eMessage string, e 
 			MessageThreadId: threadId,
 		},
 	)
+	if err != nil {
+		TgNotifyForumMetaSendFailure(chatId, threadId, err)
+	}
 	return err
 }
 

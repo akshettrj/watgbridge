@@ -548,6 +548,7 @@ func EnsureForumMetaTopicsProvisioned() error {
 				zap.Int64("calls_thread_id", t.CallsThreadID),
 				zap.Int64("status_thread_id", t.StatusThreadID),
 			)
+			SeedMappedForumTopicsFromConfig(cfg)
 			return nil
 		}
 		state.State.Logger.Warn("forum meta: probe failed for some topics; reprovisioning",
@@ -600,5 +601,6 @@ func EnsureForumMetaTopicsProvisioned() error {
 		)
 	}
 	syncForumMetaRegistryState(cfg)
+	SeedMappedForumTopicsFromConfig(cfg)
 	return nil
 }
