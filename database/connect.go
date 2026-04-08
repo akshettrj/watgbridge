@@ -110,7 +110,8 @@ func Connect() (*gorm.DB, error) {
 //
 // Key resolution: WATG_REGISTRY_SQLCIPHER_KEY_HEX (64 hex, same derivation as main) first — set by
 // the multi-mode parent when spawning children so they need not have WATG_SQLITE_MASTER_KEY; else
-// WATG_SQLITE_MASTER_KEY + derive watgbridge-v1/registry.
+// WATG_SQLITE_MASTER_KEY + derive watgbridge-v1/registry. If neither is set, fallback to plain
+// SQLite (non-SQLCipher registry deployments).
 func OpenRegistrySQLiteForProvision(absPath string) (*gorm.DB, error) {
 	gormConfig := gorm.Config{
 		Logger: gormlogger.Default.LogMode(gormlogger.Silent),
@@ -129,8 +130,8 @@ func OpenRegistrySQLiteForProvision(absPath string) (*gorm.DB, error) {
 			return nil, err
 		}
 		if !hasMaster {
-			_ = sqlDB.Close()
-			return nil, fmt.Errorf("set %s or WATG_SQLITE_MASTER_KEY for registry SQLCipher", sqlitekey.EnvRegistryDerived)
+			// Registry DB is plain SQLite in some deployments; allow opening without SQLCipher key.
+			return gorm.Open(gormsqlcipher.New(gormsqlcipher.Config{Conn: sqlDB}), &gormConfig)
 		}
 		k, err = sqlitekey.DeriveKeyHex(master, "watgbridge-v1/registry")
 		if err != nil {
