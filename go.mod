@@ -10,6 +10,7 @@ require (
 	github.com/jackc/pgx/v5 v5.8.0
 	github.com/lithammer/fuzzysearch v1.1.8
 	github.com/mutecomm/go-sqlcipher/v4 v4.4.2
+	github.com/nyaruka/phonenumbers v1.7.1
 	github.com/redis/go-redis/v9 v9.7.0
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/spf13/pflag v1.0.10
@@ -48,7 +49,6 @@ require (
 	github.com/kettek/apng v0.0.0-20250827064933-2bb5f5fcf253 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
-	github.com/nyaruka/phonenumbers v1.7.1 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
 	github.com/petermattis/goid v0.0.0-20260113132338-7c7de50cc741 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect

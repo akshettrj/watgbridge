@@ -110,34 +110,42 @@ func Connect() (*gorm.DB, error) {
 //
 // Key resolution: WATG_REGISTRY_SQLCIPHER_KEY_HEX (64 hex, same derivation as main) first — set by
 // the multi-mode parent when spawning children so they need not have WATG_SQLITE_MASTER_KEY; else
-// WATG_SQLITE_MASTER_KEY + derive watgbridge-v1/registry. If neither is set, fallback to plain
-// SQLite (non-SQLCipher registry deployments).
+// WATG_SQLITE_MASTER_KEY + derive watgbridge-v1/registry. If neither is set, open the file without
+// PRAGMA key (plain SQLite). We cannot link a second SQLite (e.g. modernc) alongside go-sqlcipher;
+// the sqlcipher build still opens normal SQLite files when no key is set.
 func OpenRegistrySQLiteForProvision(absPath string) (*gorm.DB, error) {
 	gormConfig := gorm.Config{
 		Logger: gormlogger.Default.LogMode(gormlogger.Silent),
 	}
-	sqlDB, err := sql.Open("sqlite3", absPath)
+	if regHex := strings.TrimSpace(os.Getenv(sqlitekey.EnvRegistryDerived)); regHex != "" {
+		sqlDB, err := sql.Open("sqlite3", absPath)
+		if err != nil {
+			return nil, err
+		}
+		if err := sqlitekey.ApplyToDB(sqlDB, regHex); err != nil {
+			_ = sqlDB.Close()
+			return nil, fmt.Errorf("sqlcipher registry: %w", err)
+		}
+		return gorm.Open(gormsqlcipher.New(gormsqlcipher.Config{Conn: sqlDB}), &gormConfig)
+	}
+	master, hasMaster, err := sqlitekey.MasterKeyBytesFromEnv()
 	if err != nil {
 		return nil, err
 	}
-	var k string
-	if regHex := strings.TrimSpace(os.Getenv(sqlitekey.EnvRegistryDerived)); regHex != "" {
-		k = regHex
-	} else {
-		master, hasMaster, err := sqlitekey.MasterKeyBytesFromEnv()
+	if !hasMaster {
+		sqlDB, err := sql.Open("sqlite3", absPath)
 		if err != nil {
-			_ = sqlDB.Close()
 			return nil, err
 		}
-		if !hasMaster {
-			// Registry DB is plain SQLite in some deployments; allow opening without SQLCipher key.
-			return gorm.Open(gormsqlcipher.New(gormsqlcipher.Config{Conn: sqlDB}), &gormConfig)
-		}
-		k, err = sqlitekey.DeriveKeyHex(master, "watgbridge-v1/registry")
-		if err != nil {
-			_ = sqlDB.Close()
-			return nil, err
-		}
+		return gorm.Open(gormsqlcipher.New(gormsqlcipher.Config{Conn: sqlDB}), &gormConfig)
+	}
+	k, err := sqlitekey.DeriveKeyHex(master, "watgbridge-v1/registry")
+	if err != nil {
+		return nil, err
+	}
+	sqlDB, err := sql.Open("sqlite3", absPath)
+	if err != nil {
+		return nil, err
 	}
 	if err := sqlitekey.ApplyToDB(sqlDB, k); err != nil {
 		_ = sqlDB.Close()
