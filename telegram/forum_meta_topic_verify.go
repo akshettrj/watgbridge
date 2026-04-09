@@ -124,10 +124,10 @@ func forumMetaFetchTopicName(bot *gotgbot.Bot, chatID, threadID int64) (string, 
 				zap.Error(err))
 			continue
 		}
-		state.State.Logger.Debug("forum meta: getForumTopic failed; treating topic as missing",
+		state.State.Logger.Warn("forum meta: getForumTopic failed; refusing fail-open missing-topic assumption",
 			zap.Int64("thread_id", threadID),
 			zap.Error(err))
-		return "", false, nil
+		return "", false, fmt.Errorf("getForumTopic non-retryable failure: %w", err)
 	}
 	if lastRetryable != nil {
 		return "", false, fmt.Errorf("getForumTopic after %d attempts: %w", forumMetaProbeMaxAttempts, lastRetryable)

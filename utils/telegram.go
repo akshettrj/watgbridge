@@ -427,7 +427,22 @@ func TgFetchForumTopicName(b *gotgbot.Bot, chatId, messageThreadId int64) (name 
 	if err := json.Unmarshal(r, &topic); err != nil {
 		return "", false, err
 	}
-	return topic.Name, topic.Name != "", nil
+	if strings.TrimSpace(topic.Name) != "" {
+		return topic.Name, true, nil
+	}
+	// Some Bot API proxies may return wrapped payloads; accept {"result": {"name": ...}} too.
+	var wrapped struct {
+		Result struct {
+			Name string `json:"name"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(r, &wrapped); err != nil {
+		return "", false, err
+	}
+	if strings.TrimSpace(wrapped.Result.Name) != "" {
+		return wrapped.Result.Name, true, nil
+	}
+	return "", false, fmt.Errorf("getForumTopic returned no topic name")
 }
 
 // TgApplyForumTopicSyncFromWA is used by /synccontactname and /synctopicnames.
