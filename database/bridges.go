@@ -16,6 +16,32 @@ import (
 
 var ErrBridgeTargetChatAlreadyBound = errors.New("target forum already has a bridge")
 
+const (
+	bridgeProvisionDBRetryAttempts = 8
+	bridgeProvisionDBRetryBase     = 75 * time.Millisecond
+)
+
+func bridgeProvisionSQLiteBusy(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(strings.TrimSpace(err.Error()))
+	return strings.Contains(msg, "database is locked") ||
+		strings.Contains(msg, "database table is locked") ||
+		strings.Contains(msg, "database is busy")
+}
+
+func bridgeProvisionRetryDelay(attempt int) {
+	if attempt <= 0 {
+		return
+	}
+	shift := attempt - 1
+	if shift > 5 {
+		shift = 5
+	}
+	time.Sleep(bridgeProvisionDBRetryBase * time.Duration(1<<shift))
+}
+
 func HashBridgeToken(token string) string {
 	sum := sha256.Sum256([]byte(strings.TrimSpace(token)))
 	return hex.EncodeToString(sum[:])
@@ -144,15 +170,38 @@ func BridgeDelete(ownerUserID int64, bridgeID uint) error {
 
 func BridgeProvisionGet(bridgeID uint) (*BridgeProvisionState, error) {
 	db := provisionStateDBOrDefault()
-	var p BridgeProvisionState
-	res := db.Where("bridge_id = ?", bridgeID).First(&p)
-	if res.Error != nil {
-		return nil, res.Error
+	var lastErr error
+	for attempt := 0; attempt < bridgeProvisionDBRetryAttempts; attempt++ {
+		bridgeProvisionRetryDelay(attempt)
+		var p BridgeProvisionState
+		res := db.Where("bridge_id = ?", bridgeID).First(&p)
+		if res.Error == nil {
+			return &p, nil
+		}
+		if !bridgeProvisionSQLiteBusy(res.Error) {
+			return nil, res.Error
+		}
+		lastErr = res.Error
 	}
-	return &p, nil
+	return nil, lastErr
 }
 
 func BridgeProvisionSet(bridgeID uint, general, botMeta, calls, statusThread int64, lastCheckStatus, lastErr string) error {
+	var err error
+	for attempt := 0; attempt < bridgeProvisionDBRetryAttempts; attempt++ {
+		bridgeProvisionRetryDelay(attempt)
+		err = bridgeProvisionSetOnce(bridgeID, general, botMeta, calls, statusThread, lastCheckStatus, lastErr)
+		if err == nil {
+			return nil
+		}
+		if !bridgeProvisionSQLiteBusy(err) {
+			return err
+		}
+	}
+	return err
+}
+
+func bridgeProvisionSetOnce(bridgeID uint, general, botMeta, calls, statusThread int64, lastCheckStatus, lastErr string) error {
 	db := provisionStateDBOrDefault()
 	lastCheckStatus = strings.TrimSpace(lastCheckStatus)
 	if lastCheckStatus == "" {

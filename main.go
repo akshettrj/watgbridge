@@ -300,8 +300,6 @@ func main() {
 	}
 	_ = logger.Sync()
 
-	telegram.ApplyForumMetaThreadIDsFromProvisionDB(cfg)
-
 	if err := telegram.EnsureForumMetaTopicsProvisioned(); err != nil {
 		logger.Fatal("forum meta topics",
 			zap.Error(err),

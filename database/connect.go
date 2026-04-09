@@ -17,6 +17,15 @@ import (
 	gormlogger "gorm.io/gorm/logger"
 )
 
+func applySQLiteBusyTimeout(sqlDB *sql.DB) {
+	if sqlDB == nil {
+		return
+	}
+	// Registry DB is shared by multiple bridge child processes. Busy timeout avoids transient
+	// "database is locked" failures during concurrent bridge_provision_states updates.
+	_, _ = sqlDB.Exec("PRAGMA busy_timeout = 5000")
+}
+
 func hasKeys(p_map *map[string]string, keys ...string) (missingKeys []string) {
 	m := *p_map
 	for _, key := range keys {
@@ -74,6 +83,7 @@ func Connect() (*gorm.DB, error) {
 		if err != nil {
 			return nil, err
 		}
+		applySQLiteBusyTimeout(sqlDB)
 		if hexKey, ok := sqlitekey.DerivedHexFromEnv(); ok {
 			if err := sqlitekey.ApplyToDB(sqlDB, hexKey); err != nil {
 				_ = sqlDB.Close()
@@ -122,6 +132,7 @@ func OpenRegistrySQLiteForProvision(absPath string) (*gorm.DB, error) {
 		if err != nil {
 			return nil, err
 		}
+		applySQLiteBusyTimeout(sqlDB)
 		if err := sqlitekey.ApplyToDB(sqlDB, regHex); err != nil {
 			_ = sqlDB.Close()
 			return nil, fmt.Errorf("sqlcipher registry: %w", err)
@@ -137,6 +148,7 @@ func OpenRegistrySQLiteForProvision(absPath string) (*gorm.DB, error) {
 		if err != nil {
 			return nil, err
 		}
+		applySQLiteBusyTimeout(sqlDB)
 		return gorm.Open(gormsqlcipher.New(gormsqlcipher.Config{Conn: sqlDB}), &gormConfig)
 	}
 	k, err := sqlitekey.DeriveKeyHex(master, "watgbridge-v1/registry")
@@ -147,6 +159,7 @@ func OpenRegistrySQLiteForProvision(absPath string) (*gorm.DB, error) {
 	if err != nil {
 		return nil, err
 	}
+	applySQLiteBusyTimeout(sqlDB)
 	if err := sqlitekey.ApplyToDB(sqlDB, k); err != nil {
 		_ = sqlDB.Close()
 		return nil, fmt.Errorf("sqlcipher registry: %w", err)

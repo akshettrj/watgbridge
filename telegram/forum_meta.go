@@ -1,6 +1,7 @@
 package telegram
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/PaulSonOfLars/gotgbot/v2"
 	"go.uber.org/zap"
+	"gorm.io/gorm"
 )
 
 // telegramGeneralTopicThreadID is Telegram's default forum "General" thread id. We reserve it so
@@ -149,11 +151,20 @@ func reconcileForumMetaTopicStyle(bot *gotgbot.Bot, chatID, threadID int64, spec
 // ApplyForumMetaThreadIDsFromProvisionDB loads telegram thread ids from bridge_provision_states
 // (registry bridge_id when BridgeRegistryID is set, else singleModeForumMetaBridgeID on the local DB).
 // Call after DB connect and before EnsureForumMetaTopicsProvisioned.
-func ApplyForumMetaThreadIDsFromProvisionDB(cfg *state.Config) {
+func ApplyForumMetaThreadIDsFromProvisionDB(cfg *state.Config) error {
 	t := &cfg.Telegram
-	p, err := database.BridgeProvisionGet(forumMetaProvisionBridgeID(cfg))
-	if err != nil || p == nil {
-		return
+	bid := forumMetaProvisionBridgeID(cfg)
+	p, err := database.BridgeProvisionGet(bid)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			state.State.Logger.Debug("forum meta: no bridge_provision_states row; using runtime/local hints",
+				zap.Uint("provision_bridge_id", bid))
+			return nil
+		}
+		return err
+	}
+	if p == nil {
+		return nil
 	}
 	t.BotMetaThreadID = 0
 	if p.CallsThreadID != 0 {
@@ -162,6 +173,11 @@ func ApplyForumMetaThreadIDsFromProvisionDB(cfg *state.Config) {
 	if p.StatusThreadID != 0 {
 		t.StatusThreadID = p.StatusThreadID
 	}
+	state.State.Logger.Debug("forum meta: loaded thread ids from bridge_provision_states",
+		zap.Uint("provision_bridge_id", bid),
+		zap.Int64("calls_thread_id", t.CallsThreadID),
+		zap.Int64("status_thread_id", t.StatusThreadID))
+	return nil
 }
 
 // threadHintConflictsWithReserved is true when a persisted thread id is already used by General
@@ -264,7 +280,9 @@ func CreateStandardForumMetaTopics(bot *gotgbot.Bot, chatID int64, hints ForumMe
 	if cfg != nil {
 		cfg.Telegram.BotMetaThreadID = 0
 		cfg.Telegram.CallsThreadID = c
-		syncForumMetaRegistryState(cfg)
+		if err := syncForumMetaRegistryState(cfg); err != nil {
+			return c, 0, err
+		}
 	}
 	reserved = append(reserved, c)
 	s, err := provisionMetaSlot(bot, chatID, specStatus, hints.StatusThreadID, reserved)
@@ -273,12 +291,14 @@ func CreateStandardForumMetaTopics(bot *gotgbot.Bot, chatID int64, hints ForumMe
 	}
 	if cfg != nil {
 		cfg.Telegram.StatusThreadID = s
-		syncForumMetaRegistryState(cfg)
+		if err := syncForumMetaRegistryState(cfg); err != nil {
+			return c, s, err
+		}
 	}
 	return c, s, nil
 }
 
-func syncForumMetaRegistryState(cfg *state.Config) {
+func syncForumMetaRegistryState(cfg *state.Config) error {
 	t := &cfg.Telegram
 	bid := forumMetaProvisionBridgeID(cfg)
 	t.BotMetaThreadID = 0
@@ -291,10 +311,9 @@ func syncForumMetaRegistryState(cfg *state.Config) {
 		"ok",
 		"",
 	); err != nil {
-		state.State.Logger.Warn("forum meta: could not persist thread ids to bridge_provision_states",
-			zap.Uint("provision_bridge_id", bid),
-			zap.Error(err))
+		return fmt.Errorf("persist bridge_provision_states bridge_id=%d: %w", bid, err)
 	}
+	return nil
 }
 
 // EnsureForumMetaTopicsProvisioned loads persisted thread ids from bridge_provision_states when available,
@@ -319,7 +338,9 @@ func EnsureForumMetaTopicsProvisioned() error {
 		return err
 	}
 
-	ApplyForumMetaThreadIDsFromProvisionDB(cfg)
+	if err := ApplyForumMetaThreadIDsFromProvisionDB(cfg); err != nil {
+		return fmt.Errorf("load forum meta thread ids from provision db: %w", err)
+	}
 
 	hints := ForumMetaHints{
 		CallsThreadID:  t.CallsThreadID,
