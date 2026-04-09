@@ -249,11 +249,26 @@ func provisionMetaSlot(bot *gotgbot.Bot, chatID int64, spec forumMetaSpec, threa
 		if threadHintConflictsWithReserved(candidate, reserved) {
 			continue
 		}
-		ok, err := forumMetaTopicMatchesSpec(bot, chatID, candidate, spec)
+		name, exists, err := forumMetaFetchTopicName(bot, chatID, candidate)
 		if err != nil {
 			return 0, err
 		}
-		if !ok {
+		if !exists {
+			continue
+		}
+		if !forumMetaTopicNameMatches(spec, name) {
+			// The persisted provision-state hint is authoritative for this logical slot. If the topic
+			// still exists but name normalization failed (legacy/manual rename/client noise), reuse it
+			// and reconcile to the canonical title/icon instead of creating duplicates.
+			if candidate == threadID && threadID != 0 {
+				state.State.Logger.Warn("forum meta: hinted topic title mismatch; reusing hinted topic and reconciling style",
+					zap.String("slot", spec.slot),
+					zap.Int64("thread_id", candidate),
+					zap.String("remote_name", name),
+					zap.String("expected_title", spec.title))
+				reconcileForumMetaTopicStyle(bot, chatID, candidate, spec)
+				return candidate, nil
+			}
 			continue
 		}
 		reconcileForumMetaTopicStyle(bot, chatID, candidate, spec)
@@ -347,6 +362,9 @@ func EnsureForumMetaTopicsProvisioned() error {
 		StatusThreadID: t.StatusThreadID,
 	}
 	prevC, prevS := t.CallsThreadID, t.StatusThreadID
+	state.State.Logger.Info("forum meta reconcile started",
+		zap.Int64("calls_hint_thread_id", prevC),
+		zap.Int64("status_hint_thread_id", prevS))
 	c, s, err := CreateStandardForumMetaTopics(bot, t.TargetChatID, hints, cfg)
 	if err != nil {
 		return fmt.Errorf("create forum meta topics: %w", err)
