@@ -21,14 +21,31 @@ const telegramGeneralTopicThreadID int64 = 1
 const forumMetaTopicIconColor int64 = 7322096
 
 type forumMetaSpec struct {
+	slot  string
 	title string
 	// iconEmoji is matched against GetForumTopicIconStickers; it is not part of the topic title.
 	iconEmoji string
+	aliases   []string
+	// chatKeys are ChatThreadPair IDs that may already map this logical slot.
+	chatKeys []string
 }
 
 // singleModeForumMetaBridgeID is the bridge_provision_states row used when BridgeRegistryID is 0
 // (single deployment: thread ids live in the local app DB, not the multi-mode registry).
 const singleModeForumMetaBridgeID uint = 1
+
+const (
+	forumMetaSlotGeneral = "general"
+	forumMetaSlotBotMeta = "bot_meta"
+	forumMetaSlotCalls   = "calls"
+	forumMetaSlotStatus  = "status"
+)
+
+const (
+	forumMetaChatKeyBotMeta = "bot_meta"
+	forumMetaChatKeyCalls   = "calls"
+	forumMetaChatKeyStatus  = "status@broadcast"
+)
 
 func forumMetaProvisionBridgeID(cfg *state.Config) uint {
 	if cfg.Telegram.BridgeRegistryID != 0 {
@@ -37,12 +54,30 @@ func forumMetaProvisionBridgeID(cfg *state.Config) uint {
 	return singleModeForumMetaBridgeID
 }
 
-// Plain topic titles; icons come from iconEmoji + Telegram forum sticker set.
+// Canonical topic titles are emoji-prefixed. Aliases keep compatibility with old/plain names.
 var standardForumMetaSpecs = []forumMetaSpec{
-	{"General", ""},
-	{"Bot's meta", "💻"},
-	{"Calls", "🔮"},
-	{"Status", "📱"},
+	{slot: forumMetaSlotGeneral, title: "General"},
+	{
+		slot:      forumMetaSlotBotMeta,
+		title:     "💻 Bot's meta",
+		iconEmoji: "💻",
+		aliases:   []string{"Bot's meta", "Bots meta"},
+		chatKeys:  []string{forumMetaChatKeyBotMeta},
+	},
+	{
+		slot:      forumMetaSlotCalls,
+		title:     "🔮 Calls",
+		iconEmoji: "🔮",
+		aliases:   []string{"Calls"},
+		chatKeys:  []string{forumMetaChatKeyCalls},
+	},
+	{
+		slot:      forumMetaSlotStatus,
+		title:     "📱 Status",
+		iconEmoji: "📱",
+		aliases:   []string{"Status"},
+		chatKeys:  []string{forumMetaChatKeyStatus, "status"},
+	},
 }
 
 // ForumMetaHints carries persisted meta topic thread ids (0 = unknown). Prefer loading from
@@ -95,20 +130,20 @@ func pickForumMetaIconCustomEmojiID(bot *gotgbot.Bot, spec forumMetaSpec) string
 	return ""
 }
 
-func applyForumMetaTopicIcon(bot *gotgbot.Bot, chatID, threadID int64, spec forumMetaSpec) {
+func reconcileForumMetaTopicStyle(bot *gotgbot.Bot, chatID, threadID int64, spec forumMetaSpec) {
 	if threadID == 0 {
 		return
 	}
-	id := pickForumMetaIconCustomEmojiID(bot, spec)
-	if id == "" {
-		return
+	name := utils.TruncateTelegramForumTopicName(spec.title)
+	opts := &gotgbot.EditForumTopicOpts{Name: name}
+	if id := pickForumMetaIconCustomEmojiID(bot, spec); id != "" {
+		idCopy := id
+		opts.IconCustomEmojiId = &idCopy
 	}
-	idCopy := id
-	_, err := bot.EditForumTopic(chatID, threadID, &gotgbot.EditForumTopicOpts{
-		IconCustomEmojiId: &idCopy,
-	})
+	_, err := bot.EditForumTopic(chatID, threadID, opts)
 	if err != nil && !utils.TgEditForumTopicUnchanged(err) {
-		state.State.Logger.Debug("forum meta: EditForumTopic custom emoji icon",
+		state.State.Logger.Debug("forum meta: EditForumTopic style reconcile failed",
+			zap.String("slot", spec.slot),
 			zap.String("title", spec.title),
 			zap.Int64("thread_id", threadID),
 			zap.Error(err))
@@ -136,9 +171,8 @@ func ApplyForumMetaThreadIDsFromProvisionDB(cfg *state.Config) {
 }
 
 func resolveGeneralThreadID(bot *gotgbot.Bot, chatID int64, hint int64) (int64, error) {
-	spec := standardForumMetaSpecs[0]
 	if hint != 0 {
-		ok, err := forumMetaTopicMatchesSpec(bot, chatID, hint, spec)
+		ok, err := forumMetaTopicExists(bot, chatID, hint)
 		if err != nil {
 			return 0, err
 		}
@@ -146,7 +180,7 @@ func resolveGeneralThreadID(bot *gotgbot.Bot, chatID int64, hint int64) (int64, 
 			return hint, nil
 		}
 	}
-	ok, err := forumMetaTopicMatchesSpec(bot, chatID, telegramGeneralTopicThreadID, spec)
+	ok, err := forumMetaTopicExists(bot, chatID, telegramGeneralTopicThreadID)
 	if err != nil {
 		return 0, err
 	}
@@ -180,6 +214,40 @@ func threadHintConflictsWithReserved(threadID int64, reserved []int64) bool {
 	return false
 }
 
+func forumMetaSlotCandidates(chatID int64, spec forumMetaSpec, hint int64) []int64 {
+	var out []int64
+	seen := map[int64]struct{}{}
+	add := func(id int64) {
+		if id == 0 {
+			return
+		}
+		if _, ok := seen[id]; ok {
+			return
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	add(hint)
+	for _, key := range spec.chatKeys {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		tid, found, err := database.ChatThreadGetTgFromWa(key, chatID)
+		if err != nil {
+			state.State.Logger.Debug("forum meta: chat mapping candidate lookup failed",
+				zap.String("slot", spec.slot),
+				zap.String("wa_key", key),
+				zap.Error(err))
+			continue
+		}
+		if found {
+			add(tid)
+		}
+	}
+	return out
+}
+
 func createForumMetaTopic(bot *gotgbot.Bot, chatID int64, spec forumMetaSpec) (int64, error) {
 	name := utils.TruncateTelegramForumTopicName(spec.title)
 	opts := &gotgbot.CreateForumTopicOpts{}
@@ -196,24 +264,26 @@ func createForumMetaTopic(bot *gotgbot.Bot, chatID int64, spec forumMetaSpec) (i
 }
 
 func provisionMetaSlot(bot *gotgbot.Bot, chatID int64, spec forumMetaSpec, threadID int64, reserved []int64) (int64, error) {
-	if threadHintConflictsWithReserved(threadID, reserved) {
-		threadID = 0
-	}
-	if threadID != 0 {
-		ok, err := forumMetaTopicMatchesSpec(bot, chatID, threadID, spec)
+	candidates := forumMetaSlotCandidates(chatID, spec, threadID)
+	for _, candidate := range candidates {
+		if threadHintConflictsWithReserved(candidate, reserved) {
+			continue
+		}
+		ok, err := forumMetaTopicMatchesSpec(bot, chatID, candidate, spec)
 		if err != nil {
 			return 0, err
 		}
-		if ok {
-			applyForumMetaTopicIcon(bot, chatID, threadID, spec)
-			return threadID, nil
+		if !ok {
+			continue
 		}
+		reconcileForumMetaTopicStyle(bot, chatID, candidate, spec)
+		return candidate, nil
 	}
 	tid, err := createForumMetaTopic(bot, chatID, spec)
 	if err != nil {
 		return 0, err
 	}
-	applyForumMetaTopicIcon(bot, chatID, tid, spec)
+	reconcileForumMetaTopicStyle(bot, chatID, tid, spec)
 	return tid, nil
 }
 
@@ -232,7 +302,10 @@ func CreateStandardForumMetaTopics(bot *gotgbot.Bot, chatID int64, hints ForumMe
 		syncForumMetaRegistryState(cfg)
 	}
 	reserved := forumMetaReservedGeneralSlots(g)
-	m, err := provisionMetaSlot(bot, chatID, standardForumMetaSpecs[1], hints.BotMetaThreadID, reserved)
+	specBotMeta := standardForumMetaSpecs[1]
+	specCalls := standardForumMetaSpecs[2]
+	specStatus := standardForumMetaSpecs[3]
+	m, err := provisionMetaSlot(bot, chatID, specBotMeta, hints.BotMetaThreadID, reserved)
 	if err != nil {
 		return g, 0, 0, 0, err
 	}
@@ -241,7 +314,7 @@ func CreateStandardForumMetaTopics(bot *gotgbot.Bot, chatID int64, hints ForumMe
 		syncForumMetaRegistryState(cfg)
 	}
 	reserved = append(reserved, m)
-	c, err := provisionMetaSlot(bot, chatID, standardForumMetaSpecs[2], hints.CallsThreadID, reserved)
+	c, err := provisionMetaSlot(bot, chatID, specCalls, hints.CallsThreadID, reserved)
 	if err != nil {
 		return g, m, 0, 0, err
 	}
@@ -250,7 +323,7 @@ func CreateStandardForumMetaTopics(bot *gotgbot.Bot, chatID int64, hints ForumMe
 		syncForumMetaRegistryState(cfg)
 	}
 	reserved = append(reserved, c)
-	s, err := provisionMetaSlot(bot, chatID, standardForumMetaSpecs[3], hints.StatusThreadID, reserved)
+	s, err := provisionMetaSlot(bot, chatID, specStatus, hints.StatusThreadID, reserved)
 	if err != nil {
 		return g, m, c, 0, err
 	}

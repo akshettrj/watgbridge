@@ -6,19 +6,19 @@ import (
 )
 
 // SeedMappedForumTopicsFromConfig wires forum thread ids from runtime config into ChatThreadPair for
-// calls/status. Called after forum meta provisioning and from reprovision.
+// bot_meta/calls/status. Called after forum meta provisioning and from reprovision.
 func SeedMappedForumTopicsFromConfig(cfg *state.Config) {
 	tgChat := cfg.Telegram.TargetChatID
-	if cfg.Telegram.CallsThreadID != 0 && tgChat != 0 {
-		_, found, err := database.ChatThreadGetTgFromWa("calls", tgChat)
-		if err == nil && !found {
-			_ = database.ChatThreadAddNewPair("calls", tgChat, cfg.Telegram.CallsThreadID)
-		}
+	if tgChat == 0 {
+		return
 	}
-	if cfg.Telegram.StatusThreadID != 0 && tgChat != 0 {
-		_, found, err := database.ChatThreadGetTgFromWa("status@broadcast", tgChat)
-		if err == nil && !found {
-			_ = database.ChatThreadAddNewPair("status@broadcast", tgChat, cfg.Telegram.StatusThreadID)
-		}
+	if cfg.Telegram.BotMetaThreadID != 0 {
+		_ = database.ChatThreadAddNewPair(forumMetaChatKeyBotMeta, tgChat, cfg.Telegram.BotMetaThreadID)
+	}
+	if cfg.Telegram.CallsThreadID != 0 {
+		_ = database.ChatThreadAddNewPair(forumMetaChatKeyCalls, tgChat, cfg.Telegram.CallsThreadID)
+	}
+	if cfg.Telegram.StatusThreadID != 0 {
+		_ = database.ChatThreadAddNewPair(forumMetaChatKeyStatus, tgChat, cfg.Telegram.StatusThreadID)
 	}
 }

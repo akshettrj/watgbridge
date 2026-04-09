@@ -144,6 +144,29 @@ func BridgeProvisionGet(bridgeID uint) (*BridgeProvisionState, error) {
 	return &p, nil
 }
 
+// BridgeProvisionFindByTargetChat returns the most recently updated provision row for any bridge
+// bound to the same Telegram target forum chat, optionally excluding one bridge id.
+func BridgeProvisionFindByTargetChat(targetChatID int64, excludeBridgeID uint) (*BridgeProvisionState, error) {
+	db := provisionStateDBOrDefault()
+	var p BridgeProvisionState
+	q := db.Table("bridge_provision_states AS p").
+		Select("p.*").
+		Joins("JOIN bridges AS b ON b.id = p.bridge_id").
+		Where("b.telegram_target_chat = ?", targetChatID).
+		Where("(p.bot_meta_thread_id <> 0 OR p.calls_thread_id <> 0 OR p.status_thread_id <> 0)")
+	if excludeBridgeID != 0 {
+		q = q.Where("p.bridge_id <> ?", excludeBridgeID)
+	}
+	res := q.Order("p.updated_at DESC").Limit(1).Scan(&p)
+	if res.Error != nil {
+		return nil, res.Error
+	}
+	if res.RowsAffected == 0 {
+		return nil, gorm.ErrRecordNotFound
+	}
+	return &p, nil
+}
+
 func BridgeProvisionSet(bridgeID uint, general, botMeta, calls, statusThread int64, lastCheckStatus, lastErr string) error {
 	db := provisionStateDBOrDefault()
 	lastCheckStatus = strings.TrimSpace(lastCheckStatus)
