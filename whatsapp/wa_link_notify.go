@@ -182,8 +182,8 @@ func sendWhatsAppQRPhotoToTelegram(qrPNG []byte) error {
 		Caption:   caption,
 		ParseMode: gotgbot.ParseModeHTML,
 	}
-	if t.GeneralThreadID != 0 {
-		opts.MessageThreadId = t.GeneralThreadID
+	if hub := state.State.ForumHubMessageThreadID; hub != 0 {
+		opts.MessageThreadId = hub
 	}
 	msg, err := bot.SendPhoto(t.TargetChatID, gotgbot.InputFileByReader("qrcode.png", bytes.NewReader(qrPNG)), &opts)
 	if err != nil {
@@ -284,8 +284,8 @@ func postSessionNoticeWithReconnect(bot *gotgbot.Bot, bodyHTML string, logger *z
 		ParseMode:   gotgbot.ParseModeHTML,
 		ReplyMarkup: &kb,
 	}
-	if t.GeneralThreadID != 0 {
-		opts.MessageThreadId = t.GeneralThreadID
+	if hub := state.State.ForumHubMessageThreadID; hub != 0 {
+		opts.MessageThreadId = hub
 	}
 	msg, err := bot.SendMessage(t.TargetChatID, bodyHTML, &opts)
 	if err != nil {
@@ -351,8 +351,8 @@ func sendWhatsAppQRTextToTelegram(text string) error {
 		return fmt.Errorf("telegram.target_chat_id must be set")
 	}
 	opts := gotgbot.SendMessageOpts{}
-	if t.GeneralThreadID != 0 {
-		opts.MessageThreadId = t.GeneralThreadID
+	if hub := state.State.ForumHubMessageThreadID; hub != 0 {
+		opts.MessageThreadId = hub
 	}
 	_, err := bot.SendMessage(t.TargetChatID, text, &opts)
 	return err
@@ -385,8 +385,8 @@ func notifyWhatsAppLinked(cli *whatsmeow.Client, zl *zap.Logger) {
 	phone := waPhoneDisplay(jid)
 
 	linkOpts := gotgbot.SendMessageOpts{}
-	if t.GeneralThreadID != 0 {
-		linkOpts.MessageThreadId = t.GeneralThreadID
+	if hub := state.State.ForumHubMessageThreadID; hub != 0 {
+		linkOpts.MessageThreadId = hub
 	}
 	_, err := bot.SendMessage(t.TargetChatID, "Success linking your WA phone number to this group", &linkOpts)
 	if err != nil {
@@ -425,8 +425,8 @@ func notifyWhatsAppLinked(cli *whatsmeow.Client, zl *zap.Logger) {
 			botNameHTML,
 		)
 		fareOpts := gotgbot.SendMessageOpts{ParseMode: gotgbot.ParseModeHTML}
-		if t.GeneralThreadID != 0 {
-			fareOpts.MessageThreadId = t.GeneralThreadID
+		if hub := state.State.ForumHubMessageThreadID; hub != 0 {
+			fareOpts.MessageThreadId = hub
 		}
 		_, fareErr := control.SendMessage(t.TargetChatID, farewell, &fareOpts)
 		if fareErr != nil {

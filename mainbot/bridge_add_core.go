@@ -7,6 +7,7 @@ import (
 
 	"watgbridge/bridge"
 	"watgbridge/database"
+	"watgbridge/state"
 	"watgbridge/telegram"
 	"watgbridge/utils"
 
@@ -95,7 +96,8 @@ func addBridgeFromCredentials(b *gotgbot.Bot, manager *bridge.Manager, ownerUser
 	if provErr != nil {
 		_ = database.BridgeProvisionSet(record.ID, 0, 0, 0, 0, "provision_error", provErr.Error())
 	} else {
-		_ = database.BridgeProvisionSet(record.ID, general, botMeta, calls, status, "ok", "")
+		state.State.ForumHubMessageThreadID = general
+		_ = database.BridgeProvisionSet(record.ID, 0, botMeta, calls, status, "ok", "")
 	}
 	if err := manager.StartBridge(record); err != nil {
 		return "", fmt.Errorf("start runtime: %w", err)

@@ -43,8 +43,8 @@ func postForumMappingRemovedAlert(bot *gotgbot.Bot, cfg *state.Config, entries [
 		sb.WriteByte('\n')
 	}
 	opts := gotgbot.SendMessageOpts{ParseMode: "HTML"}
-	if cfg.Telegram.GeneralThreadID != 0 {
-		opts.MessageThreadId = cfg.Telegram.GeneralThreadID
+	if hub := state.State.ForumHubMessageThreadID; hub != 0 {
+		opts.MessageThreadId = hub
 	}
 	_, _ = bot.SendMessage(cfg.Telegram.TargetChatID, sb.String(), &opts)
 }

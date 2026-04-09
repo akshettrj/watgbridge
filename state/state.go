@@ -25,6 +25,9 @@ type state struct {
 	TelegramDispatcher *ext.Dispatcher
 	TelegramUpdater    *ext.Updater
 	TelegramCommands   []gotgbot.BotCommand
+	// ForumHubMessageThreadID is the resolved Telegram message_thread_id for the forum "General" hub
+	// topic, set by EnsureForumMetaTopicsProvisioned. Not persisted; 0 = not resolved yet.
+	ForumHubMessageThreadID int64
 
 	WhatsAppClient *whatsmeow.Client
 	RedisClient    *redis.Client

@@ -43,8 +43,7 @@ type Config struct {
 		Reactions           bool    `yaml:"reactions" mapstructure:"reactions"`
 		// ISO 3166-1 alpha-2 default region for parsing national numbers (no +) in General → /check-style flow; empty = require +country code.
 		CheckPhoneDefaultRegion string `yaml:"check_phone_default_region" mapstructure:"check_phone_default_region"`
-		// Forum hub topics: runtime only — persisted in bridge_provision_states (not YAML).
-		GeneralThreadID int64 `yaml:"-" mapstructure:"-"`
+		// Forum meta thread ids: runtime only — persisted in bridge_provision_states (not YAML).
 		BotMetaThreadID int64 `yaml:"-" mapstructure:"-"`
 		CallsThreadID   int64 `yaml:"-" mapstructure:"-"`
 		StatusThreadID  int64 `yaml:"-" mapstructure:"-"`
