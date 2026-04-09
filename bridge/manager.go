@@ -114,25 +114,19 @@ func (m *Manager) StartEnabled() error {
 	if len(bridges) == 0 {
 		state.State.Logger.Warn("multi mode: no enabled bridges in registry — only the main bot runs; WhatsApp bridging needs at least one enabled bridge row")
 	}
-	var wg sync.WaitGroup
 	for i := range bridges {
 		b := bridges[i]
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			if err := m.StartBridge(&b); err != nil {
-				state.State.Logger.Warn("failed to start enabled bridge",
-					zap.Uint("bridge_id", b.ID),
-					zap.Int64("bridge_owner_telegram_user_id", b.OwnerUserID),
-					zap.Error(err))
-			} else {
-				state.State.Logger.Info("started bridge child process",
-					zap.Uint("bridge_id", b.ID),
-					zap.Int64("bridge_owner_telegram_user_id", b.OwnerUserID))
-			}
-		}()
+		if err := m.StartBridge(&b); err != nil {
+			state.State.Logger.Warn("failed to start enabled bridge",
+				zap.Uint("bridge_id", b.ID),
+				zap.Int64("bridge_owner_telegram_user_id", b.OwnerUserID),
+				zap.Error(err))
+		} else {
+			state.State.Logger.Info("started bridge child process",
+				zap.Uint("bridge_id", b.ID),
+				zap.Int64("bridge_owner_telegram_user_id", b.OwnerUserID))
+		}
 	}
-	wg.Wait()
 	return nil
 }
 

@@ -214,7 +214,39 @@ func threadHintConflictsWithReserved(threadID int64, reserved []int64) bool {
 	return false
 }
 
-func forumMetaSlotCandidates(chatID int64, spec forumMetaSpec, hint int64) []int64 {
+func forumMetaRegistrySlotCandidates(cfg *state.Config, chatID int64, spec forumMetaSpec) []int64 {
+	if cfg == nil || chatID == 0 {
+		return nil
+	}
+	rows, err := database.BridgeProvisionListByTargetChat(chatID)
+	if err != nil {
+		state.State.Logger.Debug("forum meta: sibling provision hints lookup failed",
+			zap.String("slot", spec.slot),
+			zap.Int64("target_chat_id", chatID),
+			zap.Error(err))
+		return nil
+	}
+	out := make([]int64, 0, len(rows))
+	for _, r := range rows {
+		switch spec.slot {
+		case forumMetaSlotBotMeta:
+			if r.BotMetaThreadID != 0 {
+				out = append(out, r.BotMetaThreadID)
+			}
+		case forumMetaSlotCalls:
+			if r.CallsThreadID != 0 {
+				out = append(out, r.CallsThreadID)
+			}
+		case forumMetaSlotStatus:
+			if r.StatusThreadID != 0 {
+				out = append(out, r.StatusThreadID)
+			}
+		}
+	}
+	return out
+}
+
+func forumMetaSlotCandidates(cfg *state.Config, chatID int64, spec forumMetaSpec, hint int64) []int64 {
 	var out []int64
 	seen := map[int64]struct{}{}
 	add := func(id int64) {
@@ -245,6 +277,9 @@ func forumMetaSlotCandidates(chatID int64, spec forumMetaSpec, hint int64) []int
 			add(tid)
 		}
 	}
+	for _, id := range forumMetaRegistrySlotCandidates(cfg, chatID, spec) {
+		add(id)
+	}
 	return out
 }
 
@@ -263,8 +298,8 @@ func createForumMetaTopic(bot *gotgbot.Bot, chatID int64, spec forumMetaSpec) (i
 	return created.MessageThreadId, nil
 }
 
-func provisionMetaSlot(bot *gotgbot.Bot, chatID int64, spec forumMetaSpec, threadID int64, reserved []int64) (int64, error) {
-	candidates := forumMetaSlotCandidates(chatID, spec, threadID)
+func provisionMetaSlot(bot *gotgbot.Bot, cfg *state.Config, chatID int64, spec forumMetaSpec, threadID int64, reserved []int64) (int64, error) {
+	candidates := forumMetaSlotCandidates(cfg, chatID, spec, threadID)
 	for _, candidate := range candidates {
 		if threadHintConflictsWithReserved(candidate, reserved) {
 			continue
@@ -305,7 +340,7 @@ func CreateStandardForumMetaTopics(bot *gotgbot.Bot, chatID int64, hints ForumMe
 	specBotMeta := standardForumMetaSpecs[1]
 	specCalls := standardForumMetaSpecs[2]
 	specStatus := standardForumMetaSpecs[3]
-	m, err := provisionMetaSlot(bot, chatID, specBotMeta, hints.BotMetaThreadID, reserved)
+	m, err := provisionMetaSlot(bot, cfg, chatID, specBotMeta, hints.BotMetaThreadID, reserved)
 	if err != nil {
 		return g, 0, 0, 0, err
 	}
@@ -314,7 +349,7 @@ func CreateStandardForumMetaTopics(bot *gotgbot.Bot, chatID int64, hints ForumMe
 		syncForumMetaRegistryState(cfg)
 	}
 	reserved = append(reserved, m)
-	c, err := provisionMetaSlot(bot, chatID, specCalls, hints.CallsThreadID, reserved)
+	c, err := provisionMetaSlot(bot, cfg, chatID, specCalls, hints.CallsThreadID, reserved)
 	if err != nil {
 		return g, m, 0, 0, err
 	}
@@ -323,7 +358,7 @@ func CreateStandardForumMetaTopics(bot *gotgbot.Bot, chatID int64, hints ForumMe
 		syncForumMetaRegistryState(cfg)
 	}
 	reserved = append(reserved, c)
-	s, err := provisionMetaSlot(bot, chatID, specStatus, hints.StatusThreadID, reserved)
+	s, err := provisionMetaSlot(bot, cfg, chatID, specStatus, hints.StatusThreadID, reserved)
 	if err != nil {
 		return g, m, c, 0, err
 	}
