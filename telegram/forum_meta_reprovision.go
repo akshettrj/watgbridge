@@ -33,9 +33,6 @@ func handleForumMetaThreadSendFailure(chatID, threadID int64, sendErr error) {
 	}
 	matched := false
 	switch threadID {
-	case t.BotMetaThreadID:
-		t.BotMetaThreadID = 0
-		matched = true
 	case t.CallsThreadID:
 		t.CallsThreadID = 0
 		matched = true

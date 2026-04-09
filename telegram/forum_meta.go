@@ -13,8 +13,8 @@ import (
 	"go.uber.org/zap"
 )
 
-// telegramGeneralTopicThreadID is the usual message_thread_id Telegram uses for the default General
-// topic; resolveGeneralThreadID probes it when no other General thread is found.
+// telegramGeneralTopicThreadID is Telegram's default forum "General" thread id. We reserve it so
+// managed meta slots (Calls/Status) never bind to General.
 const telegramGeneralTopicThreadID int64 = 1
 
 // forumMetaTopicIconColor is Telegram Bot API icon_color 0x6FB9F0 (light blue).
@@ -35,16 +35,13 @@ type forumMetaSpec struct {
 const singleModeForumMetaBridgeID uint = 1
 
 const (
-	forumMetaSlotGeneral = "general"
-	forumMetaSlotBotMeta = "bot_meta"
-	forumMetaSlotCalls   = "calls"
-	forumMetaSlotStatus  = "status"
+	forumMetaSlotCalls  = "calls"
+	forumMetaSlotStatus = "status"
 )
 
 const (
-	forumMetaChatKeyBotMeta = "bot_meta"
-	forumMetaChatKeyCalls   = "calls"
-	forumMetaChatKeyStatus  = "status@broadcast"
+	forumMetaChatKeyCalls  = "calls"
+	forumMetaChatKeyStatus = "status@broadcast"
 )
 
 func forumMetaProvisionBridgeID(cfg *state.Config) uint {
@@ -54,26 +51,18 @@ func forumMetaProvisionBridgeID(cfg *state.Config) uint {
 	return singleModeForumMetaBridgeID
 }
 
-// Canonical topic titles are emoji-prefixed. Aliases keep compatibility with old/plain names.
+// Topic names stay plain; icon emoji is applied via forum icon.
 var standardForumMetaSpecs = []forumMetaSpec{
-	{slot: forumMetaSlotGeneral, title: "General"},
-	{
-		slot:      forumMetaSlotBotMeta,
-		title:     "💻 Bot's meta",
-		iconEmoji: "💻",
-		aliases:   []string{"Bot's meta", "Bots meta"},
-		chatKeys:  []string{forumMetaChatKeyBotMeta},
-	},
 	{
 		slot:      forumMetaSlotCalls,
-		title:     "🔮 Calls",
+		title:     "Calls",
 		iconEmoji: "🔮",
 		aliases:   []string{"Calls"},
 		chatKeys:  []string{forumMetaChatKeyCalls},
 	},
 	{
 		slot:      forumMetaSlotStatus,
-		title:     "📱 Status",
+		title:     "Status",
 		iconEmoji: "📱",
 		aliases:   []string{"Status"},
 		chatKeys:  []string{forumMetaChatKeyStatus, "status"},
@@ -82,11 +71,9 @@ var standardForumMetaSpecs = []forumMetaSpec{
 
 // ForumMetaHints carries persisted meta topic thread ids (0 = unknown). Prefer loading from
 // bridge_provision_states via ApplyForumMetaThreadIDsFromProvisionDB before provisioning.
-// General hub is resolved at provision time into state.State.ForumHubMessageThreadID, not stored here.
 type ForumMetaHints struct {
-	BotMetaThreadID int64
-	CallsThreadID   int64
-	StatusThreadID  int64
+	CallsThreadID  int64
+	StatusThreadID int64
 }
 
 var forumMetaIconStickersMu sync.Mutex
@@ -159,45 +146,13 @@ func ApplyForumMetaThreadIDsFromProvisionDB(cfg *state.Config) {
 	if err != nil || p == nil {
 		return
 	}
-	if p.BotMetaThreadID != 0 {
-		t.BotMetaThreadID = p.BotMetaThreadID
-	}
+	t.BotMetaThreadID = 0
 	if p.CallsThreadID != 0 {
 		t.CallsThreadID = p.CallsThreadID
 	}
 	if p.StatusThreadID != 0 {
 		t.StatusThreadID = p.StatusThreadID
 	}
-}
-
-func resolveGeneralThreadID(bot *gotgbot.Bot, chatID int64, hint int64) (int64, error) {
-	if hint != 0 {
-		ok, err := forumMetaTopicExists(bot, chatID, hint)
-		if err != nil {
-			return 0, err
-		}
-		if ok {
-			return hint, nil
-		}
-	}
-	ok, err := forumMetaTopicExists(bot, chatID, telegramGeneralTopicThreadID)
-	if err != nil {
-		return 0, err
-	}
-	if ok {
-		return telegramGeneralTopicThreadID, nil
-	}
-	return 0, nil
-}
-
-// forumMetaReservedGeneralSlots returns thread ids that are forbidden for Bot's meta / Calls / Status.
-// Probes cannot tell topics apart; reserve the resolved General hub id and the usual default thread id.
-func forumMetaReservedGeneralSlots(resolvedGeneral int64) []int64 {
-	out := []int64{telegramGeneralTopicThreadID}
-	if resolvedGeneral != 0 && resolvedGeneral != telegramGeneralTopicThreadID {
-		out = append(out, resolvedGeneral)
-	}
-	return out
 }
 
 // threadHintConflictsWithReserved is true when a persisted thread id is already used by General
@@ -214,39 +169,7 @@ func threadHintConflictsWithReserved(threadID int64, reserved []int64) bool {
 	return false
 }
 
-func forumMetaRegistrySlotCandidates(cfg *state.Config, chatID int64, spec forumMetaSpec) []int64 {
-	if cfg == nil || chatID == 0 {
-		return nil
-	}
-	rows, err := database.BridgeProvisionListByTargetChat(chatID)
-	if err != nil {
-		state.State.Logger.Debug("forum meta: sibling provision hints lookup failed",
-			zap.String("slot", spec.slot),
-			zap.Int64("target_chat_id", chatID),
-			zap.Error(err))
-		return nil
-	}
-	out := make([]int64, 0, len(rows))
-	for _, r := range rows {
-		switch spec.slot {
-		case forumMetaSlotBotMeta:
-			if r.BotMetaThreadID != 0 {
-				out = append(out, r.BotMetaThreadID)
-			}
-		case forumMetaSlotCalls:
-			if r.CallsThreadID != 0 {
-				out = append(out, r.CallsThreadID)
-			}
-		case forumMetaSlotStatus:
-			if r.StatusThreadID != 0 {
-				out = append(out, r.StatusThreadID)
-			}
-		}
-	}
-	return out
-}
-
-func forumMetaSlotCandidates(cfg *state.Config, chatID int64, spec forumMetaSpec, hint int64) []int64 {
+func forumMetaSlotCandidates(chatID int64, spec forumMetaSpec, hint int64) []int64 {
 	var out []int64
 	seen := map[int64]struct{}{}
 	add := func(id int64) {
@@ -277,9 +200,6 @@ func forumMetaSlotCandidates(cfg *state.Config, chatID int64, spec forumMetaSpec
 			add(tid)
 		}
 	}
-	for _, id := range forumMetaRegistrySlotCandidates(cfg, chatID, spec) {
-		add(id)
-	}
 	return out
 }
 
@@ -298,8 +218,8 @@ func createForumMetaTopic(bot *gotgbot.Bot, chatID int64, spec forumMetaSpec) (i
 	return created.MessageThreadId, nil
 }
 
-func provisionMetaSlot(bot *gotgbot.Bot, cfg *state.Config, chatID int64, spec forumMetaSpec, threadID int64, reserved []int64) (int64, error) {
-	candidates := forumMetaSlotCandidates(cfg, chatID, spec, threadID)
+func provisionMetaSlot(bot *gotgbot.Bot, chatID int64, spec forumMetaSpec, threadID int64, reserved []int64) (int64, error) {
+	candidates := forumMetaSlotCandidates(chatID, spec, threadID)
 	for _, candidate := range candidates {
 		if threadHintConflictsWithReserved(candidate, reserved) {
 			continue
@@ -322,60 +242,41 @@ func provisionMetaSlot(bot *gotgbot.Bot, cfg *state.Config, chatID int64, spec f
 	return tid, nil
 }
 
-// CreateStandardForumMetaTopics resolves General (getForumTopic name match; never creates), then for
-// Bot's meta, Calls, Status: verify saved thread id matches the expected topic title; if missing,
-// wrong title, or hint conflicts with General/another slot, create the topic and apply icon.
-// If cfg is non-nil, updates cfg.Telegram and state.State.ForumHubMessageThreadID incrementally and
-// syncs bridge_provision_states after each step so a crash mid-run cannot lose progress or duplicate on restart.
-func CreateStandardForumMetaTopics(bot *gotgbot.Bot, chatID int64, hints ForumMetaHints, cfg *state.Config) (general, botMeta, calls, status int64, err error) {
-	g, err := resolveGeneralThreadID(bot, chatID, 0)
+// CreateStandardForumMetaTopics manages only Calls and Status slots.
+// General is not tracked; Bot's meta is intentionally not used.
+func CreateStandardForumMetaTopics(bot *gotgbot.Bot, chatID int64, hints ForumMetaHints, cfg *state.Config) (calls, status int64, err error) {
+	reserved := []int64{telegramGeneralTopicThreadID}
+	specCalls := standardForumMetaSpecs[0]
+	specStatus := standardForumMetaSpecs[1]
+	c, err := provisionMetaSlot(bot, chatID, specCalls, hints.CallsThreadID, reserved)
 	if err != nil {
-		return 0, 0, 0, 0, err
+		return 0, 0, err
 	}
 	if cfg != nil {
-		state.State.ForumHubMessageThreadID = g
-		syncForumMetaRegistryState(cfg)
-	}
-	reserved := forumMetaReservedGeneralSlots(g)
-	specBotMeta := standardForumMetaSpecs[1]
-	specCalls := standardForumMetaSpecs[2]
-	specStatus := standardForumMetaSpecs[3]
-	m, err := provisionMetaSlot(bot, cfg, chatID, specBotMeta, hints.BotMetaThreadID, reserved)
-	if err != nil {
-		return g, 0, 0, 0, err
-	}
-	if cfg != nil {
-		cfg.Telegram.BotMetaThreadID = m
-		syncForumMetaRegistryState(cfg)
-	}
-	reserved = append(reserved, m)
-	c, err := provisionMetaSlot(bot, cfg, chatID, specCalls, hints.CallsThreadID, reserved)
-	if err != nil {
-		return g, m, 0, 0, err
-	}
-	if cfg != nil {
+		cfg.Telegram.BotMetaThreadID = 0
 		cfg.Telegram.CallsThreadID = c
 		syncForumMetaRegistryState(cfg)
 	}
 	reserved = append(reserved, c)
-	s, err := provisionMetaSlot(bot, cfg, chatID, specStatus, hints.StatusThreadID, reserved)
+	s, err := provisionMetaSlot(bot, chatID, specStatus, hints.StatusThreadID, reserved)
 	if err != nil {
-		return g, m, c, 0, err
+		return c, 0, err
 	}
 	if cfg != nil {
 		cfg.Telegram.StatusThreadID = s
 		syncForumMetaRegistryState(cfg)
 	}
-	return g, m, c, s, nil
+	return c, s, nil
 }
 
 func syncForumMetaRegistryState(cfg *state.Config) {
 	t := &cfg.Telegram
 	bid := forumMetaProvisionBridgeID(cfg)
+	t.BotMetaThreadID = 0
 	if err := database.BridgeProvisionSet(
 		bid,
-		0, // general_thread_id column unused; hub id lives in state.State.ForumHubMessageThreadID
-		t.BotMetaThreadID,
+		0, // general_thread_id is intentionally unused
+		0, // bot_meta_thread_id is intentionally unused
 		t.CallsThreadID,
 		t.StatusThreadID,
 		"ok",
@@ -412,28 +313,23 @@ func EnsureForumMetaTopicsProvisioned() error {
 	ApplyForumMetaThreadIDsFromProvisionDB(cfg)
 
 	hints := ForumMetaHints{
-		BotMetaThreadID: t.BotMetaThreadID,
-		CallsThreadID:   t.CallsThreadID,
-		StatusThreadID:  t.StatusThreadID,
+		CallsThreadID:  t.CallsThreadID,
+		StatusThreadID: t.StatusThreadID,
 	}
-	prevB, prevC, prevS := t.BotMetaThreadID, t.CallsThreadID, t.StatusThreadID
-	g, m, c, s, err := CreateStandardForumMetaTopics(bot, t.TargetChatID, hints, cfg)
+	prevC, prevS := t.CallsThreadID, t.StatusThreadID
+	c, s, err := CreateStandardForumMetaTopics(bot, t.TargetChatID, hints, cfg)
 	if err != nil {
 		return fmt.Errorf("create forum meta topics: %w", err)
 	}
-	// CreateStandardForumMetaTopics already assigned t.*, ForumHubMessageThreadID, and synced.
-	changed := prevB != m || prevC != c || prevS != s
+	// CreateStandardForumMetaTopics already assigned t.* and synced.
+	changed := prevC != c || prevS != s
 	if changed {
-		state.State.Logger.Info("standard forum meta topics provisioned",
-			zap.Int64("forum_hub_message_thread_id", g),
-			zap.Int64("bot_meta_thread_id", m),
+		state.State.Logger.Info("forum meta topics provisioned",
 			zap.Int64("calls_thread_id", c),
 			zap.Int64("status_thread_id", s),
 		)
 	} else {
 		state.State.Logger.Debug("forum meta thread ids unchanged after reconcile",
-			zap.Int64("forum_hub_message_thread_id", g),
-			zap.Int64("bot_meta_thread_id", m),
 			zap.Int64("calls_thread_id", c),
 			zap.Int64("status_thread_id", s),
 		)

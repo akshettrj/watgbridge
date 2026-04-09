@@ -14,6 +14,8 @@ import (
 	"gorm.io/gorm"
 )
 
+var ErrBridgeTargetChatAlreadyBound = errors.New("target forum already has a bridge")
+
 func HashBridgeToken(token string) string {
 	sum := sha256.Sum256([]byte(strings.TrimSpace(token)))
 	return hex.EncodeToString(sum[:])
@@ -63,6 +65,12 @@ func BridgeRegistryNotifyUserIDs() ([]int64, error) {
 
 func BridgeCreate(ownerUserID int64, name, token string, tgTargetChatID int64, waSessionName string, enabled bool) (*Bridge, error) {
 	db := state.State.Database
+	var existing Bridge
+	if err := db.Where("telegram_target_chat = ?", tgTargetChatID).First(&existing).Error; err == nil {
+		return nil, fmt.Errorf("%w: chat %d is already used by bridge id %d", ErrBridgeTargetChatAlreadyBound, tgTargetChatID, existing.ID)
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
 	hash := HashBridgeToken(token)
 	bridge := &Bridge{
 		OwnerUserID:        ownerUserID,
@@ -142,46 +150,6 @@ func BridgeProvisionGet(bridgeID uint) (*BridgeProvisionState, error) {
 		return nil, res.Error
 	}
 	return &p, nil
-}
-
-// BridgeProvisionFindByTargetChat returns the most recently updated provision row for any bridge
-// bound to the same Telegram target forum chat, optionally excluding one bridge id.
-func BridgeProvisionFindByTargetChat(targetChatID int64, excludeBridgeID uint) (*BridgeProvisionState, error) {
-	db := provisionStateDBOrDefault()
-	var p BridgeProvisionState
-	q := db.Table("bridge_provision_states AS p").
-		Select("p.*").
-		Joins("JOIN bridges AS b ON b.id = p.bridge_id").
-		Where("b.telegram_target_chat = ?", targetChatID).
-		Where("(p.bot_meta_thread_id <> 0 OR p.calls_thread_id <> 0 OR p.status_thread_id <> 0)")
-	if excludeBridgeID != 0 {
-		q = q.Where("p.bridge_id <> ?", excludeBridgeID)
-	}
-	res := q.Order("p.updated_at DESC").Limit(1).Scan(&p)
-	if res.Error != nil {
-		return nil, res.Error
-	}
-	if res.RowsAffected == 0 {
-		return nil, gorm.ErrRecordNotFound
-	}
-	return &p, nil
-}
-
-// BridgeProvisionListByTargetChat returns provision rows for all bridges bound to one target forum chat,
-// ordered by last update (latest first).
-func BridgeProvisionListByTargetChat(targetChatID int64) ([]BridgeProvisionState, error) {
-	db := provisionStateDBOrDefault()
-	var out []BridgeProvisionState
-	res := db.Table("bridge_provision_states AS p").
-		Select("p.*").
-		Joins("JOIN bridges AS b ON b.id = p.bridge_id").
-		Where("b.telegram_target_chat = ?", targetChatID).
-		Order("p.updated_at DESC").
-		Scan(&out)
-	if res.Error != nil {
-		return nil, res.Error
-	}
-	return out, nil
 }
 
 func BridgeProvisionSet(bridgeID uint, general, botMeta, calls, statusThread int64, lastCheckStatus, lastErr string) error {

@@ -135,11 +135,6 @@ func forumMetaFetchTopicName(bot *gotgbot.Bot, chatID, threadID int64) (string, 
 	return "", false, fmt.Errorf("getForumTopic after %d attempts", forumMetaProbeMaxAttempts)
 }
 
-func forumMetaTopicExists(bot *gotgbot.Bot, chatID, threadID int64) (bool, error) {
-	_, ok, err := forumMetaFetchTopicName(bot, chatID, threadID)
-	return ok, err
-}
-
 // forumMetaTopicMatchesSpec returns true only if getForumTopic succeeds and the topic name matches
 // the expected meta slot title. SendMessage cannot distinguish topics; this is the source of truth.
 func forumMetaTopicMatchesSpec(bot *gotgbot.Bot, chatID, threadID int64, spec forumMetaSpec) (bool, error) {

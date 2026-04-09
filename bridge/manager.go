@@ -114,8 +114,17 @@ func (m *Manager) StartEnabled() error {
 	if len(bridges) == 0 {
 		state.State.Logger.Warn("multi mode: no enabled bridges in registry — only the main bot runs; WhatsApp bridging needs at least one enabled bridge row")
 	}
+	seenTargetChats := make(map[int64]uint)
 	for i := range bridges {
 		b := bridges[i]
+		if prevID, dup := seenTargetChats[b.TelegramTargetChat]; dup {
+			state.State.Logger.Warn("skipping enabled bridge with duplicate target forum chat",
+				zap.Uint("bridge_id", b.ID),
+				zap.Uint("existing_bridge_id", prevID),
+				zap.Int64("target_chat_id", b.TelegramTargetChat))
+			continue
+		}
+		seenTargetChats[b.TelegramTargetChat] = b.ID
 		if err := m.StartBridge(&b); err != nil {
 			state.State.Logger.Warn("failed to start enabled bridge",
 				zap.Uint("bridge_id", b.ID),
