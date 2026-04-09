@@ -45,7 +45,7 @@ func forumMetaNormalizeTopicName(raw string) string {
 	if s == "" {
 		return ""
 	}
-	// Normalize apostrophe variants so Bot's meta == Bot’s meta.
+	// Normalize apostrophe variants to avoid Unicode punctuation mismatches.
 	s = strings.ReplaceAll(s, "’", "'")
 	s = strings.ReplaceAll(s, "‘", "'")
 

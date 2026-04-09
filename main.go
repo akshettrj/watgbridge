@@ -8,16 +8,17 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"watgbridge/bridge"
+	"watgbridge/crypto/sqlitekey"
 	"watgbridge/database"
 	"watgbridge/mainbot"
 	"watgbridge/modules"
 	"watgbridge/state"
 	"watgbridge/telegram"
 	"watgbridge/utils"
-	"watgbridge/crypto/sqlitekey"
 	"watgbridge/whatsapp"
 
 	"github.com/PaulSonOfLars/gotgbot/v2"
@@ -226,7 +227,6 @@ func main() {
 		}
 	}
 
-
 	// Setup database
 	db, err := database.Connect()
 	if err != nil {
@@ -244,20 +244,27 @@ func main() {
 	// Multi-mode bridge child: BridgeProvisionSet must use the registry SQLite (same DB as the parent),
 	// not only the per-bridge DB opened above. Single-mode uses bridge_provision_states on the local DB.
 	if cfg.Mode == "single" && cfg.Telegram.BridgeRegistryID != 0 {
-		if regPath := os.Getenv("WATG_REGISTRY_SQLITE_PATH"); regPath != "" {
-			abs, err := filepath.Abs(regPath)
-			if err != nil {
-				logger.Warn("WATG_REGISTRY_SQLITE_PATH abs failed", zap.Error(err))
-			} else if regDB, err := database.OpenRegistrySQLiteForProvision(abs); err != nil {
-				logger.Warn("open registry DB for bridge provision state; forum meta may reprovision without persisted thread ids",
-					zap.String("path", abs), zap.Error(err))
-			} else {
-				database.SetProvisionStateDB(regDB)
-				logger.Info("bridge provision state uses registry DB",
-					zap.String("path", abs),
-					zap.Uint("bridge_registry_id", cfg.Telegram.BridgeRegistryID))
-			}
+		regPath := os.Getenv("WATG_REGISTRY_SQLITE_PATH")
+		if strings.TrimSpace(regPath) == "" {
+			logger.Fatal("bridge child requires WATG_REGISTRY_SQLITE_PATH to persist forum meta thread ids in shared registry DB",
+				zap.Uint("bridge_registry_id", cfg.Telegram.BridgeRegistryID))
 		}
+		abs, err := filepath.Abs(regPath)
+		if err != nil {
+			logger.Fatal("WATG_REGISTRY_SQLITE_PATH abs failed",
+				zap.String("path", regPath),
+				zap.Error(err))
+		}
+		regDB, err := database.OpenRegistrySQLiteForProvision(abs)
+		if err != nil {
+			logger.Fatal("open registry DB for bridge provision state failed",
+				zap.String("path", abs),
+				zap.Error(err))
+		}
+		database.SetProvisionStateDB(regDB)
+		logger.Info("bridge provision state uses registry DB",
+			zap.String("path", abs),
+			zap.Uint("bridge_registry_id", cfg.Telegram.BridgeRegistryID))
 	}
 	telegram.SeedMappedForumTopicsFromConfig(cfg)
 
@@ -377,4 +384,3 @@ SKIP_RESTART:
 
 	state.State.TelegramUpdater.Idle()
 }
-

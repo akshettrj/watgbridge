@@ -69,6 +69,15 @@ var standardForumMetaSpecs = []forumMetaSpec{
 	},
 }
 
+func forumMetaSpecBySlot(slot string) (forumMetaSpec, bool) {
+	for _, spec := range standardForumMetaSpecs {
+		if spec.slot == slot {
+			return spec, true
+		}
+	}
+	return forumMetaSpec{}, false
+}
+
 // ForumMetaHints carries persisted meta topic thread ids (0 = unknown). Prefer loading from
 // bridge_provision_states via ApplyForumMetaThreadIDsFromProvisionDB before provisioning.
 type ForumMetaHints struct {

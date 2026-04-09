@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
@@ -35,6 +36,16 @@ const (
 	DownloadSizeLimit int64  = 20971520
 	UploadSizeLimit   uint64 = 52428800
 )
+
+var tgThreadPairCreateLocks sync.Map
+
+func tgThreadPairCreateLock(waChatIdString string, tgChatId int64) func() {
+	key := fmt.Sprintf("%d|%s", tgChatId, waChatIdString)
+	lockAny, _ := tgThreadPairCreateLocks.LoadOrStore(key, &sync.Mutex{})
+	mu := lockAny.(*sync.Mutex)
+	mu.Lock()
+	return mu.Unlock
+}
 
 // CheckContactPingMessage is posted in the contact forum topic when the user confirms "Send ping" from /check.
 const CheckContactPingMessage = "\n⚙️ Bridge bot message\n\nPing!"
@@ -94,6 +105,9 @@ func TgMessageIsInContactTopic(cfg *state.Config, msg *gotgbot.Message) bool {
 }
 
 func TgGetOrMakeThreadFromWa_String(waChatIdString string, tgChatId int64, threadName string) (int64, bool, error) {
+	unlock := tgThreadPairCreateLock(waChatIdString, tgChatId)
+	defer unlock()
+
 	threadId, threadFound, err := database.ChatThreadGetTgFromWa(waChatIdString, tgChatId)
 	if err != nil {
 		return 0, false, err
@@ -219,8 +233,8 @@ func TgErrForumTopicOrThreadInvalid(err error) bool {
 		(strings.Contains(d, "NOT FOUND") && (strings.Contains(d, "TOPIC") || strings.Contains(d, "THREAD")))
 }
 
-// TgErrForumMetaProbeRetryable is true for transient failures where retrying SendMessage may succeed
-// (rate limits, Telegram 5xx, timeouts). If false, forum meta probe may treat the error as a dead topic.
+// TgErrForumMetaProbeRetryable is true for transient Telegram/API failures where a forum-topic
+// verification probe should retry (rate limits, Telegram 5xx, timeouts).
 func TgErrForumMetaProbeRetryable(err error) bool {
 	if err == nil {
 		return false
