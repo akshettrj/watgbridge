@@ -92,7 +92,7 @@ func addBridgeFromCredentials(b *gotgbot.Bot, manager *bridge.Manager, ownerUser
 		return "", fmt.Errorf("create bridge record: %w", createErr)
 	}
 
-	general, botMeta, calls, status, provErr := telegram.CreateStandardForumMetaTopics(bridgeBot, targetChatID, telegram.ForumMetaHints{})
+	general, botMeta, calls, status, provErr := telegram.CreateStandardForumMetaTopics(bridgeBot, targetChatID, telegram.ForumMetaHints{}, nil)
 	if provErr != nil {
 		_ = database.BridgeProvisionSet(record.ID, 0, 0, 0, 0, "provision_error", provErr.Error())
 	} else {

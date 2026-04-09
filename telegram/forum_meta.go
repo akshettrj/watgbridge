@@ -57,6 +57,10 @@ type ForumMetaHints struct {
 var forumMetaIconStickersMu sync.Mutex
 var forumMetaIconStickers []gotgbot.Sticker
 
+// forumMetaEnsureMu serializes EnsureForumMetaTopicsProvisioned / CreateStandardForumMetaTopics
+// so concurrent runs cannot create duplicate meta topics.
+var forumMetaEnsureMu sync.Mutex
+
 func forumMetaGetIconStickers(bot *gotgbot.Bot) []gotgbot.Sticker {
 	forumMetaIconStickersMu.Lock()
 	defer forumMetaIconStickersMu.Unlock()
@@ -132,8 +136,9 @@ func ApplyForumMetaThreadIDsFromProvisionDB(cfg *state.Config) {
 }
 
 func resolveGeneralThreadID(bot *gotgbot.Bot, chatID int64, hint int64) (int64, error) {
+	spec := standardForumMetaSpecs[0]
 	if hint != 0 {
-		ok, err := forumMetaProbeTopicAlive(bot, chatID, hint, standardForumMetaSpecs[0].title)
+		ok, err := forumMetaTopicMatchesSpec(bot, chatID, hint, spec)
 		if err != nil {
 			return 0, err
 		}
@@ -141,7 +146,7 @@ func resolveGeneralThreadID(bot *gotgbot.Bot, chatID int64, hint int64) (int64, 
 			return hint, nil
 		}
 	}
-	ok, err := forumMetaProbeTopicAlive(bot, chatID, telegramGeneralTopicThreadID, standardForumMetaSpecs[0].title)
+	ok, err := forumMetaTopicMatchesSpec(bot, chatID, telegramGeneralTopicThreadID, spec)
 	if err != nil {
 		return 0, err
 	}
@@ -161,9 +166,8 @@ func forumMetaReservedGeneralSlots(resolvedGeneral int64) []int64 {
 	return out
 }
 
-// threadHintConflictsWithReserved is true when a persisted thread id cannot name this meta slot: the
-// probe only checks SendMessage success, so a hint equal to General (or another slot's thread) would
-// falsely succeed without verifying the topic title.
+// threadHintConflictsWithReserved is true when a persisted thread id is already used by General
+// or an earlier meta slot (same id cannot be two topics).
 func threadHintConflictsWithReserved(threadID int64, reserved []int64) bool {
 	if threadID == 0 {
 		return false
@@ -196,7 +200,7 @@ func provisionMetaSlot(bot *gotgbot.Bot, chatID int64, spec forumMetaSpec, threa
 		threadID = 0
 	}
 	if threadID != 0 {
-		ok, err := forumMetaProbeTopicAlive(bot, chatID, threadID, spec.title)
+		ok, err := forumMetaTopicMatchesSpec(bot, chatID, threadID, spec)
 		if err != nil {
 			return 0, err
 		}
@@ -213,28 +217,46 @@ func provisionMetaSlot(bot *gotgbot.Bot, chatID int64, spec forumMetaSpec, threa
 	return tid, nil
 }
 
-// CreateStandardForumMetaTopics resolves General (probe only; never creates), then for Bot's meta,
-// Calls, Status: probe saved thread id with sendMessage; if missing or hint equals General/another
-// slot's thread id (probe cannot distinguish topics), create topic and apply icon.
-func CreateStandardForumMetaTopics(bot *gotgbot.Bot, chatID int64, hints ForumMetaHints) (general, botMeta, calls, status int64, err error) {
+// CreateStandardForumMetaTopics resolves General (getForumTopic name match; never creates), then for
+// Bot's meta, Calls, Status: verify saved thread id matches the expected topic title; if missing,
+// wrong title, or hint conflicts with General/another slot, create the topic and apply icon.
+// If cfg is non-nil, updates cfg.Telegram and state.State.ForumHubMessageThreadID incrementally and
+// syncs bridge_provision_states after each step so a crash mid-run cannot lose progress or duplicate on restart.
+func CreateStandardForumMetaTopics(bot *gotgbot.Bot, chatID int64, hints ForumMetaHints, cfg *state.Config) (general, botMeta, calls, status int64, err error) {
 	g, err := resolveGeneralThreadID(bot, chatID, 0)
 	if err != nil {
 		return 0, 0, 0, 0, err
+	}
+	if cfg != nil {
+		state.State.ForumHubMessageThreadID = g
+		syncForumMetaRegistryState(cfg)
 	}
 	reserved := forumMetaReservedGeneralSlots(g)
 	m, err := provisionMetaSlot(bot, chatID, standardForumMetaSpecs[1], hints.BotMetaThreadID, reserved)
 	if err != nil {
 		return g, 0, 0, 0, err
 	}
+	if cfg != nil {
+		cfg.Telegram.BotMetaThreadID = m
+		syncForumMetaRegistryState(cfg)
+	}
 	reserved = append(reserved, m)
 	c, err := provisionMetaSlot(bot, chatID, standardForumMetaSpecs[2], hints.CallsThreadID, reserved)
 	if err != nil {
 		return g, m, 0, 0, err
 	}
+	if cfg != nil {
+		cfg.Telegram.CallsThreadID = c
+		syncForumMetaRegistryState(cfg)
+	}
 	reserved = append(reserved, c)
 	s, err := provisionMetaSlot(bot, chatID, standardForumMetaSpecs[3], hints.StatusThreadID, reserved)
 	if err != nil {
 		return g, m, c, 0, err
+	}
+	if cfg != nil {
+		cfg.Telegram.StatusThreadID = s
+		syncForumMetaRegistryState(cfg)
 	}
 	return g, m, c, s, nil
 }
@@ -258,8 +280,11 @@ func syncForumMetaRegistryState(cfg *state.Config) {
 }
 
 // EnsureForumMetaTopicsProvisioned loads persisted thread ids from bridge_provision_states when available,
-// then probes each slot (send + delete); creates topics only when the stored id is missing or dead.
+// then verifies each slot via getForumTopic (title match); creates topics when missing or wrong.
 func EnsureForumMetaTopicsProvisioned() error {
+	forumMetaEnsureMu.Lock()
+	defer forumMetaEnsureMu.Unlock()
+
 	cfg := state.State.Config
 	bot := state.State.TelegramBot
 	if bot == nil {
@@ -284,14 +309,11 @@ func EnsureForumMetaTopicsProvisioned() error {
 		StatusThreadID:  t.StatusThreadID,
 	}
 	prevB, prevC, prevS := t.BotMetaThreadID, t.CallsThreadID, t.StatusThreadID
-	g, m, c, s, err := CreateStandardForumMetaTopics(bot, t.TargetChatID, hints)
+	g, m, c, s, err := CreateStandardForumMetaTopics(bot, t.TargetChatID, hints, cfg)
 	if err != nil {
 		return fmt.Errorf("create forum meta topics: %w", err)
 	}
-	state.State.ForumHubMessageThreadID = g
-	t.BotMetaThreadID = m
-	t.CallsThreadID = c
-	t.StatusThreadID = s
+	// CreateStandardForumMetaTopics already assigned t.*, ForumHubMessageThreadID, and synced.
 	changed := prevB != m || prevC != c || prevS != s
 	if changed {
 		state.State.Logger.Info("standard forum meta topics provisioned",
@@ -308,7 +330,6 @@ func EnsureForumMetaTopicsProvisioned() error {
 			zap.Int64("status_thread_id", s),
 		)
 	}
-	syncForumMetaRegistryState(cfg)
 	SeedMappedForumTopicsFromConfig(cfg)
 	return nil
 }
