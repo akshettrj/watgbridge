@@ -36,15 +36,23 @@ func forumMetaReprovisionAllowedNow(chatID int64, slot string) bool {
 }
 
 func forumMetaVerifySlotThread(botChatID, threadID int64, slot string) (bool, error) {
-	spec, ok := forumMetaSpecBySlot(slot)
-	if !ok {
-		return false, nil
-	}
 	bot := state.State.TelegramBot
 	if bot == nil {
 		return false, fmt.Errorf("telegram bot not initialized")
 	}
-	return forumMetaTopicMatchesSpec(bot, botChatID, threadID, spec)
+	spec, ok := forumMetaSpecBySlot(slot)
+	if !ok {
+		return false, nil
+	}
+	result, err := forumMetaProbeThread(bot, botChatID, threadID, slot, spec)
+	switch result {
+	case forumMetaThreadProbeValid:
+		return true, nil
+	case forumMetaThreadProbeMissing:
+		return false, nil
+	default:
+		return false, err
+	}
 }
 
 func init() {

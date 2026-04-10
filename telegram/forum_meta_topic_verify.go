@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-	"unicode"
 
 	"watgbridge/state"
 	"watgbridge/utils"
@@ -14,133 +13,137 @@ import (
 )
 
 const (
-	forumMetaProbeMaxAttempts = 6
-	forumMetaProbeRetryBase   = 250 * time.Millisecond
+	forumMetaProbeMaxAttempts = 5
+	forumMetaProbeRetryBase   = 300 * time.Millisecond
+	forumMetaProbeText        = "."
 )
 
-var forumMetaSidebarPrefixTokens = map[string]struct{}{
-	"topic":  {},
-	"topics": {},
-	"thread": {},
-	"forum":  {},
-	"chat":   {},
+type forumMetaThreadProbeResult int
+
+const (
+	forumMetaThreadProbeUnknown forumMetaThreadProbeResult = iota
+	forumMetaThreadProbeValid
+	forumMetaThreadProbeMissing
+)
+
+func forumMetaProbeBackoff(attempt int) {
+	if attempt <= 0 {
+		return
+	}
+	shift := attempt - 1
+	if shift > 5 {
+		shift = 5
+	}
+	time.Sleep(forumMetaProbeRetryBase * time.Duration(1<<shift))
 }
 
-func forumMetaTokenAllDigits(s string) bool {
-	if s == "" {
+func forumMetaSendProbeEnabledForChat(chatID int64) bool {
+	cfg := state.State.Config
+	if cfg == nil {
 		return false
 	}
-	for _, r := range s {
-		if !unicode.IsDigit(r) {
-			return false
-		}
-	}
-	return true
-}
-
-// forumMetaNormalizeTopicName removes emoji/punctuation noise and known sidebar-like prefixes so
-// old/plain titles and emoji titles resolve to the same logical name.
-func forumMetaNormalizeTopicName(raw string) string {
-	s := utils.TruncateTelegramForumTopicName(strings.TrimSpace(raw))
-	if s == "" {
-		return ""
-	}
-	// Normalize apostrophe variants to avoid Unicode punctuation mismatches.
-	s = strings.ReplaceAll(s, "’", "'")
-	s = strings.ReplaceAll(s, "‘", "'")
-
-	var b strings.Builder
-	space := false
-	for _, r := range strings.ToLower(s) {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) {
-			b.WriteRune(r)
-			space = false
-			continue
-		}
-		if !space {
-			b.WriteByte(' ')
-			space = true
-		}
-	}
-	tokens := strings.Fields(b.String())
-	for len(tokens) > 1 {
-		t := tokens[0]
-		if _, ok := forumMetaSidebarPrefixTokens[t]; ok || forumMetaTokenAllDigits(t) {
-			tokens = tokens[1:]
-			continue
-		}
-		break
-	}
-	return strings.Join(tokens, " ")
-}
-
-// forumMetaTopicNameMatches compares Telegram topic titles with meta-slot aliases after
-// normalization (emoji/plain/sidebar-prefix tolerant).
-func forumMetaTopicNameMatches(spec forumMetaSpec, remoteName string) bool {
-	got := forumMetaNormalizeTopicName(remoteName)
-	if got == "" {
-		return false
-	}
-	if got == forumMetaNormalizeTopicName(spec.title) {
-		return true
-	}
-	for _, alias := range spec.aliases {
-		if got == forumMetaNormalizeTopicName(alias) {
+	for _, id := range cfg.Telegram.ForumMetaSendProbeTargetChatIDs {
+		if id == chatID {
 			return true
 		}
 	}
 	return false
 }
 
-func forumMetaFetchTopicName(bot *gotgbot.Bot, chatID, threadID int64) (string, bool, error) {
+// forumMetaProbeThreadBySend verifies a topic by trying to send one tiny probe message into it.
+// On success we delete the probe message best-effort.
+// Returns:
+// - Valid: topic accepted a message (thread exists)
+// - Missing: Telegram says thread/topic is invalid/not found
+// - Unknown: transient/noise/other errors (caller should avoid destructive changes)
+func forumMetaProbeThreadBySend(bot *gotgbot.Bot, chatID, threadID int64, slot string) (forumMetaThreadProbeResult, error) {
+	if bot == nil {
+		return forumMetaThreadProbeUnknown, fmt.Errorf("telegram bot not initialized")
+	}
 	if threadID == 0 {
-		return "", false, nil
+		return forumMetaThreadProbeMissing, nil
 	}
 	var lastRetryable error
 	for attempt := 0; attempt < forumMetaProbeMaxAttempts; attempt++ {
-		if attempt > 0 {
-			shift := attempt - 1
-			if shift > 5 {
-				shift = 5
-			}
-			d := forumMetaProbeRetryBase * time.Duration(1<<shift)
-			time.Sleep(d)
-		}
-		name, nameOk, err := utils.TgFetchForumTopicName(bot, chatID, threadID)
+		forumMetaProbeBackoff(attempt)
+		sent, err := bot.SendMessage(chatID, forumMetaProbeText, &gotgbot.SendMessageOpts{
+			MessageThreadId:     threadID,
+			DisableNotification: true,
+		})
 		if err == nil {
-			if !nameOk {
-				return "", false, nil
+			if sent != nil {
+				if _, delErr := bot.DeleteMessage(chatID, sent.MessageId, nil); delErr != nil {
+					state.State.Logger.Debug("forum meta: probe cleanup delete failed",
+						zap.String("slot", slot),
+						zap.Int64("thread_id", threadID),
+						zap.Error(delErr))
+				}
 			}
-			return name, true, nil
+			return forumMetaThreadProbeValid, nil
 		}
 		if utils.TgErrForumTopicOrThreadInvalid(err) {
-			return "", false, nil
+			return forumMetaThreadProbeMissing, nil
 		}
 		if utils.TgErrForumMetaProbeRetryable(err) {
 			lastRetryable = err
-			state.State.Logger.Debug("forum meta: getForumTopic retry (retryable)",
+			state.State.Logger.Debug("forum meta: send probe retry (retryable)",
+				zap.String("slot", slot),
 				zap.Int("attempt", attempt+1),
 				zap.Int64("thread_id", threadID),
 				zap.Error(err))
 			continue
 		}
-		state.State.Logger.Warn("forum meta: getForumTopic failed; refusing fail-open missing-topic assumption",
-			zap.Int64("thread_id", threadID),
-			zap.Error(err))
-		return "", false, fmt.Errorf("getForumTopic non-retryable failure: %w", err)
+		return forumMetaThreadProbeUnknown, fmt.Errorf("send probe non-retryable: %w", err)
 	}
 	if lastRetryable != nil {
-		return "", false, fmt.Errorf("getForumTopic after %d attempts: %w", forumMetaProbeMaxAttempts, lastRetryable)
+		return forumMetaThreadProbeUnknown, fmt.Errorf("send probe after %d attempts: %w", forumMetaProbeMaxAttempts, lastRetryable)
 	}
-	return "", false, fmt.Errorf("getForumTopic after %d attempts", forumMetaProbeMaxAttempts)
+	return forumMetaThreadProbeUnknown, fmt.Errorf("send probe after %d attempts", forumMetaProbeMaxAttempts)
 }
 
-// forumMetaTopicMatchesSpec returns true only if getForumTopic succeeds and the topic name matches
-// the expected meta slot title. SendMessage cannot distinguish topics; this is the source of truth.
-func forumMetaTopicMatchesSpec(bot *gotgbot.Bot, chatID, threadID int64, spec forumMetaSpec) (bool, error) {
-	name, ok, err := forumMetaFetchTopicName(bot, chatID, threadID)
-	if err != nil || !ok {
-		return false, err
+func forumMetaProbeThreadByEdit(bot *gotgbot.Bot, chatID, threadID int64, slot string, spec forumMetaSpec) (forumMetaThreadProbeResult, error) {
+	if bot == nil {
+		return forumMetaThreadProbeUnknown, fmt.Errorf("telegram bot not initialized")
 	}
-	return forumMetaTopicNameMatches(spec, name), nil
+	if threadID == 0 {
+		return forumMetaThreadProbeMissing, nil
+	}
+	name := utils.TruncateTelegramForumTopicName(strings.TrimSpace(spec.title))
+	opts := &gotgbot.EditForumTopicOpts{Name: name}
+	if id := pickForumMetaIconCustomEmojiID(bot, spec); id != "" {
+		idCopy := id
+		opts.IconCustomEmojiId = &idCopy
+	}
+	var lastRetryable error
+	for attempt := 0; attempt < forumMetaProbeMaxAttempts; attempt++ {
+		forumMetaProbeBackoff(attempt)
+		_, err := bot.EditForumTopic(chatID, threadID, opts)
+		if err == nil || utils.TgEditForumTopicUnchanged(err) {
+			return forumMetaThreadProbeValid, nil
+		}
+		if utils.TgErrForumTopicOrThreadInvalid(err) {
+			return forumMetaThreadProbeMissing, nil
+		}
+		if utils.TgErrForumMetaProbeRetryable(err) {
+			lastRetryable = err
+			state.State.Logger.Debug("forum meta: edit probe retry (retryable)",
+				zap.String("slot", slot),
+				zap.Int("attempt", attempt+1),
+				zap.Int64("thread_id", threadID),
+				zap.Error(err))
+			continue
+		}
+		return forumMetaThreadProbeUnknown, fmt.Errorf("edit probe non-retryable: %w", err)
+	}
+	if lastRetryable != nil {
+		return forumMetaThreadProbeUnknown, fmt.Errorf("edit probe after %d attempts: %w", forumMetaProbeMaxAttempts, lastRetryable)
+	}
+	return forumMetaThreadProbeUnknown, fmt.Errorf("edit probe after %d attempts", forumMetaProbeMaxAttempts)
+}
+
+func forumMetaProbeThread(bot *gotgbot.Bot, chatID, threadID int64, slot string, spec forumMetaSpec) (forumMetaThreadProbeResult, error) {
+	if forumMetaSendProbeEnabledForChat(chatID) {
+		return forumMetaProbeThreadBySend(bot, chatID, threadID, slot)
+	}
+	return forumMetaProbeThreadByEdit(bot, chatID, threadID, slot, spec)
 }

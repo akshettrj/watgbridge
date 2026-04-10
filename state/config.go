@@ -23,24 +23,27 @@ type Config struct {
 	Architecture       string `yaml:"architecture" mapstructure:"architecture"`
 
 	Telegram struct {
-		MainBotToken        string  `yaml:"main_bot_token" mapstructure:"main_bot_token"`
-		BotToken            string  `yaml:"bot_token" mapstructure:"bot_token"`
-		APIURL              string  `yaml:"api_url" mapstructure:"api_url"`
-		SudoUsersID         []int64 `yaml:"sudo_users_id" mapstructure:"sudo_users_id"`
-		OwnerID             int64   `yaml:"owner_id" mapstructure:"owner_id"`
-		TargetChatID        int64   `yaml:"target_chat_id" mapstructure:"target_chat_id"`
-		SelfHostedAPI       bool    `yaml:"self_hosted_api" mapstructure:"self_hosted_api"`
-		SkipVideoStickers   bool    `yaml:"skip_video_stickers" mapstructure:"skip_video_stickers"`
-		SkipSettingCommands bool    `yaml:"skip_setting_commands" mapstructure:"skip_setting_commands"`
-		SendMyPresence      bool    `yaml:"send_my_presence" mapstructure:"send_my_presence"`
-		SendMyReadReceipts  bool    `yaml:"send_my_read_receipts" mapstructure:"send_my_read_receipts"`
-		SilentConfirmation  bool    `yaml:"silent_confirmation" mapstructure:"silent_confirmation"`
-		ConfirmationType    string  `yaml:"confirmation_type" mapstructure:"confirmation_type"`
-		ConfirmationEmoji   string  `yaml:"confirmation_emoji" mapstructure:"confirmation_emoji"`
-		EmojiConfirmation   *bool   `yaml:"emoji_confirmation" mapstructure:"emoji_confirmation"`
-		SkipStartupMessage  bool    `yaml:"skip_startup_message" mapstructure:"skip_startup_message"`
-		SpoilerViewOnce     bool    `yaml:"spoiler_as_viewonce" mapstructure:"spoiler_as_viewonce"`
-		Reactions           bool    `yaml:"reactions" mapstructure:"reactions"`
+		MainBotToken string  `yaml:"main_bot_token" mapstructure:"main_bot_token"`
+		BotToken     string  `yaml:"bot_token" mapstructure:"bot_token"`
+		APIURL       string  `yaml:"api_url" mapstructure:"api_url"`
+		SudoUsersID  []int64 `yaml:"sudo_users_id" mapstructure:"sudo_users_id"`
+		OwnerID      int64   `yaml:"owner_id" mapstructure:"owner_id"`
+		TargetChatID int64   `yaml:"target_chat_id" mapstructure:"target_chat_id"`
+		// Optional allowlist of target forum chat IDs where forum-meta existence checks use send-message probes.
+		// Keep empty to disable send probes globally.
+		ForumMetaSendProbeTargetChatIDs []int64 `yaml:"forum_meta_send_probe_target_chat_ids" mapstructure:"forum_meta_send_probe_target_chat_ids"`
+		SelfHostedAPI                   bool    `yaml:"self_hosted_api" mapstructure:"self_hosted_api"`
+		SkipVideoStickers               bool    `yaml:"skip_video_stickers" mapstructure:"skip_video_stickers"`
+		SkipSettingCommands             bool    `yaml:"skip_setting_commands" mapstructure:"skip_setting_commands"`
+		SendMyPresence                  bool    `yaml:"send_my_presence" mapstructure:"send_my_presence"`
+		SendMyReadReceipts              bool    `yaml:"send_my_read_receipts" mapstructure:"send_my_read_receipts"`
+		SilentConfirmation              bool    `yaml:"silent_confirmation" mapstructure:"silent_confirmation"`
+		ConfirmationType                string  `yaml:"confirmation_type" mapstructure:"confirmation_type"`
+		ConfirmationEmoji               string  `yaml:"confirmation_emoji" mapstructure:"confirmation_emoji"`
+		EmojiConfirmation               *bool   `yaml:"emoji_confirmation" mapstructure:"emoji_confirmation"`
+		SkipStartupMessage              bool    `yaml:"skip_startup_message" mapstructure:"skip_startup_message"`
+		SpoilerViewOnce                 bool    `yaml:"spoiler_as_viewonce" mapstructure:"spoiler_as_viewonce"`
+		Reactions                       bool    `yaml:"reactions" mapstructure:"reactions"`
 		// ISO 3166-1 alpha-2 default region for parsing national numbers (no +) in General → /check-style flow; empty = require +country code.
 		CheckPhoneDefaultRegion string `yaml:"check_phone_default_region" mapstructure:"check_phone_default_region"`
 		// Forum meta thread ids: runtime only — persisted in bridge_provision_states (not YAML).

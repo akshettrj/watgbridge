@@ -245,34 +245,38 @@ func createForumMetaTopic(bot *gotgbot.Bot, chatID int64, spec forumMetaSpec) (i
 
 func provisionMetaSlot(bot *gotgbot.Bot, chatID int64, spec forumMetaSpec, threadID int64, reserved []int64) (int64, error) {
 	candidates := forumMetaSlotCandidates(chatID, spec, threadID)
+	hintProbeUnknown := false
 	for _, candidate := range candidates {
 		if threadHintConflictsWithReserved(candidate, reserved) {
 			continue
 		}
-		name, exists, err := forumMetaFetchTopicName(bot, chatID, candidate)
-		if err != nil {
-			return 0, err
-		}
-		if !exists {
+		result, probeErr := forumMetaProbeThread(bot, chatID, candidate, spec.slot, spec)
+		switch result {
+		case forumMetaThreadProbeValid:
+			reconcileForumMetaTopicStyle(bot, chatID, candidate, spec)
+			return candidate, nil
+		case forumMetaThreadProbeMissing:
 			continue
-		}
-		if !forumMetaTopicNameMatches(spec, name) {
-			// The persisted provision-state hint is authoritative for this logical slot. If the topic
-			// still exists but name normalization failed (legacy/manual rename/client noise), reuse it
-			// and reconcile to the canonical title/icon instead of creating duplicates.
+		default:
+			// Inconclusive probe must not create duplicates. If the authoritative slot hint
+			// is inconclusive, keep it and skip create for this slot on this run.
 			if candidate == threadID && threadID != 0 {
-				state.State.Logger.Warn("forum meta: hinted topic title mismatch; reusing hinted topic and reconciling style",
+				hintProbeUnknown = true
+				state.State.Logger.Warn("forum meta: hint send probe inconclusive; keeping current thread id",
 					zap.String("slot", spec.slot),
 					zap.Int64("thread_id", candidate),
-					zap.String("remote_name", name),
-					zap.String("expected_title", spec.title))
-				reconcileForumMetaTopicStyle(bot, chatID, candidate, spec)
-				return candidate, nil
+					zap.Error(probeErr))
+				continue
 			}
+			state.State.Logger.Debug("forum meta: candidate send probe inconclusive; skipping candidate",
+				zap.String("slot", spec.slot),
+				zap.Int64("thread_id", candidate),
+				zap.Error(probeErr))
 			continue
 		}
-		reconcileForumMetaTopicStyle(bot, chatID, candidate, spec)
-		return candidate, nil
+	}
+	if hintProbeUnknown && threadID != 0 {
+		return threadID, nil
 	}
 	tid, err := createForumMetaTopic(bot, chatID, spec)
 	if err != nil {
@@ -332,7 +336,7 @@ func syncForumMetaRegistryState(cfg *state.Config) error {
 }
 
 // EnsureForumMetaTopicsProvisioned loads persisted thread ids from bridge_provision_states when available,
-// then verifies each slot via getForumTopic (title match); creates topics when missing or wrong.
+// then verifies each slot with configured probe strategy; creates topics only when a slot is confirmed missing.
 func EnsureForumMetaTopicsProvisioned() error {
 	forumMetaEnsureMu.Lock()
 	defer forumMetaEnsureMu.Unlock()
@@ -377,7 +381,7 @@ func EnsureForumMetaTopicsProvisioned() error {
 			zap.Int64("status_thread_id", s),
 		)
 	} else {
-		state.State.Logger.Debug("forum meta thread ids unchanged after reconcile",
+		state.State.Logger.Info("forum meta thread ids unchanged after reconcile",
 			zap.Int64("calls_thread_id", c),
 			zap.Int64("status_thread_id", s),
 		)
