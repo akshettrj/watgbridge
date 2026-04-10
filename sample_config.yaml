@@ -20,8 +20,8 @@ telegram:
   sudo_users_id:
     - 704338780
   target_chat_id: -100423424              # This is the chat where messages will be forwarded (note the "100" prefix of a supergroup)
-  # Testing-only: only these forums use send-message probes for forum meta slot existence checks.
-  # Keep this empty in production if you don't want probe messages/deletes in active bridges.
+  # Testing-only: only these forums enable forum-meta management (provision/reprovision + probe checks).
+  # Keep this empty for normal behavior on all target forums.
   forum_meta_send_probe_target_chat_ids:
     - -1003830089690
   # Optional: ISO region (e.g. KZ, US) so a national-format number pasted in General is parsed like /check; leave empty to only accept +… / 00…

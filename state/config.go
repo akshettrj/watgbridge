@@ -29,8 +29,9 @@ type Config struct {
 		SudoUsersID  []int64 `yaml:"sudo_users_id" mapstructure:"sudo_users_id"`
 		OwnerID      int64   `yaml:"owner_id" mapstructure:"owner_id"`
 		TargetChatID int64   `yaml:"target_chat_id" mapstructure:"target_chat_id"`
-		// Optional allowlist of target forum chat IDs where forum-meta existence checks use send-message probes.
-		// Keep empty to disable send probes globally.
+		// Optional allowlist of target forum chat IDs where forum-meta management is enabled
+		// (startup provisioning/reprovision + send-message probe strategy).
+		// If empty, forum-meta management remains enabled for all chats (backward-compatible default).
 		ForumMetaSendProbeTargetChatIDs []int64 `yaml:"forum_meta_send_probe_target_chat_ids" mapstructure:"forum_meta_send_probe_target_chat_ids"`
 		SelfHostedAPI                   bool    `yaml:"self_hosted_api" mapstructure:"self_hosted_api"`
 		SkipVideoStickers               bool    `yaml:"skip_video_stickers" mapstructure:"skip_video_stickers"`

@@ -289,6 +289,10 @@ func provisionMetaSlot(bot *gotgbot.Bot, chatID int64, spec forumMetaSpec, threa
 // CreateStandardForumMetaTopics manages only Calls and Status slots.
 // General is not tracked; Bot's meta is intentionally not used.
 func CreateStandardForumMetaTopics(bot *gotgbot.Bot, chatID int64, hints ForumMetaHints, cfg *state.Config) (calls, status int64, err error) {
+	if !forumMetaManagementEnabledForChat(chatID) {
+		// Test-gated mode: skip forum-meta management for chats outside allowlist.
+		return hints.CallsThreadID, hints.StatusThreadID, nil
+	}
 	reserved := []int64{telegramGeneralTopicThreadID}
 	specCalls := standardForumMetaSpecs[0]
 	specStatus := standardForumMetaSpecs[1]
@@ -349,6 +353,11 @@ func EnsureForumMetaTopicsProvisioned() error {
 	t := &cfg.Telegram
 	if t.TargetChatID == 0 {
 		return fmt.Errorf("telegram.target_chat_id is required")
+	}
+	if !forumMetaManagementEnabledForChat(t.TargetChatID) {
+		state.State.Logger.Info("forum meta management skipped for target chat (not in allowlist)",
+			zap.Int64("target_chat_id", t.TargetChatID))
+		return nil
 	}
 	if err := ValidateTargetForumAndBotRights(bot, t.TargetChatID); err != nil {
 		msg := "WaTgBridge forum setup failed: " + err.Error()

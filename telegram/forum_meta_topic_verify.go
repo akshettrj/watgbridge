@@ -37,12 +37,16 @@ func forumMetaProbeBackoff(attempt int) {
 	time.Sleep(forumMetaProbeRetryBase * time.Duration(1<<shift))
 }
 
-func forumMetaSendProbeEnabledForChat(chatID int64) bool {
+func forumMetaManagementEnabledForChat(chatID int64) bool {
 	cfg := state.State.Config
 	if cfg == nil {
-		return false
+		return true
 	}
-	for _, id := range cfg.Telegram.ForumMetaSendProbeTargetChatIDs {
+	allow := cfg.Telegram.ForumMetaSendProbeTargetChatIDs
+	if len(allow) == 0 {
+		return true
+	}
+	for _, id := range allow {
 		if id == chatID {
 			return true
 		}
@@ -142,7 +146,7 @@ func forumMetaProbeThreadByEdit(bot *gotgbot.Bot, chatID, threadID int64, slot s
 }
 
 func forumMetaProbeThread(bot *gotgbot.Bot, chatID, threadID int64, slot string, spec forumMetaSpec) (forumMetaThreadProbeResult, error) {
-	if forumMetaSendProbeEnabledForChat(chatID) {
+	if forumMetaManagementEnabledForChat(chatID) {
 		return forumMetaProbeThreadBySend(bot, chatID, threadID, slot)
 	}
 	return forumMetaProbeThreadByEdit(bot, chatID, threadID, slot, spec)

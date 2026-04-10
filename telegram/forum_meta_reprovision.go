@@ -75,6 +75,9 @@ func handleForumMetaThreadSendFailure(chatID, threadID int64, sendErr error) {
 	if chatID != t.TargetChatID {
 		return
 	}
+	if !forumMetaManagementEnabledForChat(chatID) {
+		return
+	}
 	slot := ""
 	switch threadID {
 	case t.CallsThreadID:
