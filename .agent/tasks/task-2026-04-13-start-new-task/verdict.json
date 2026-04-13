@@ -1,0 +1,13 @@
+{
+  "task_id": "task-2026-04-13-start-new-task",
+  "overall_verdict": "UNKNOWN",
+  "criteria": [
+    {
+      "id": "AC1",
+      "status": "UNKNOWN",
+      "reason": "Verifier has not run yet."
+    }
+  ],
+  "commands_run": [],
+  "artifacts_used": []
+}

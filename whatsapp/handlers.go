@@ -2202,6 +2202,9 @@ func LogoutHandler(v *events.LoggedOut) {
 	updateText += fmt.Sprintf("<b>Reason:</b> %s", html.EscapeString(v.Reason.String()))
 
 	utils.TgSendTextById(tgBot, cfg.Telegram.OwnerID, 0, updateText)
+	if err := PersistCurrentSessionInactive(v.Reason.String()); err != nil {
+		logger.Warn("failed to persist inactive whatsapp session state", zap.Error(err))
+	}
 
 	ShowWhatsAppSessionDisabledReconnect(v.Reason.String(), logger)
 }

@@ -149,6 +149,9 @@ func NewWhatsAppClient() error {
 	}
 
 	if client.Store.ID != nil {
+		if err := PersistCurrentSessionActive(client); err != nil {
+			logger.Warn("failed to persist active whatsapp session state", zap.Error(err))
+		}
 		logger.Info("successfully logged into WhatsApp",
 			zap.String("push_name", client.Store.PushName),
 			zap.String("jid", client.Store.ID.String()),
@@ -214,6 +217,9 @@ func StartWhatsAppQRReconnect(logger *zap.Logger) error {
 	applyReconnectCooldown()
 	runQRCodeLoop(ctx, client, logger)
 	if client.Store.ID != nil {
+		if err := PersistCurrentSessionActive(client); err != nil && logger != nil {
+			logger.Warn("failed to persist active whatsapp session state after relink", zap.Error(err))
+		}
 		notifyWhatsAppLinked(client, logger)
 		return nil
 	}

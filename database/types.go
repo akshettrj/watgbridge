@@ -92,8 +92,22 @@ type BridgeProvisionState struct {
 	LastCheckStatus   string `gorm:"size:64;not null;default:pending"`
 	LastCheckError    string `gorm:"type:text"`
 	LastProvisionedAt time.Time
-	CreatedAt         time.Time `gorm:"not null"`
-	UpdatedAt         time.Time `gorm:"not null"`
+	// Current linked WA session state for this bridge (single active session).
+	WaSessionActive    bool   `gorm:"not null;default:false"`
+	WaSessionJID       string `gorm:"size:191"`
+	WaSessionPhone     string `gorm:"size:64"`
+	WaSessionPushName  string `gorm:"size:512"`
+	WaSessionLinkedAt  time.Time
+	WaSessionUpdatedAt time.Time
+	// Previous linked WA session snapshot (for /linkhistory).
+	WaPrevSessionJID       string `gorm:"size:191"`
+	WaPrevSessionPhone     string `gorm:"size:64"`
+	WaPrevSessionPushName  string `gorm:"size:512"`
+	WaPrevSessionLinkedAt  time.Time
+	WaPrevSessionEndedAt   time.Time
+	WaPrevSessionEndReason string    `gorm:"type:text"`
+	CreatedAt              time.Time `gorm:"not null"`
+	UpdatedAt              time.Time `gorm:"not null"`
 }
 
 // BridgePendingManaged stores a managed-bridge bot token until the owner runs /bridge_bind with a target forum group.

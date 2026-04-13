@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "VerifierVerdict",
+  "type": "object",
+  "required": [
+    "task_id",
+    "overall_verdict",
+    "criteria",
+    "commands_run",
+    "artifacts_used"
+  ],
+  "properties": {
+    "task_id": {
+      "type": "string"
+    },
+    "overall_verdict": {
+      "enum": [
+        "PASS",
+        "FAIL",
+        "UNKNOWN"
+      ]
+    },
+    "criteria": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "reason"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "PASS",
+              "FAIL",
+              "UNKNOWN"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "commands_run": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "artifacts_used": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

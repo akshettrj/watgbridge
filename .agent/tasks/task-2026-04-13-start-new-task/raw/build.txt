@@ -1,0 +1,14 @@
+Command: go build ./...
+Exit code: 0
+Date (UTC): 2026-04-13
+
+Output:
+# github.com/watgbridge/webp
+In file included from z_libwebp_src_enc_picture_csp_enc.c:9:
+.../picture_csp_enc.c:1002:40: warning: result of '2 ^ ALPHA_OFFSET' is 1; did you mean '1 << ALPHA_OFFSET' (8)? [-Wxor-used-as-pow]
+# watgbridge
+ld: warning: ignoring duplicate libraries: '-lm'
+
+Result:
+- Build succeeded.
+- Only dependency/toolchain warnings were emitted.

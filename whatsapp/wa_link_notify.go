@@ -329,16 +329,25 @@ func HandleReconnectCallback(b *gotgbot.Bot, cq *gotgbot.CallbackQuery, chatID i
 	_, _ = cq.Answer(b, &gotgbot.AnswerCallbackQueryOpts{Text: "Starting new QR session…"})
 
 	zl := state.State.Logger
+	StartWhatsAppQRReconnectAsync(zl)
+	return nil
+}
+
+func StartWhatsAppQRReconnectAsync(zl *zap.Logger) {
+	if zl == nil {
+		zl = state.State.Logger
+	}
 	go func() {
-		if err := StartWhatsAppQRReconnect(zl); err != nil && zl != nil {
+		if err := StartWhatsAppQRReconnect(zl); err != nil {
 			if errors.Is(err, ErrReconnectInProgress) {
 				return
 			}
-			zl.Warn("whatsapp reconnect failed", zap.Error(err))
+			if zl != nil {
+				zl.Warn("whatsapp reconnect failed", zap.Error(err))
+			}
 			_ = sendWhatsAppQRTextToTelegram("Reconnect failed: " + err.Error())
 		}
 	}()
-	return nil
 }
 
 func sendWhatsAppQRTextToTelegram(text string) error {

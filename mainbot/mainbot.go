@@ -114,7 +114,29 @@ func bridgeListTextForOwner(ownerID int64) (string, error) {
 		if br.Enabled {
 			status = "enabled"
 		}
-		sb.WriteString(fmt.Sprintf("ID %d | %s | %s | chat %d\n", br.ID, br.Name, status, br.TelegramTargetChat))
+		sessionLabel := "wa not linked"
+		if p, perr := database.BridgeProvisionGetOptional(br.ID); perr == nil && p != nil {
+			if p.WaSessionActive {
+				id := strings.TrimSpace(p.WaSessionPhone)
+				if id == "" {
+					id = strings.TrimSpace(p.WaSessionJID)
+				}
+				if id != "" {
+					sessionLabel = "wa linked " + id
+				} else {
+					sessionLabel = "wa linked"
+				}
+			} else {
+				last := strings.TrimSpace(p.WaPrevSessionPhone)
+				if last == "" {
+					last = strings.TrimSpace(p.WaPrevSessionJID)
+				}
+				if last != "" {
+					sessionLabel = "wa not linked (last " + last + ")"
+				}
+			}
+		}
+		sb.WriteString(fmt.Sprintf("ID %d | %s | %s | chat %d | %s\n", br.ID, br.Name, status, br.TelegramTargetChat, sessionLabel))
 	}
 	return strings.TrimSuffix(sb.String(), "\n"), nil
 }

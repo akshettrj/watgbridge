@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EvidenceBundle",
+  "type": "object",
+  "required": [
+    "task_id",
+    "overall_status",
+    "acceptance_criteria",
+    "changed_files",
+    "commands_for_fresh_verifier",
+    "known_gaps"
+  ],
+  "properties": {
+    "task_id": {
+      "type": "string"
+    },
+    "overall_status": {
+      "enum": [
+        "PASS",
+        "FAIL",
+        "UNKNOWN"
+      ]
+    },
+    "acceptance_criteria": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "text",
+          "status",
+          "proof",
+          "gaps"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "PASS",
+              "FAIL",
+              "UNKNOWN"
+            ]
+          },
+          "proof": {
+            "type": "array"
+          },
+          "gaps": {
+            "type": "array"
+          }
+        }
+      }
+    },
+    "changed_files": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "commands_for_fresh_verifier": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "known_gaps": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

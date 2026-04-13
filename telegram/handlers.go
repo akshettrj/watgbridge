@@ -27,6 +27,7 @@ import (
 	"go.mau.fi/whatsmeow/appstate"
 	waTypes "go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
+	"go.uber.org/zap"
 )
 
 type waTgBridgeCommand struct {
@@ -76,6 +77,22 @@ func AddTelegramHandlers() {
 		waTgBridgeCommand{
 			handlers.NewCommand("restartwa", RestartWhatsAppConnectionHandler),
 			"Restart the WhatsApp client",
+		},
+		waTgBridgeCommand{
+			handlers.NewCommand("linkinfo", LinkInfoCommandHandler),
+			"Show WhatsApp link/session metadata for this bridge",
+		},
+		waTgBridgeCommand{
+			handlers.NewCommand("linkundo", LinkUndoCommandHandler),
+			"Close the current WhatsApp linked session",
+		},
+		waTgBridgeCommand{
+			handlers.NewCommand("link", LinkCommandHandler),
+			"Start a fresh WhatsApp QR linking flow",
+		},
+		waTgBridgeCommand{
+			handlers.NewCommand("linkhistory", LinkHistoryCommandHandler),
+			"Show the previously active WhatsApp session on this bridge",
 		},
 		waTgBridgeCommand{
 			handlers.NewCommand("joininvitelink", JoinInviteLinkHandler),
@@ -717,6 +734,184 @@ func RestartWhatsAppConnectionHandler(b *gotgbot.Bot, c *ext.Context) error {
 	}
 
 	_, err = utils.TgReplyTextByContext(b, c, "Successfully restarted the WhatsApp connection", nil, false)
+	return err
+}
+
+func formatBridgeSessionTime(ts time.Time) string {
+	if ts.IsZero() {
+		return "unknown"
+	}
+	loc := time.UTC
+	if state.State.LocalLocation != nil {
+		loc = state.State.LocalLocation
+	}
+	tf := strings.TrimSpace(state.State.Config.TimeFormat)
+	if tf == "" {
+		tf = time.RFC3339
+	}
+	return ts.In(loc).Format(tf)
+}
+
+func sessionDisplayIdentity(phone, jid string) string {
+	phone = strings.TrimSpace(phone)
+	jid = strings.TrimSpace(jid)
+	if phone != "" && jid != "" {
+		return fmt.Sprintf("%s (<code>%s</code>)", html.EscapeString(phone), html.EscapeString(jid))
+	}
+	if phone != "" {
+		return html.EscapeString(phone)
+	}
+	if jid != "" {
+		return fmt.Sprintf("<code>%s</code>", html.EscapeString(jid))
+	}
+	return "unknown"
+}
+
+func LinkInfoCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
+	if !utils.TgUpdateIsAuthorized(b, c) {
+		return nil
+	}
+
+	waClient := state.State.WhatsAppClient
+	if waClient == nil {
+		_, err := utils.TgReplyTextByContext(b, c, "WhatsApp client is not initialized.", nil, false)
+		return err
+	}
+
+	row, bridgeID, err := whatsapp.LoadProvisionSessionState()
+	if err != nil {
+		return utils.TgReplyWithErrorByContext(b, c, "Failed to load link state", err)
+	}
+
+	runtimeConnected := waClient.IsConnected()
+	runtimeLoggedIn := waClient.IsLoggedIn()
+	runtimeJID := ""
+	runtimePhone := ""
+	runtimePush := ""
+	if waClient.Store != nil {
+		runtimePush = strings.TrimSpace(waClient.Store.PushName)
+	}
+	if waClient.Store != nil && waClient.Store.ID != nil {
+		j := waClient.Store.ID.ToNonAD()
+		runtimeJID = j.String()
+		runtimePhone = utils.WaGetPhoneForDisplay(j.User, j.Server)
+	}
+
+	var body strings.Builder
+	body.WriteString("<b>WhatsApp link info</b>\n")
+	body.WriteString(fmt.Sprintf("Bridge id: <code>%d</code>\n", bridgeID))
+	body.WriteString(fmt.Sprintf("Runtime connected: <b>%t</b>\n", runtimeConnected))
+	body.WriteString(fmt.Sprintf("Runtime logged in: <b>%t</b>\n", runtimeLoggedIn))
+	if runtimeJID != "" || runtimePhone != "" {
+		body.WriteString(fmt.Sprintf("Runtime identity: %s\n", sessionDisplayIdentity(runtimePhone, runtimeJID)))
+		if runtimePush != "" {
+			body.WriteString(fmt.Sprintf("Runtime push name: <b>%s</b>\n", html.EscapeString(runtimePush)))
+		}
+	}
+	body.WriteString("\n")
+
+	if row != nil && row.WaSessionActive {
+		body.WriteString("<b>Persisted active session</b>\n")
+		body.WriteString(fmt.Sprintf("Identity: %s\n", sessionDisplayIdentity(row.WaSessionPhone, row.WaSessionJID)))
+		if strings.TrimSpace(row.WaSessionPushName) != "" {
+			body.WriteString(fmt.Sprintf("Push name: <b>%s</b>\n", html.EscapeString(row.WaSessionPushName)))
+		}
+		body.WriteString(fmt.Sprintf("Linked at: <b>%s</b>\n", html.EscapeString(formatBridgeSessionTime(row.WaSessionLinkedAt))))
+		body.WriteString(fmt.Sprintf("Updated at: <b>%s</b>", html.EscapeString(formatBridgeSessionTime(row.WaSessionUpdatedAt))))
+	} else {
+		body.WriteString("<b>Persisted active session</b>\n")
+		body.WriteString("None. Use <code>/link</code> to start a QR linking flow.")
+	}
+
+	_, err = utils.TgReplyHTMLByContext(b, c, body.String(), nil, false)
+	return err
+}
+
+func LinkHistoryCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
+	if !utils.TgUpdateIsAuthorized(b, c) {
+		return nil
+	}
+
+	row, bridgeID, err := whatsapp.LoadProvisionSessionState()
+	if err != nil {
+		return utils.TgReplyWithErrorByContext(b, c, "Failed to load link history", err)
+	}
+
+	if row == nil || (strings.TrimSpace(row.WaPrevSessionJID) == "" &&
+		strings.TrimSpace(row.WaPrevSessionPhone) == "" &&
+		strings.TrimSpace(row.WaPrevSessionPushName) == "" &&
+		row.WaPrevSessionLinkedAt.IsZero() &&
+		row.WaPrevSessionEndedAt.IsZero()) {
+		_, err := utils.TgReplyTextByContext(b, c, "No previously active WhatsApp session recorded for this bridge.", nil, false)
+		return err
+	}
+
+	var body strings.Builder
+	body.WriteString("<b>WhatsApp link history</b>\n")
+	body.WriteString(fmt.Sprintf("Bridge id: <code>%d</code>\n", bridgeID))
+	body.WriteString(fmt.Sprintf("Previous identity: %s\n", sessionDisplayIdentity(row.WaPrevSessionPhone, row.WaPrevSessionJID)))
+	if strings.TrimSpace(row.WaPrevSessionPushName) != "" {
+		body.WriteString(fmt.Sprintf("Previous push name: <b>%s</b>\n", html.EscapeString(row.WaPrevSessionPushName)))
+	}
+	body.WriteString(fmt.Sprintf("Linked at: <b>%s</b>\n", html.EscapeString(formatBridgeSessionTime(row.WaPrevSessionLinkedAt))))
+	body.WriteString(fmt.Sprintf("Ended at: <b>%s</b>\n", html.EscapeString(formatBridgeSessionTime(row.WaPrevSessionEndedAt))))
+	if strings.TrimSpace(row.WaPrevSessionEndReason) != "" {
+		body.WriteString(fmt.Sprintf("End reason: <i>%s</i>", html.EscapeString(row.WaPrevSessionEndReason)))
+	}
+
+	_, err = utils.TgReplyHTMLByContext(b, c, body.String(), nil, false)
+	return err
+}
+
+func LinkUndoCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
+	if !utils.TgUpdateIsAuthorized(b, c) {
+		return nil
+	}
+
+	waClient := state.State.WhatsAppClient
+	if waClient == nil {
+		_, err := utils.TgReplyTextByContext(b, c, "WhatsApp client is not initialized.", nil, false)
+		return err
+	}
+	if waClient.Store == nil || waClient.Store.ID == nil {
+		_, err := utils.TgReplyTextByContext(b, c, "No active WhatsApp session to close.", nil, false)
+		return err
+	}
+
+	if err := waClient.Logout(context.Background()); err != nil {
+		return utils.TgReplyWithErrorByContext(b, c, "Failed to close current WhatsApp session", err)
+	}
+	if err := whatsapp.PersistCurrentSessionInactive("closed via /linkundo"); err != nil && state.State.Logger != nil {
+		state.State.Logger.Warn("failed to persist inactive whatsapp session after /linkundo", zap.Error(err))
+	}
+
+	whatsapp.ShowWhatsAppSessionDisabledReconnect("Session closed via /linkundo.", state.State.Logger)
+	_, err := utils.TgReplyTextByContext(b, c, "Closed the current WhatsApp session. Use /link to start a new QR link flow.", nil, false)
+	return err
+}
+
+func LinkCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
+	if !utils.TgUpdateIsAuthorized(b, c) {
+		return nil
+	}
+
+	waClient := state.State.WhatsAppClient
+	if waClient == nil {
+		_, err := utils.TgReplyTextByContext(b, c, "WhatsApp client is not initialized.", nil, false)
+		return err
+	}
+
+	if waClient.Store != nil && waClient.Store.ID != nil {
+		if err := waClient.Logout(context.Background()); err != nil {
+			return utils.TgReplyWithErrorByContext(b, c, "Failed to reset the current WhatsApp session before relink", err)
+		}
+		if err := whatsapp.PersistCurrentSessionInactive("restarted via /link"); err != nil && state.State.Logger != nil {
+			state.State.Logger.Warn("failed to persist inactive whatsapp session after /link", zap.Error(err))
+		}
+	}
+
+	whatsapp.StartWhatsAppQRReconnectAsync(state.State.Logger)
+	_, err := utils.TgReplyTextByContext(b, c, "Starting a new WhatsApp QR link flow. Scan the QR code sent in the bridge chat.", nil, false)
 	return err
 }
 

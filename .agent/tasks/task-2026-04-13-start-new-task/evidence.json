@@ -1,0 +1,105 @@
+{
+  "task_id": "task-2026-04-13-start-new-task",
+  "overall_status": "UNKNOWN",
+  "acceptance_criteria": [
+    {
+      "id": "AC1",
+      "text": "Telegram bridge bot registers and handles new owner-only commands /linkinfo, /linkundo, /link, and /linkhistory.",
+      "status": "PASS",
+      "proof": [
+        "telegram/handlers.go: command registration includes linkinfo/linkundo/link/linkhistory",
+        "telegram/handlers.go: handlers implemented"
+      ],
+      "gaps": []
+    },
+    {
+      "id": "AC2",
+      "text": "/linkinfo returns current session metadata in Telegram.",
+      "status": "PASS",
+      "proof": [
+        "telegram/handlers.go: LinkInfoCommandHandler",
+        "whatsapp/session_state.go: LoadProvisionSessionState"
+      ],
+      "gaps": [
+        "No live runtime invocation captured in this run."
+      ]
+    },
+    {
+      "id": "AC3",
+      "text": "/linkundo closes current WA session and updates persisted session state.",
+      "status": "PASS",
+      "proof": [
+        "telegram/handlers.go: LinkUndoCommandHandler uses Logout + PersistCurrentSessionInactive",
+        "database/bridges.go: BridgeProvisionMarkSessionInactive"
+      ],
+      "gaps": [
+        "No live logout command execution captured in this run."
+      ]
+    },
+    {
+      "id": "AC4",
+      "text": "/link restarts QR link flow and handles reconnect flow through async runner.",
+      "status": "PASS",
+      "proof": [
+        "telegram/handlers.go: LinkCommandHandler",
+        "whatsapp/wa_link_notify.go: StartWhatsAppQRReconnectAsync"
+      ],
+      "gaps": [
+        "No full manual QR relink cycle captured in this run."
+      ]
+    },
+    {
+      "id": "AC5",
+      "text": "Session history metadata is persisted per bridge and exposed via /linkhistory.",
+      "status": "PASS",
+      "proof": [
+        "database/types.go: BridgeProvisionState session history fields",
+        "database/bridges.go: session active/inactive persistence helpers",
+        "telegram/handlers.go: LinkHistoryCommandHandler"
+      ],
+      "gaps": [
+        "No real historical row populated during this run."
+      ]
+    },
+    {
+      "id": "AC6",
+      "text": "Main bot List my bridges includes active WA session visibility.",
+      "status": "PASS",
+      "proof": [
+        "mainbot/mainbot.go: bridgeListTextForOwner includes wa linked/not linked status from provision rows"
+      ],
+      "gaps": [
+        "No live main-bot screenshot generated in this run."
+      ]
+    },
+    {
+      "id": "AC7",
+      "text": "Existing behavior is not regressed by these additions.",
+      "status": "UNKNOWN",
+      "proof": [
+        "go build ./... (raw/build.txt)",
+        "gofmt run on changed files (raw/lint.txt)"
+      ],
+      "gaps": [
+        "No live end-to-end forwarding validation against WhatsApp and Telegram in this run."
+      ]
+    }
+  ],
+  "changed_files": [
+    "database/bridges.go",
+    "database/types.go",
+    "mainbot/mainbot.go",
+    "telegram/handlers.go",
+    "whatsapp/client.go",
+    "whatsapp/handlers.go",
+    "whatsapp/session_state.go",
+    "whatsapp/wa_link_notify.go"
+  ],
+  "commands_for_fresh_verifier": [
+    "gofmt -w database/bridges.go database/types.go whatsapp/session_state.go whatsapp/client.go whatsapp/wa_link_notify.go whatsapp/handlers.go telegram/handlers.go mainbot/mainbot.go",
+    "go build ./..."
+  ],
+  "known_gaps": [
+    "Manual end-to-end verification with live WhatsApp + Telegram accounts still required."
+  ]
+}

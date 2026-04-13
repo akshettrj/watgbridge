@@ -186,6 +186,129 @@ func BridgeProvisionGet(bridgeID uint) (*BridgeProvisionState, error) {
 	return nil, lastErr
 }
 
+// BridgeProvisionGetOptional returns nil,nil when no row exists for bridgeID.
+func BridgeProvisionGetOptional(bridgeID uint) (*BridgeProvisionState, error) {
+	p, err := BridgeProvisionGet(bridgeID)
+	if err == nil {
+		return p, nil
+	}
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	return nil, err
+}
+
+func BridgeProvisionSetSessionActive(bridgeID uint, jid, phone, pushName string, linkedAt time.Time) error {
+	var err error
+	for attempt := 0; attempt < bridgeProvisionDBRetryAttempts; attempt++ {
+		bridgeProvisionRetryDelay(attempt)
+		err = bridgeProvisionSetSessionActiveOnce(bridgeID, jid, phone, pushName, linkedAt)
+		if err == nil {
+			return nil
+		}
+		if !bridgeProvisionSQLiteBusy(err) {
+			return err
+		}
+	}
+	return err
+}
+
+func bridgeProvisionSetSessionActiveOnce(bridgeID uint, jid, phone, pushName string, linkedAt time.Time) error {
+	db := provisionStateDBOrDefault()
+	now := time.Now().UTC()
+	if linkedAt.IsZero() {
+		linkedAt = now
+	}
+	jid = strings.TrimSpace(jid)
+	phone = strings.TrimSpace(phone)
+	pushName = strings.TrimSpace(pushName)
+
+	return db.Transaction(func(tx *gorm.DB) error {
+		var row BridgeProvisionState
+		res := tx.Where("bridge_id = ?", bridgeID).First(&row)
+		if res.Error != nil {
+			if !errors.Is(res.Error, gorm.ErrRecordNotFound) {
+				return res.Error
+			}
+			if err := tx.Create(&BridgeProvisionState{
+				BridgeID:        bridgeID,
+				LastCheckStatus: "ok",
+			}).Error; err != nil {
+				return err
+			}
+		}
+		updates := map[string]interface{}{
+			"wa_session_active":     true,
+			"wa_session_jid":        jid,
+			"wa_session_phone":      phone,
+			"wa_session_push_name":  pushName,
+			"wa_session_linked_at":  linkedAt,
+			"wa_session_updated_at": now,
+			"updated_at":            now,
+		}
+		return tx.Model(&BridgeProvisionState{}).Where("bridge_id = ?", bridgeID).Updates(updates).Error
+	})
+}
+
+func BridgeProvisionMarkSessionInactive(bridgeID uint, reason string, endedAt time.Time) error {
+	var err error
+	for attempt := 0; attempt < bridgeProvisionDBRetryAttempts; attempt++ {
+		bridgeProvisionRetryDelay(attempt)
+		err = bridgeProvisionMarkSessionInactiveOnce(bridgeID, reason, endedAt)
+		if err == nil {
+			return nil
+		}
+		if !bridgeProvisionSQLiteBusy(err) {
+			return err
+		}
+	}
+	return err
+}
+
+func bridgeProvisionMarkSessionInactiveOnce(bridgeID uint, reason string, endedAt time.Time) error {
+	db := provisionStateDBOrDefault()
+	now := time.Now().UTC()
+	if endedAt.IsZero() {
+		endedAt = now
+	}
+	reason = strings.TrimSpace(reason)
+
+	return db.Transaction(func(tx *gorm.DB) error {
+		var row BridgeProvisionState
+		res := tx.Where("bridge_id = ?", bridgeID).First(&row)
+		if res.Error != nil {
+			if !errors.Is(res.Error, gorm.ErrRecordNotFound) {
+				return res.Error
+			}
+			return tx.Create(&BridgeProvisionState{
+				BridgeID:        bridgeID,
+				LastCheckStatus: "pending",
+			}).Error
+		}
+
+		updates := map[string]interface{}{
+			"wa_session_active":     false,
+			"wa_session_jid":        "",
+			"wa_session_phone":      "",
+			"wa_session_push_name":  "",
+			"wa_session_linked_at":  time.Time{},
+			"wa_session_updated_at": endedAt,
+			"updated_at":            now,
+		}
+
+		if row.WaSessionJID != "" || row.WaSessionPhone != "" || row.WaSessionPushName != "" || !row.WaSessionLinkedAt.IsZero() {
+			updates["wa_prev_session_jid"] = row.WaSessionJID
+			updates["wa_prev_session_phone"] = row.WaSessionPhone
+			updates["wa_prev_session_push_name"] = row.WaSessionPushName
+			updates["wa_prev_session_linked_at"] = row.WaSessionLinkedAt
+			updates["wa_prev_session_ended_at"] = endedAt
+			updates["wa_prev_session_end_reason"] = reason
+		}
+
+		return tx.Model(&BridgeProvisionState{}).Where("bridge_id = ?", bridgeID).Updates(updates).Error
+	})
+}
+
 func BridgeProvisionSet(bridgeID uint, general, botMeta, calls, statusThread int64, lastCheckStatus, lastErr string) error {
 	var err error
 	for attempt := 0; attempt < bridgeProvisionDBRetryAttempts; attempt++ {

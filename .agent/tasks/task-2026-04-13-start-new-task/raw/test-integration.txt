@@ -1,0 +1,3 @@
+Integration tests:
+- Not executed in CI/terminal because this feature requires live WhatsApp + Telegram accounts and runtime linking.
+- Manual verification is still required for end-to-end forwarding behavior.
