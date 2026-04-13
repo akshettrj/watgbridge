@@ -44,7 +44,7 @@ func forumMetaVerifySlotThread(botChatID, threadID int64, slot string) (bool, er
 	if !ok {
 		return false, nil
 	}
-	result, err := forumMetaProbeThread(bot, botChatID, threadID, slot, spec)
+	result, err := forumMetaProbeThreadResolved(bot, botChatID, threadID, slot, spec)
 	switch result {
 	case forumMetaThreadProbeValid:
 		return true, nil

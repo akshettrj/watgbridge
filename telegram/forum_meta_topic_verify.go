@@ -16,6 +16,8 @@ const (
 	forumMetaProbeMaxAttempts = 5
 	forumMetaProbeRetryBase   = 300 * time.Millisecond
 	forumMetaProbeText        = "."
+	forumMetaResolveRounds    = 6
+	forumMetaResolveBase      = 2 * time.Second
 )
 
 type forumMetaThreadProbeResult int
@@ -35,6 +37,17 @@ func forumMetaProbeBackoff(attempt int) {
 		shift = 5
 	}
 	time.Sleep(forumMetaProbeRetryBase * time.Duration(1<<shift))
+}
+
+func forumMetaResolveBackoff(round int) {
+	if round <= 0 {
+		return
+	}
+	shift := round - 1
+	if shift > 5 {
+		shift = 5
+	}
+	time.Sleep(forumMetaResolveBase * time.Duration(1<<shift))
 }
 
 func forumMetaManagementEnabledForChat(chatID int64) bool {
@@ -150,4 +163,28 @@ func forumMetaProbeThread(bot *gotgbot.Bot, chatID, threadID int64, slot string,
 		return forumMetaProbeThreadBySend(bot, chatID, threadID, slot)
 	}
 	return forumMetaProbeThreadByEdit(bot, chatID, threadID, slot, spec)
+}
+
+// forumMetaProbeThreadResolved retries unknown probe outcomes across multiple rounds so
+// topic deletion is self-healed in-process without requiring stack restarts.
+func forumMetaProbeThreadResolved(bot *gotgbot.Bot, chatID, threadID int64, slot string, spec forumMetaSpec) (forumMetaThreadProbeResult, error) {
+	var lastErr error
+	for round := 0; round < forumMetaResolveRounds; round++ {
+		forumMetaResolveBackoff(round)
+		result, err := forumMetaProbeThread(bot, chatID, threadID, slot, spec)
+		if result != forumMetaThreadProbeUnknown {
+			return result, err
+		}
+		lastErr = err
+		state.State.Logger.Info("forum meta: probe inconclusive; retrying",
+			zap.String("slot", slot),
+			zap.Int("round", round+1),
+			zap.Int("rounds_total", forumMetaResolveRounds),
+			zap.Int64("thread_id", threadID),
+			zap.Error(err))
+	}
+	if lastErr != nil {
+		return forumMetaThreadProbeUnknown, fmt.Errorf("probe inconclusive after %d rounds: %w", forumMetaResolveRounds, lastErr)
+	}
+	return forumMetaThreadProbeUnknown, fmt.Errorf("probe inconclusive after %d rounds", forumMetaResolveRounds)
 }

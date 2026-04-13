@@ -26,8 +26,6 @@ telegram:
     - -1003830089690
   # Optional: ISO region (e.g. KZ, US) so a national-format number pasted in General is parsed like /check; leave empty to only accept +… / 00…
   # check_phone_default_region: ""
-  # Optional meta topic IDs (forum): if set, startup seeds DB so WA "calls" / status@broadcast use these threads (same idea as calls_thread_id).
-  # status_thread_id: 0
   skip_video_stickers: false              # Setting this as true will stop trying to convert telegram video stickers to webp and sending them
   skip_setting_commands: false            # This will not show you list of commands when you start typing / in telegram
 

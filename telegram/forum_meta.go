@@ -250,7 +250,7 @@ func provisionMetaSlot(bot *gotgbot.Bot, chatID int64, spec forumMetaSpec, threa
 		if threadHintConflictsWithReserved(candidate, reserved) {
 			continue
 		}
-		result, probeErr := forumMetaProbeThread(bot, chatID, candidate, spec.slot, spec)
+		result, probeErr := forumMetaProbeThreadResolved(bot, chatID, candidate, spec.slot, spec)
 		switch result {
 		case forumMetaThreadProbeValid:
 			reconcileForumMetaTopicStyle(bot, chatID, candidate, spec)

@@ -225,6 +225,9 @@ func (m *Manager) writeBridgeConfig(bridge *database.Bridge) (string, error) {
 		"self_hosted_api":    mainCfg.Telegram.SelfHostedAPI,
 		"bridge_registry_id": bridge.ID,
 	}
+	if len(mainCfg.Telegram.ForumMetaSendProbeTargetChatIDs) > 0 {
+		tgMap["forum_meta_send_probe_target_chat_ids"] = mainCfg.Telegram.ForumMetaSendProbeTargetChatIDs
+	}
 	if mainCfg.Telegram.MainBotToken != "" {
 		tgMap["control_bot_token"] = mainCfg.Telegram.MainBotToken
 	}
