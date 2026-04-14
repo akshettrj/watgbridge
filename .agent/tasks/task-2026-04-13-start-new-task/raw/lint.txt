@@ -1,6 +1,6 @@
-Command: gofmt -w database/bridges.go database/types.go whatsapp/session_state.go whatsapp/client.go whatsapp/wa_link_notify.go whatsapp/handlers.go telegram/handlers.go mainbot/mainbot.go
+Command: gofmt -w main.go mainbot/mainbot.go mainbot/bridge_add_core.go database/types.go database/bridges.go
 Exit code: 0
-Date (UTC): 2026-04-13
+Date (UTC): 2026-04-14
 
 Output:
 - gofmt completed without errors.

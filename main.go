@@ -262,6 +262,11 @@ func main() {
 				zap.Error(err))
 		}
 		database.SetProvisionStateDB(regDB)
+		if err := database.AutoMigrateProvisionState(regDB); err != nil {
+			logger.Fatal("migrate bridge_provision_states on registry DB failed",
+				zap.String("path", abs),
+				zap.Error(err))
+		}
 		logger.Info("bridge provision state uses registry DB",
 			zap.String("path", abs),
 			zap.Uint("bridge_registry_id", cfg.Telegram.BridgeRegistryID))

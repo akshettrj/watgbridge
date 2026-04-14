@@ -7,8 +7,7 @@
       "text": "Telegram bridge bot registers and handles new owner-only commands /linkinfo, /linkundo, /link, and /linkhistory.",
       "status": "PASS",
       "proof": [
-        "telegram/handlers.go: command registration includes linkinfo/linkundo/link/linkhistory",
-        "telegram/handlers.go: handlers implemented"
+        "telegram/handlers.go"
       ],
       "gaps": []
     },
@@ -18,10 +17,10 @@
       "status": "PASS",
       "proof": [
         "telegram/handlers.go: LinkInfoCommandHandler",
-        "whatsapp/session_state.go: LoadProvisionSessionState"
+        "whatsapp/session_state.go"
       ],
       "gaps": [
-        "No live runtime invocation captured in this run."
+        "No live command execution captured in this run."
       ]
     },
     {
@@ -29,11 +28,11 @@
       "text": "/linkundo closes current WA session and updates persisted session state.",
       "status": "PASS",
       "proof": [
-        "telegram/handlers.go: LinkUndoCommandHandler uses Logout + PersistCurrentSessionInactive",
+        "telegram/handlers.go: LinkUndoCommandHandler",
         "database/bridges.go: BridgeProvisionMarkSessionInactive"
       ],
       "gaps": [
-        "No live logout command execution captured in this run."
+        "No live logout execution captured in this run."
       ]
     },
     {
@@ -45,7 +44,7 @@
         "whatsapp/wa_link_notify.go: StartWhatsAppQRReconnectAsync"
       ],
       "gaps": [
-        "No full manual QR relink cycle captured in this run."
+        "No full QR cycle captured in this run."
       ]
     },
     {
@@ -53,12 +52,12 @@
       "text": "Session history metadata is persisted per bridge and exposed via /linkhistory.",
       "status": "PASS",
       "proof": [
-        "database/types.go: BridgeProvisionState session history fields",
-        "database/bridges.go: session active/inactive persistence helpers",
+        "database/types.go",
+        "database/bridges.go",
         "telegram/handlers.go: LinkHistoryCommandHandler"
       ],
       "gaps": [
-        "No real historical row populated during this run."
+        "No real history data generated in this run."
       ]
     },
     {
@@ -66,10 +65,10 @@
       "text": "Main bot List my bridges includes active WA session visibility.",
       "status": "PASS",
       "proof": [
-        "mainbot/mainbot.go: bridgeListTextForOwner includes wa linked/not linked status from provision rows"
+        "mainbot/mainbot.go"
       ],
       "gaps": [
-        "No live main-bot screenshot generated in this run."
+        "No live screenshot produced in this run."
       ]
     },
     {
@@ -77,18 +76,43 @@
       "text": "Existing behavior is not regressed by these additions.",
       "status": "UNKNOWN",
       "proof": [
-        "go build ./... (raw/build.txt)",
-        "gofmt run on changed files (raw/lint.txt)"
+        "go build ./..."
       ],
       "gaps": [
-        "No live end-to-end forwarding validation against WhatsApp and Telegram in this run."
+        "Live forwarding checks not executed in this run."
+      ]
+    },
+    {
+      "id": "AC8",
+      "text": "Bridge child startup auto-migrates bridge_provision_states on shared registry DB.",
+      "status": "PASS",
+      "proof": [
+        "database/types.go: AutoMigrateProvisionState",
+        "main.go: child registry-db bootstrap calls AutoMigrateProvisionState"
+      ],
+      "gaps": [
+        "Requires redeploy/restart to apply in runtime environment."
+      ]
+    },
+    {
+      "id": "AC9",
+      "text": "bridge_list output follows explicit column contract.",
+      "status": "PASS",
+      "proof": [
+        "mainbot/mainbot.go: bridgeListTextForOwner header and row format",
+        "database/types.go + bridge_add_core.go: bot identity persistence"
+      ],
+      "gaps": [
+        "Existing rows may need lazy identity backfill to avoid unknown nickname."
       ]
     }
   ],
   "changed_files": [
-    "database/bridges.go",
+    "main.go",
     "database/types.go",
+    "database/bridges.go",
     "mainbot/mainbot.go",
+    "mainbot/bridge_add_core.go",
     "telegram/handlers.go",
     "whatsapp/client.go",
     "whatsapp/handlers.go",
@@ -96,10 +120,10 @@
     "whatsapp/wa_link_notify.go"
   ],
   "commands_for_fresh_verifier": [
-    "gofmt -w database/bridges.go database/types.go whatsapp/session_state.go whatsapp/client.go whatsapp/wa_link_notify.go whatsapp/handlers.go telegram/handlers.go mainbot/mainbot.go",
+    "gofmt -w main.go mainbot/mainbot.go mainbot/bridge_add_core.go database/types.go database/bridges.go",
     "go build ./..."
   ],
   "known_gaps": [
-    "Manual end-to-end verification with live WhatsApp + Telegram accounts still required."
+    "Live Telegram/WhatsApp manual verification is still required."
   ]
 }

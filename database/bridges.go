@@ -89,7 +89,7 @@ func BridgeRegistryNotifyUserIDs() ([]int64, error) {
 	return out, nil
 }
 
-func BridgeCreate(ownerUserID int64, name, token string, tgTargetChatID int64, waSessionName string, enabled bool) (*Bridge, error) {
+func BridgeCreate(ownerUserID int64, name, token string, tgTargetChatID int64, waSessionName string, enabled bool, bridgeBotUserID int64, bridgeBotUsername string) (*Bridge, error) {
 	db := state.State.Database
 	var existing Bridge
 	if err := db.Where("telegram_target_chat = ?", tgTargetChatID).First(&existing).Error; err == nil {
@@ -103,6 +103,8 @@ func BridgeCreate(ownerUserID int64, name, token string, tgTargetChatID int64, w
 		Name:               strings.TrimSpace(name),
 		BridgeBotToken:     strings.TrimSpace(token),
 		BridgeBotTokenHash: hash,
+		BridgeBotUserID:    bridgeBotUserID,
+		BridgeBotUsername:  strings.TrimSpace(bridgeBotUsername),
 		TelegramTargetChat: tgTargetChatID,
 		WaSessionName:      strings.TrimSpace(waSessionName),
 		Enabled:            enabled,
@@ -155,6 +157,17 @@ func BridgeSetEnabled(ownerUserID int64, bridgeID uint, enabled bool) error {
 	return db.Model(&Bridge{}).
 		Where("id = ? AND owner_user_id = ?", bridgeID, ownerUserID).
 		Updates(map[string]interface{}{"enabled": enabled, "updated_at": time.Now()}).Error
+}
+
+func BridgeSetBotIdentity(ownerUserID int64, bridgeID uint, bridgeBotUserID int64, bridgeBotUsername string) error {
+	db := state.State.Database
+	return db.Model(&Bridge{}).
+		Where("id = ? AND owner_user_id = ?", bridgeID, ownerUserID).
+		Updates(map[string]interface{}{
+			"bridge_bot_user_id":  bridgeBotUserID,
+			"bridge_bot_username": strings.TrimSpace(bridgeBotUsername),
+			"updated_at":          time.Now(),
+		}).Error
 }
 
 func BridgeDelete(ownerUserID int64, bridgeID uint) error {

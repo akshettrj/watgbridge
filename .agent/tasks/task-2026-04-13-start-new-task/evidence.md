@@ -2,72 +2,84 @@
 
 ## Summary
 - Overall status: UNKNOWN
-- Last updated: 2026-04-13T12:00:00Z
+- Last updated: 2026-04-14T00:00:00Z
 
 ## Acceptance criteria evidence
 
 ### AC1
 - Status: PASS
 - Proof:
-  - Registered commands `/linkinfo`, `/linkundo`, `/link`, `/linkhistory` in `telegram.AddTelegramHandlers`.
+  - Registered commands `/linkinfo`, `/linkundo`, `/link`, `/linkhistory`.
   - File: `telegram/handlers.go`
 - Gaps:
-  - None in code wiring.
+  - None in wiring.
 
 ### AC2
 - Status: PASS
 - Proof:
-  - Implemented `LinkInfoCommandHandler` with runtime + persisted session metadata output.
-  - Implemented shared session state loader `whatsapp.LoadProvisionSessionState`.
+  - `LinkInfoCommandHandler` reports runtime and persisted WA session metadata.
   - Files: `telegram/handlers.go`, `whatsapp/session_state.go`
 - Gaps:
-  - Live runtime output not manually exercised in this run.
+  - Manual runtime invocation not captured here.
 
 ### AC3
 - Status: PASS
 - Proof:
-  - Implemented `LinkUndoCommandHandler` using `waClient.Logout` and persisted inactive session snapshot.
-  - Added inactive-session persistence helper `database.BridgeProvisionMarkSessionInactive`.
+  - `/linkundo` uses `waClient.Logout` + persisted inactive-session snapshot.
   - Files: `telegram/handlers.go`, `database/bridges.go`
 - Gaps:
-  - Live WA logout behavior not manually exercised in this run.
+  - Manual logout flow not executed in this run.
 
 ### AC4
 - Status: PASS
 - Proof:
-  - Implemented `LinkCommandHandler` to reset active session and start new async QR reconnect flow.
-  - Added reusable async launcher `whatsapp.StartWhatsAppQRReconnectAsync`.
+  - `/link` resets linked session (if active) and starts async QR flow (`StartWhatsAppQRReconnectAsync`).
   - Files: `telegram/handlers.go`, `whatsapp/wa_link_notify.go`
 - Gaps:
-  - Full manual QR cycle not exercised in this run.
+  - Full QR relink cycle not exercised in this run.
 
 ### AC5
 - Status: PASS
 - Proof:
-  - Added bridge session persistence fields for current + previous sessions in `BridgeProvisionState`.
-  - Added `/linkhistory` command rendering previous session identity/timestamps/reason.
+  - Session history fields persisted in `BridgeProvisionState` and shown via `/linkhistory`.
   - Files: `database/types.go`, `database/bridges.go`, `telegram/handlers.go`
 - Gaps:
-  - No manual relink/logout cycle performed to populate history.
+  - No real history row populated during this run.
 
 ### AC6
 - Status: PASS
 - Proof:
-  - Updated main bot bridge listing to include `wa linked` / `wa not linked` state from bridge provision rows.
+  - Main bot listing includes WA session status sourced from provision state.
   - File: `mainbot/mainbot.go`
 - Gaps:
-  - Manual check in real main bot chat not executed in this run.
+  - Manual main-bot execution not captured in this run.
 
 ### AC7
 - Status: UNKNOWN
 - Proof:
-  - `go build ./...` succeeds (see `raw/build.txt`).
-  - Formatting pass completed (see `raw/lint.txt`).
+  - `go build ./...` passes.
 - Gaps:
-  - No live end-to-end manual validation with real WhatsApp + Telegram session to confirm forwarding behavior.
+  - End-to-end live forwarding verification was not run here.
+
+### AC8
+- Status: PASS
+- Proof:
+  - Added `AutoMigrateProvisionState` and invoked it for child-process registry DB binding.
+  - Files: `database/types.go`, `main.go`
+- Gaps:
+  - Requires container restart in deployed environment to apply migration there.
+
+### AC9
+- Status: PASS
+- Proof:
+  - `bridge_list` output now follows explicit columns:
+    `Forum Group ID | Bridge Bot ID | Bridge Bot Nickname | WA Session Name | WA Session Status`.
+  - Files: `mainbot/mainbot.go`, `database/types.go`, `database/bridges.go`, `mainbot/bridge_add_core.go`
+- Gaps:
+  - Existing DB rows may show `unknown` nickname until identity backfill succeeds.
 
 ## Commands run
-- `gofmt -w database/bridges.go database/types.go whatsapp/session_state.go whatsapp/client.go whatsapp/wa_link_notify.go whatsapp/handlers.go telegram/handlers.go mainbot/mainbot.go`
+- `gofmt -w main.go mainbot/mainbot.go mainbot/bridge_add_core.go database/types.go database/bridges.go`
 - `go build ./...`
 
 ## Raw artifacts
@@ -78,4 +90,4 @@
 - `.agent/tasks/task-2026-04-13-start-new-task/raw/screenshot-1.png`
 
 ## Known gaps
-- Real-session manual verification is still required for forwarding and phone-check behavior.
+- Live Telegram/WhatsApp manual validation remains required.

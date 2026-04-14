@@ -1,6 +1,6 @@
 Command: go build ./...
 Exit code: 0
-Date (UTC): 2026-04-13
+Date (UTC): 2026-04-14
 
 Output:
 # github.com/watgbridge/webp

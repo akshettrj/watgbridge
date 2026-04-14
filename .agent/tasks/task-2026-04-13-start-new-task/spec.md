@@ -33,6 +33,12 @@ There could be only one active session per bridge
 
 New (active) sessions should be seen at `List my bridges` in main bot
 
+Follow-up:
+- Bot appears non-responsive in group usage scenarios.
+- Runtime logs contain: `failed to persist active whatsapp session state` with `no such column: wa_session_jid`.
+- `List my bridges` output must expose explicit columns:
+  `Forum Group ID | Bridge Bot ID | Bridge Bot Nickname | WA Session Name | WA Session Status`.
+
 ## Acceptance criteria
 - AC1: Telegram bridge bot registers and handles new owner-only commands `/linkinfo`, `/linkundo`, `/link`, and `/linkhistory`.
 - AC2: `/linkinfo` returns current session metadata in Telegram (linked/not linked status and available session identifiers for the currently active WA session).
@@ -41,6 +47,9 @@ New (active) sessions should be seen at `List my bridges` in main bot
 - AC5: Session history metadata is persisted per bridge and exposed via `/linkhistory`, including previous linked session details after relink/logout events.
 - AC6: Main bot `List my bridges` output includes active WA session visibility for each bridge, sourced from shared registry-visible bridge state.
 - AC7: Existing behavior (forum provisioning, standard forwarding pipeline, existing commands) is not regressed by the new session features.
+- AC8: Bridge child startup auto-migrates `bridge_provision_states` on the shared registry DB so session persistence does not fail with missing-column errors.
+- AC9: Main bot bridge listing text follows the requested explicit column contract:
+  `Forum Group ID | Bridge Bot ID | Bridge Bot Nickname | WA Session Name | WA Session Status`.
 
 ## Constraints
 - Keep compatibility with single and multi mode; main-bot visibility must work in multi mode where bridge runtime is a child process.

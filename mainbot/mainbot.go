@@ -100,6 +100,51 @@ func startHandler(b *gotgbot.Bot, c *ext.Context) error {
 	return err
 }
 
+func bridgeBotIDFromToken(token string) int64 {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return 0
+	}
+	parts := strings.SplitN(token, ":", 2)
+	if len(parts) == 0 {
+		return 0
+	}
+	id, err := strconv.ParseInt(strings.TrimSpace(parts[0]), 10, 64)
+	if err != nil {
+		return 0
+	}
+	return id
+}
+
+func resolveBridgeBotIdentity(token string) (id int64, username string, ok bool) {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return 0, "", false
+	}
+	apiURL := strings.TrimSpace(state.State.Config.Telegram.APIURL)
+	if apiURL == "" {
+		apiURL = gotgbot.DefaultAPIURL
+	}
+	bot, err := gotgbot.NewBot(token, &gotgbot.BotOpts{
+		BotClient: &gotgbot.BaseBotClient{
+			Client: http.Client{},
+			DefaultRequestOpts: &gotgbot.RequestOpts{
+				APIURL:  apiURL,
+				Timeout: 10 * time.Second,
+			},
+		},
+		DisableTokenCheck: true,
+	})
+	if err != nil {
+		return 0, "", false
+	}
+	me, err := bot.GetMe(nil)
+	if err != nil || me == nil {
+		return 0, "", false
+	}
+	return me.Id, strings.TrimSpace(me.Username), true
+}
+
 func bridgeListTextForOwner(ownerID int64) (string, error) {
 	bridges, err := database.BridgeListByOwner(ownerID)
 	if err != nil {
@@ -109,12 +154,32 @@ func bridgeListTextForOwner(ownerID int64) (string, error) {
 		return "No bridges yet. Use “New WhatsApp bridge” or /bridge_add.", nil
 	}
 	var sb strings.Builder
+	sb.WriteString("Forum Group ID | Bridge Bot ID | Bridge Bot Nickname | WA Session Name | WA Session Status\n")
 	for _, br := range bridges {
-		status := "disabled"
-		if br.Enabled {
-			status = "enabled"
+		botID := br.BridgeBotUserID
+		botUsername := strings.TrimSpace(br.BridgeBotUsername)
+		if (botID == 0 || botUsername == "") && strings.TrimSpace(br.BridgeBotToken) != "" {
+			resolvedID, resolvedUsername, ok := resolveBridgeBotIdentity(br.BridgeBotToken)
+			if ok {
+				if botID == 0 {
+					botID = resolvedID
+				}
+				if botUsername == "" {
+					botUsername = resolvedUsername
+				}
+				_ = database.BridgeSetBotIdentity(ownerID, br.ID, botID, botUsername)
+			}
 		}
-		sessionLabel := "wa not linked"
+		if botID == 0 {
+			botID = bridgeBotIDFromToken(br.BridgeBotToken)
+		}
+		if botUsername == "" {
+			botUsername = "unknown"
+		} else if !strings.HasPrefix(botUsername, "@") {
+			botUsername = "@" + botUsername
+		}
+
+		sessionLabel := "not linked"
 		if p, perr := database.BridgeProvisionGetOptional(br.ID); perr == nil && p != nil {
 			if p.WaSessionActive {
 				id := strings.TrimSpace(p.WaSessionPhone)
@@ -122,9 +187,9 @@ func bridgeListTextForOwner(ownerID int64) (string, error) {
 					id = strings.TrimSpace(p.WaSessionJID)
 				}
 				if id != "" {
-					sessionLabel = "wa linked " + id
+					sessionLabel = "linked " + id
 				} else {
-					sessionLabel = "wa linked"
+					sessionLabel = "linked"
 				}
 			} else {
 				last := strings.TrimSpace(p.WaPrevSessionPhone)
@@ -132,11 +197,21 @@ func bridgeListTextForOwner(ownerID int64) (string, error) {
 					last = strings.TrimSpace(p.WaPrevSessionJID)
 				}
 				if last != "" {
-					sessionLabel = "wa not linked (last " + last + ")"
+					sessionLabel = "not linked (last " + last + ")"
 				}
 			}
 		}
-		sb.WriteString(fmt.Sprintf("ID %d | %s | %s | chat %d | %s\n", br.ID, br.Name, status, br.TelegramTargetChat, sessionLabel))
+		if !br.Enabled {
+			sessionLabel += "; bridge disabled"
+		}
+
+		sb.WriteString(fmt.Sprintf("%d | %d | %s | %s | %s\n",
+			br.TelegramTargetChat,
+			botID,
+			botUsername,
+			strings.TrimSpace(br.WaSessionName),
+			sessionLabel,
+		))
 	}
 	return strings.TrimSuffix(sb.String(), "\n"), nil
 }

@@ -53,7 +53,8 @@ func addBridgeFromCredentials(b *gotgbot.Bot, manager *bridge.Manager, ownerUser
 	if err != nil {
 		return "", fmt.Errorf("invalid bridge token")
 	}
-	if _, err := bridgeBot.GetMe(nil); err != nil {
+	me, err := bridgeBot.GetMe(nil)
+	if err != nil {
 		return "", fmt.Errorf("token validation failed")
 	}
 	chat, err := bridgeBot.GetChat(targetChatID, nil)
@@ -79,7 +80,13 @@ func addBridgeFromCredentials(b *gotgbot.Bot, manager *bridge.Manager, ownerUser
 		if genErr != nil {
 			return "", fmt.Errorf("generate WhatsApp device label: %w", genErr)
 		}
-		record, createErr = database.BridgeCreate(ownerUserID, name, token, targetChatID, waSession, true)
+		botUserID := int64(0)
+		botUsername := ""
+		if me != nil {
+			botUserID = me.Id
+			botUsername = strings.TrimSpace(me.Username)
+		}
+		record, createErr = database.BridgeCreate(ownerUserID, name, token, targetChatID, waSession, true, botUserID, botUsername)
 		if createErr == nil {
 			break
 		}

@@ -2,9 +2,12 @@ package database
 
 import (
 	"database/sql"
+	"fmt"
 	"time"
 
 	"watgbridge/state"
+
+	"gorm.io/gorm"
 )
 
 type MsgIdPair struct {
@@ -76,6 +79,8 @@ type Bridge struct {
 	Name               string    `gorm:"size:191;index:idx_bridge_owner_name,unique;not null"`
 	BridgeBotToken     string    `gorm:"type:text;not null"`
 	BridgeBotTokenHash string    `gorm:"size:64;uniqueIndex;not null"`
+	BridgeBotUserID    int64     `gorm:"index"`
+	BridgeBotUsername  string    `gorm:"size:191"`
 	TelegramTargetChat int64     `gorm:"not null"`
 	WaSessionName      string    `gorm:"size:191;uniqueIndex;not null"`
 	Enabled            bool      `gorm:"not null;default:true"`
@@ -168,4 +173,12 @@ func AutoMigrate() error {
 		&BridgeManagedBot{},
 		&TelegramImportMessage{},
 	)
+}
+
+// AutoMigrateProvisionState runs migration only for bridge_provision_states on the supplied DB.
+func AutoMigrateProvisionState(db *gorm.DB) error {
+	if db == nil {
+		return fmt.Errorf("nil db")
+	}
+	return db.AutoMigrate(&BridgeProvisionState{})
 }
