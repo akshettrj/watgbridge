@@ -219,6 +219,13 @@ func BridgeProvisionSetSessionActive(bridgeID uint, jid, phone, pushName string,
 		if err == nil {
 			return nil
 		}
+		if bridgeProvisionSessionSchemaMissing(err) {
+			_ = AutoMigrateProvisionState(provisionStateDBOrDefault())
+			err = bridgeProvisionSetSessionActiveOnce(bridgeID, jid, phone, pushName, linkedAt)
+			if err == nil {
+				return nil
+			}
+		}
 		if !bridgeProvisionSQLiteBusy(err) {
 			return err
 		}
@@ -271,11 +278,29 @@ func BridgeProvisionMarkSessionInactive(bridgeID uint, reason string, endedAt ti
 		if err == nil {
 			return nil
 		}
+		if bridgeProvisionSessionSchemaMissing(err) {
+			_ = AutoMigrateProvisionState(provisionStateDBOrDefault())
+			err = bridgeProvisionMarkSessionInactiveOnce(bridgeID, reason, endedAt)
+			if err == nil {
+				return nil
+			}
+		}
 		if !bridgeProvisionSQLiteBusy(err) {
 			return err
 		}
 	}
 	return err
+}
+
+func bridgeProvisionSessionSchemaMissing(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(strings.TrimSpace(err.Error()))
+	if !strings.Contains(msg, "no such column") {
+		return false
+	}
+	return strings.Contains(msg, "wa_session_") || strings.Contains(msg, "wa_prev_session_")
 }
 
 func bridgeProvisionMarkSessionInactiveOnce(bridgeID uint, reason string, endedAt time.Time) error {

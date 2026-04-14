@@ -125,27 +125,40 @@ func NewWhatsAppClient() error {
 	client := whatsmeow.NewClient(deviceStore, waClientLogger)
 	state.State.WhatsAppClient = client
 
-	didFreshQRLogin := false
 	if client.Store.ID == nil {
-		didFreshQRLogin = true
 		resetWhatsAppQRLoginMessageState()
+		qrChan, qrErr := client.GetQRChannel(context.Background())
+		if qrErr != nil {
+			return fmt.Errorf("could not initialize whatsapp qr channel: %w", qrErr)
+		}
 		err = client.Connect()
 		if err != nil {
 			return fmt.Errorf("could not connect to Whatsapp for login : %s", err)
 		}
-		runQRCodeLoop(context.Background(), client, logger)
-		if client.Store.ID == nil {
+		go func() {
+			runQRCodeLoop(client, logger, qrChan)
+			if client.Store.ID != nil {
+				if err := PersistCurrentSessionActive(client); err != nil {
+					logger.Warn("failed to persist active whatsapp session state after qr login", zap.Error(err))
+				}
+				notifyWhatsAppLinked(client, logger)
+				logger.Info("successfully logged into WhatsApp",
+					zap.String("push_name", client.Store.PushName),
+					zap.String("jid", client.Store.ID.String()),
+				)
+				return
+			}
 			OnWhatsAppQRSessionClosed(logger)
-		}
+			logger.Debug("WhatsApp session not linked after QR channel closed",
+				zap.String("push_name", client.Store.PushName),
+			)
+		}()
+		return nil
 	} else {
 		err = client.Connect()
 		if err != nil {
 			return fmt.Errorf("could not connect to Whatsapp : %s", err)
 		}
-	}
-
-	if didFreshQRLogin && client.Store.ID != nil {
-		notifyWhatsAppLinked(client, logger)
 	}
 
 	if client.Store.ID != nil {
@@ -166,8 +179,10 @@ func NewWhatsAppClient() error {
 }
 
 // runQRCodeLoop consumes QR pairing codes until the channel closes (timeout / completion).
-func runQRCodeLoop(ctx context.Context, client *whatsmeow.Client, logger *zap.Logger) {
-	qrChan, _ := client.GetQRChannel(ctx)
+func runQRCodeLoop(client *whatsmeow.Client, logger *zap.Logger, qrChan <-chan whatsmeow.QRChannelItem) {
+	if qrChan == nil {
+		return
+	}
 	for evt := range qrChan {
 		if evt.Event != "code" {
 			continue
@@ -206,6 +221,10 @@ func StartWhatsAppQRReconnect(logger *zap.Logger) error {
 	}
 	ctx := context.Background()
 	client.Disconnect()
+	qrChan, qrErr := client.GetQRChannel(ctx)
+	if qrErr != nil {
+		return fmt.Errorf("qr channel: %w", qrErr)
+	}
 	if err := client.Connect(); err != nil {
 		return fmt.Errorf("connect: %w", err)
 	}
@@ -215,7 +234,7 @@ func StartWhatsAppQRReconnect(logger *zap.Logger) error {
 	resetWhatsAppQRLoginMessageState()
 	deleteSessionClosedMessageIfAny()
 	applyReconnectCooldown()
-	runQRCodeLoop(ctx, client, logger)
+	runQRCodeLoop(client, logger, qrChan)
 	if client.Store.ID != nil {
 		if err := PersistCurrentSessionActive(client); err != nil && logger != nil {
 			logger.Warn("failed to persist active whatsapp session state after relink", zap.Error(err))
