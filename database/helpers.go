@@ -45,9 +45,15 @@ func MsgIdGetTgFromWa(waMsgId, waChatId string) (int64, int64, int64, error) {
 
 	db := state.State.Database
 
+	var candidates []MsgIdPair
 	var bridgePair MsgIdPair
-	res := db.Where("id = ? AND wa_chat_id = ?", waMsgId, waChatId).Find(&bridgePair)
+	res := db.Where("id = ?", waMsgId).Find(&candidates)
 
+	if len(candidates) == 1 {
+		bridgePair = candidates[0]
+	} else if len(candidates) > 1 {
+		res = db.Where("id = ?  AND wa_chat_id = ?", waMsgId, waChatId).Find(&bridgePair)
+	}
 	return bridgePair.TgChatId, bridgePair.TgThreadId, bridgePair.TgMsgId, res.Error
 }
 
