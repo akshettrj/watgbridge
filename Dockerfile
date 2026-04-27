@@ -1,4 +1,4 @@
-FROM golang:1.23.0-alpine3.19 AS build
+FROM golang:1.25.0-alpine3.22 AS build
 
 RUN apk --no-cache add gcc g++ make git libwebp-tools ffmpeg imagemagick
 WORKDIR /go/src/watgbridge
