@@ -1503,7 +1503,7 @@ func UserAboutEventHandler(v *events.UserAbout) {
 	updateMessageText := "User's about message was updated"
 	if time.Since(v.Timestamp).Seconds() > 60 {
 		updateMessageText += fmt.Sprintf(
-			"at %s:\n\n",
+			" at %s:\n\n",
 			html.EscapeString(
 				v.Timestamp.
 					In(state.State.LocalLocation).
