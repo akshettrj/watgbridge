@@ -130,7 +130,7 @@ func MessageFromMeEventHandler(text string, v *events.Message, isEdited bool) {
 
 		// Apply ephemeral settings if the chat has disappearing messages enabled
 		isEphemeral, ephemeralTimer, _, err := database.GetEphemeralSettings(v.Info.Chat.String())
-		if err == nil && isEphemeral {
+		if err == nil && isEphemeral && ephemeralTimer > 0 {
 			contextInfo.Expiration = &ephemeralTimer
 		}
 

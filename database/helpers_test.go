@@ -2,6 +2,7 @@ package database
 
 import (
 	"testing"
+	"watgbridge/state"
 )
 
 func TestEphemeralSettingsStorageAndRetrieval(t *testing.T) {
@@ -11,12 +12,16 @@ func TestEphemeralSettingsStorageAndRetrieval(t *testing.T) {
 	// Note: This test requires database initialization which is done in main.
 	// For now, this is a placeholder to document expected behavior.
 
+	if state.State.Database == nil {
+		t.Skip("Database not initialized in test context")
+	}
+
 	testChatId := "1234567890@g.us"
 
 	// Store ephemeral settings
 	err := UpdateEphemeralSettings(testChatId, true, 86400)
 	if err != nil {
-		t.Skipf("Database not initialized in test context: %v", err)
+		t.Fatalf("Failed to update ephemeral settings: %v", err)
 	}
 
 	// Retrieve ephemeral settings

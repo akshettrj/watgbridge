@@ -203,7 +203,7 @@ func WaTagAll(group types.JID, msg *waE2E.Message, msgId, msgSender string, msgI
 
 	// Apply ephemeral settings if the chat has disappearing messages enabled
 	isEphemeral, ephemeralTimer, _, err := database.GetEphemeralSettings(group.String())
-	if err == nil && isEphemeral {
+	if err == nil && isEphemeral && ephemeralTimer > 0 {
 		contextInfo.Expiration = &ephemeralTimer
 	}
 
