@@ -36,6 +36,37 @@ func WaParseJID(s string) (types.JID, bool) {
 	return recipient, true
 }
 
+func WaContextInfoReplyChatID(contextInfo *waE2E.ContextInfo, fallback string) string {
+	if contextInfo == nil {
+		return fallback
+	}
+
+	if placeholderKey := contextInfo.GetPlaceholderKey(); placeholderKey != nil && placeholderKey.GetRemoteJID() != "" {
+		return placeholderKey.GetRemoteJID()
+	}
+	if remoteJID := contextInfo.GetRemoteJID(); remoteJID != "" {
+		return remoteJID
+	}
+	if parentGroupJID := contextInfo.GetParentGroupJID(); parentGroupJID != "" {
+		return parentGroupJID
+	}
+	return fallback
+}
+
+func WaContextInfoReplyMessageID(contextInfo *waE2E.ContextInfo) string {
+	if contextInfo == nil {
+		return ""
+	}
+
+	if stanzaID := contextInfo.GetStanzaID(); stanzaID != "" {
+		return stanzaID
+	}
+	if placeholderKey := contextInfo.GetPlaceholderKey(); placeholderKey != nil {
+		return placeholderKey.GetID()
+	}
+	return ""
+}
+
 func WaFuzzyFindContacts(query string) (map[string]string, int, error) {
 	var (
 		results      = make(map[string]string)

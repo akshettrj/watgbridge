@@ -33,6 +33,18 @@ const (
 	UploadSizeLimit   uint64 = 52428800
 )
 
+func TgMakeReplyParameters(messageId, chatId int64) *gotgbot.ReplyParameters {
+	if messageId == 0 {
+		return nil
+	}
+
+	replyParameters := &gotgbot.ReplyParameters{MessageId: messageId}
+	if chatId != 0 {
+		replyParameters.ChatId = chatId
+	}
+	return replyParameters
+}
+
 func TgRegisterBotCommands(b *gotgbot.Bot, commands ...gotgbot.BotCommand) error {
 	_, err := b.SetMyCommands(commands, &gotgbot.SetMyCommandsOpts{
 		LanguageCode: "en",
