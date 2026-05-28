@@ -157,6 +157,7 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 	)
 
 	var stanzaID, participantID, waChatID string
+	var quotedWaChatID string
 	var err error
 
 	if msgToReplyTo != nil && msgToReplyTo.ForumTopicCreated == nil {
@@ -170,6 +171,7 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 		if waChatID == waClient.Store.ID.String() {
 			waChatID = participantID
 		}
+		quotedWaChatID = waChatID
 	} else {
 		waChatID, err = database.ChatThreadGetWaFromTg(c.EffectiveChat.Id, c.EffectiveMessage.MessageThreadId)
 		if err != nil {
@@ -181,6 +183,25 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 			}
 			return nil
 		}
+	}
+
+	if msgToForward.ExternalReply != nil && msgToForward.ExternalReply.Chat != nil && msgToForward.ExternalReply.MessageId != 0 {
+		stanzaID, participantID, quotedWaChatID, err = database.MsgIdGetWaFromTgMessage(
+			msgToForward.ExternalReply.Chat.Id,
+			msgToForward.ExternalReply.MessageId,
+		)
+		if err != nil {
+			return utils.TgReplyWithErrorByContext(b, c, "Failed to retreive a pair from database", err)
+		} else if stanzaID == "" {
+			return utils.TgReplyWithErrorByContext(b, c, "Cannot send to WhatsApp", fmt.Errorf("corresponding stanza Id to replied to message not found"))
+		}
+	} else if quotedWaChatID == "" {
+		quotedWaChatID = waChatID
+	}
+
+	if stanzaID != "" && !utils.WaReplyContextAllowed(waChatID, quotedWaChatID, participantID) {
+		return utils.TgReplyWithErrorByContext(b, c, "Cannot send to WhatsApp",
+			fmt.Errorf("cross-chat reply is only allowed for WhatsApp status replies or private replies to a group message sender"))
 	}
 
 	// Status Update
@@ -207,7 +228,7 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 		msgCopy.MessageThreadId = forwardedMsg.MessageThreadId
 
 		finalWaChatJID, _ := utils.WaParseJID(waChatID)
-		return utils.TgSendToWhatsApp(b, c, &msgCopy, msgToReplyTo, finalWaChatJID, participantID, stanzaID, true)
+		return utils.TgSendToWhatsApp(b, c, &msgCopy, msgToReplyTo, finalWaChatJID, participantID, stanzaID, quotedWaChatID, true)
 
 	} else if participantID != "" {
 		participant, _ := utils.WaParseJID(participantID)
@@ -216,7 +237,7 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 
 	waChatJID, _ := utils.WaParseJID(waChatID)
 
-	return utils.TgSendToWhatsApp(b, c, msgToForward, msgToReplyTo, waChatJID, participantID, stanzaID, msgToReplyTo != nil && msgToReplyTo.ForumTopicCreated == nil)
+	return utils.TgSendToWhatsApp(b, c, msgToForward, msgToReplyTo, waChatJID, participantID, stanzaID, quotedWaChatID, stanzaID != "")
 }
 
 func StartCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
@@ -774,7 +795,7 @@ func SendToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 		return err
 	}
 
-	return utils.TgSendToWhatsApp(b, c, msgToForward, msgToReplyTo, waChatJID, participantID, stanzaID, false)
+	return utils.TgSendToWhatsApp(b, c, msgToForward, msgToReplyTo, waChatJID, participantID, stanzaID, "", false)
 }
 
 func RevokeCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
