@@ -122,14 +122,22 @@ func MessageFromMeEventHandler(text string, v *events.Message, isEdited bool) {
 	if text == ".id" {
 		waClient := state.State.WhatsAppClient
 
-		_, err := waClient.SendMessage(context.Background(), v.Info.Chat, &waE2E.Message{
+		contextInfo := &waE2E.ContextInfo{
+			StanzaID:      proto.String(msgId),
+			Participant:   proto.String(v.Info.MessageSource.Sender.String()),
+			QuotedMessage: v.Message,
+		}
+
+		// Apply ephemeral settings if the chat has disappearing messages enabled
+		isEphemeral, ephemeralTimer, _, err := database.GetEphemeralSettings(v.Info.Chat.String())
+		if err == nil && isEphemeral && ephemeralTimer > 0 {
+			contextInfo.Expiration = &ephemeralTimer
+		}
+
+		_, err = waClient.SendMessage(context.Background(), v.Info.Chat, &waE2E.Message{
 			ExtendedTextMessage: &waE2E.ExtendedTextMessage{
-				Text: proto.String(fmt.Sprintf("The ID of the current chat is:\n\n```%s```", v.Info.Chat.String())),
-				ContextInfo: &waE2E.ContextInfo{
-					StanzaID:      proto.String(msgId),
-					Participant:   proto.String(v.Info.MessageSource.Sender.String()),
-					QuotedMessage: v.Message,
-				},
+				Text:        proto.String(fmt.Sprintf("The ID of the current chat is:\n\n```%s```", v.Info.Chat.String())),
+				ContextInfo: contextInfo,
 			},
 		})
 		if err != nil {
