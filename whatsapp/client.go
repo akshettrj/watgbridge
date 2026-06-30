@@ -16,6 +16,7 @@ import (
 	"github.com/skip2/go-qrcode"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waCompanionReg"
+	waWa6 "go.mau.fi/whatsmeow/proto/waWa6"
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	waLog "go.mau.fi/whatsmeow/util/log"
@@ -45,6 +46,37 @@ func (wl whatsmeowLogger) Debugf(msg string, args ...interface{}) {
 }
 func (wl whatsmeowLogger) Sub(module string) waLog.Logger {
 	return whatsmeowLogger{logger: wl.logger.Named(module)}
+}
+
+// WhatsApp client identities the session can register as.
+const (
+	clientModeAndroid         = "android"
+	clientModeAndroidBusiness = "android_business"
+)
+
+// applyAndroidClientIdentity makes the session register as an Android client
+// rather than the default desktop web companion, so WhatsApp delivers view-once
+// media (which it withholds from web companions). It mirrors the Baileys library
+// (WhiskeySockets/Baileys#2201): set the client payload's user-agent platform to
+// ANDROID (personal) or SMB_ANDROID (WhatsApp Business), drop the web-only
+// WebInfo, and mark the linked device an Android phone. Any other mode leaves the
+// desktop identity set above untouched.
+//
+// This is experimental and changes the protocol identity WhatsApp sees; it only
+// takes effect when a fresh session is paired.
+func applyAndroidClientIdentity(mode string) {
+	var platform waWa6.ClientPayload_UserAgent_Platform
+	switch mode {
+	case clientModeAndroid:
+		platform = waWa6.ClientPayload_UserAgent_ANDROID
+	case clientModeAndroidBusiness:
+		platform = waWa6.ClientPayload_UserAgent_SMB_ANDROID
+	default:
+		return
+	}
+	store.BaseClientPayload.UserAgent.Platform = platform.Enum()
+	store.BaseClientPayload.WebInfo = nil
+	store.DeviceProps.PlatformType = waCompanionReg.DeviceProps_ANDROID_PHONE.Enum()
 }
 
 func NewWhatsAppClient() error {
@@ -87,6 +119,7 @@ func NewWhatsAppClient() error {
 		SupportBotUserAgentChatHistory: proto.Bool(false),
 		SupportCagReactionsAndPolls:    proto.Bool(false),
 	}
+	applyAndroidClientIdentity(cfg.WhatsApp.ClientMode)
 
 	container, err := sqlstore.New(context.Background(), state.State.Config.WhatsApp.LoginDatabase.Type,
 		state.State.Config.WhatsApp.LoginDatabase.URL, waDatabaseLogger)
