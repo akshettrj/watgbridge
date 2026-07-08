@@ -272,15 +272,23 @@ func WaTagAll(group types.JID, msg *waE2E.Message, msgId, msgSender string, msgI
 		mentioned = append(mentioned, participant.JID.String())
 	}
 
+	contextInfo := &waE2E.ContextInfo{
+		StanzaID:      proto.String(msgId),
+		Participant:   proto.String(msgSender),
+		QuotedMessage: msg,
+		MentionedJID:  mentioned,
+	}
+
+	// Apply ephemeral settings if the chat has disappearing messages enabled
+	isEphemeral, ephemeralTimer, _, err := database.GetEphemeralSettings(group.String())
+	if err == nil && isEphemeral && ephemeralTimer > 0 {
+		contextInfo.Expiration = &ephemeralTimer
+	}
+
 	_, err = waClient.SendMessage(context.Background(), group, &waE2E.Message{
 		ExtendedTextMessage: &waE2E.ExtendedTextMessage{
-			Text: proto.String(replyText),
-			ContextInfo: &waE2E.ContextInfo{
-				StanzaID:      proto.String(msgId),
-				Participant:   proto.String(msgSender),
-				QuotedMessage: msg,
-				MentionedJID:  mentioned,
-			},
+			Text:        proto.String(replyText),
+			ContextInfo: contextInfo,
 		},
 	})
 	if err != nil {
