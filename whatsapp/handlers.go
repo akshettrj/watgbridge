@@ -179,6 +179,18 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 		msgId = v.Info.ID
 	}
 
+	telegramSendOK := func(sentMsg *gotgbot.Message, err error) bool {
+		if err != nil {
+			logger.Error("failed to send message to Telegram",
+				zap.String("event_id", v.Info.ID),
+				zap.String("chat_jid", v.Info.Chat.String()),
+				zap.Error(err),
+			)
+			return false
+		}
+		return sentMsg != nil && sentMsg.MessageId != 0
+	}
+
 	if !isEdited {
 		// Return if duplicate event is emitted
 		tgChatId, _, _, _ := database.MsgIdGetTgFromWa(msgId, v.Info.Chat.String())
@@ -466,22 +478,22 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 
 		if cfg.WhatsApp.SkipImages {
 			bridgedText += "\n<i>Skipping image because 'skip_images' set in config file</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+			sentMsg, err := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
 				ReplyParameters: replyParameters,
 				MessageThreadId: threadId,
 			})
-			if sentMsg.MessageId != 0 {
+			if telegramSendOK(sentMsg, err) {
 				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
 			return
 		} else if !cfg.Telegram.SelfHostedAPI && imageMsg.GetFileLength() > utils.UploadSizeLimit {
 			bridgedText += "\n<i>Couldn't send the photo as it exceeds Telegram size restrictions.</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+			sentMsg, err := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
 				ReplyParameters: replyParameters,
 				MessageThreadId: threadId,
 			})
-			if sentMsg.MessageId != 0 {
+			if telegramSendOK(sentMsg, err) {
 				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
@@ -490,11 +502,11 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 			imageBytes, err := waClient.Download(context.Background(), imageMsg)
 			if err != nil {
 				bridgedText += "\n<i>Couldn't download the photo due to some errors</i>"
-				sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+				sentMsg, err := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
 					ReplyParameters: replyParameters,
 					MessageThreadId: threadId,
 				})
-				if sentMsg.MessageId != 0 {
+				if telegramSendOK(sentMsg, err) {
 					database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 						cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 				}
@@ -509,13 +521,13 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 				}
 			}
 
-			sentMsg, _ := tgBot.SendPhoto(cfg.Telegram.TargetChatID, &gotgbot.FileReader{Data: bytes.NewReader(imageBytes)}, &gotgbot.SendPhotoOpts{
+			sentMsg, err := tgBot.SendPhoto(cfg.Telegram.TargetChatID, &gotgbot.FileReader{Data: bytes.NewReader(imageBytes)}, &gotgbot.SendPhotoOpts{
 				Caption:         bridgedText,
 				ReplyParameters: replyParameters,
 				HasSpoiler:      imageMsg.GetViewOnce(),
 				MessageThreadId: threadId,
 			})
-			if sentMsg.MessageId != 0 {
+			if telegramSendOK(sentMsg, err) {
 				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
@@ -531,22 +543,22 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 
 		if cfg.WhatsApp.SkipGIFs {
 			bridgedText += "\n<i>Skipping GIF because 'skip_gifs' set in config file</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+			sentMsg, err := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
 				ReplyParameters: replyParameters,
 				MessageThreadId: threadId,
 			})
-			if sentMsg.MessageId != 0 {
+			if telegramSendOK(sentMsg, err) {
 				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
 			return
 		} else if !cfg.Telegram.SelfHostedAPI && gifMsg.GetFileLength() > utils.UploadSizeLimit {
 			bridgedText += "\n<i>Couldn't send the GIF as it exceeds Telegram size restrictions.</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+			sentMsg, err := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
 				ReplyParameters: replyParameters,
 				MessageThreadId: threadId,
 			})
-			if sentMsg.MessageId != 0 {
+			if telegramSendOK(sentMsg, err) {
 				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
@@ -555,11 +567,11 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 			gifBytes, err := waClient.Download(context.Background(), gifMsg)
 			if err != nil {
 				bridgedText += "\n<i>Couldn't download the GIF due to some errors</i>"
-				sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+				sentMsg, err := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
 					ReplyParameters: replyParameters,
 					MessageThreadId: threadId,
 				})
-				if sentMsg.MessageId != 0 {
+				if telegramSendOK(sentMsg, err) {
 					database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 						cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 				}
@@ -579,12 +591,12 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 				Data: bytes.NewReader(gifBytes),
 			}
 
-			sentMsg, _ := tgBot.SendAnimation(cfg.Telegram.TargetChatID, &fileToSend, &gotgbot.SendAnimationOpts{
+			sentMsg, err := tgBot.SendAnimation(cfg.Telegram.TargetChatID, &fileToSend, &gotgbot.SendAnimationOpts{
 				Caption:         bridgedText,
 				ReplyParameters: replyParameters,
 				MessageThreadId: threadId,
 			})
-			if sentMsg.MessageId != 0 {
+			if telegramSendOK(sentMsg, err) {
 				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
@@ -608,22 +620,22 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 
 		if cfg.WhatsApp.SkipVideos {
 			bridgedText += "\n<i>Skipping video because 'skip_videos' set in config file</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+			sentMsg, err := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
 				ReplyParameters: replyParameters,
 				MessageThreadId: threadId,
 			})
-			if sentMsg.MessageId != 0 {
+			if telegramSendOK(sentMsg, err) {
 				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
 			return
 		} else if !cfg.Telegram.SelfHostedAPI && videoMsg.GetFileLength() > utils.UploadSizeLimit {
 			bridgedText += "\n<i>Couldn't send the video as it exceeds Telegram size restrictions.</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+			sentMsg, err := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
 				ReplyParameters: replyParameters,
 				MessageThreadId: threadId,
 			})
-			if sentMsg.MessageId != 0 {
+			if telegramSendOK(sentMsg, err) {
 				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
@@ -632,11 +644,11 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 			videoBytes, err := waClient.Download(context.Background(), videoMsg)
 			if err != nil {
 				bridgedText += "\n<i>Couldn't download the video due to some errors</i>"
-				sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+				sentMsg, err := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
 					ReplyParameters: replyParameters,
 					MessageThreadId: threadId,
 				})
-				if sentMsg.MessageId != 0 {
+				if telegramSendOK(sentMsg, err) {
 					database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 						cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 				}
@@ -658,20 +670,20 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 
 			var sentMsg *gotgbot.Message = nil
 			if isPtvMsg {
-				sentMsg, _ = tgBot.SendVideoNote(cfg.Telegram.TargetChatID, &fileToSend, &gotgbot.SendVideoNoteOpts{
+				sentMsg, err = tgBot.SendVideoNote(cfg.Telegram.TargetChatID, &fileToSend, &gotgbot.SendVideoNoteOpts{
 					ReplyMarkup:     replyMarkup,
 					ReplyParameters: replyParameters,
 					MessageThreadId: threadId,
 				})
 			} else {
-				sentMsg, _ = tgBot.SendVideo(cfg.Telegram.TargetChatID, &fileToSend, &gotgbot.SendVideoOpts{
+				sentMsg, err = tgBot.SendVideo(cfg.Telegram.TargetChatID, &fileToSend, &gotgbot.SendVideoOpts{
 					Caption:         bridgedText,
 					ReplyParameters: replyParameters,
 					HasSpoiler:      videoMsg.GetViewOnce(),
 					MessageThreadId: threadId,
 				})
 			}
-			if sentMsg.MessageId != 0 {
+			if telegramSendOK(sentMsg, err) {
 				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
@@ -687,22 +699,22 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 
 		if cfg.WhatsApp.SkipVoiceNotes {
 			bridgedText += "\n<i>Skipping voice note because 'skip_voice_notes' set in config file</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+			sentMsg, err := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
 				ReplyParameters: replyParameters,
 				MessageThreadId: threadId,
 			})
-			if sentMsg.MessageId != 0 {
+			if telegramSendOK(sentMsg, err) {
 				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
 			return
 		} else if !cfg.Telegram.SelfHostedAPI && audioMsg.GetFileLength() > utils.UploadSizeLimit {
 			bridgedText += "\n<i>Couldn't send the audio as it exceeds Telegram size restrictions.</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+			sentMsg, err := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
 				ReplyParameters: replyParameters,
 				MessageThreadId: threadId,
 			})
-			if sentMsg.MessageId != 0 {
+			if telegramSendOK(sentMsg, err) {
 				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
@@ -711,11 +723,11 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 			audioBytes, err := waClient.Download(context.Background(), audioMsg)
 			if err != nil {
 				bridgedText += "\n<i>Couldn't download the audio due to some errors</i>"
-				sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+				sentMsg, err := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
 					ReplyParameters: replyParameters,
 					MessageThreadId: threadId,
 				})
-				if sentMsg.MessageId != 0 {
+				if telegramSendOK(sentMsg, err) {
 					database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 						cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 				}
@@ -727,13 +739,13 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 				Data: bytes.NewReader(audioBytes),
 			}
 
-			sentMsg, _ := tgBot.SendAudio(cfg.Telegram.TargetChatID, &fileToSend, &gotgbot.SendAudioOpts{
+			sentMsg, err := tgBot.SendAudio(cfg.Telegram.TargetChatID, &fileToSend, &gotgbot.SendAudioOpts{
 				Caption:         bridgedText,
 				Duration:        int64(audioMsg.GetSeconds()),
 				ReplyParameters: replyParameters,
 				MessageThreadId: threadId,
 			})
-			if sentMsg.MessageId != 0 {
+			if telegramSendOK(sentMsg, err) {
 				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
@@ -749,22 +761,22 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 
 		if cfg.WhatsApp.SkipAudios {
 			bridgedText += "\n<i>Skipping audio because 'skip_audios' set in config file</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+			sentMsg, err := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
 				ReplyParameters: replyParameters,
 				MessageThreadId: threadId,
 			})
-			if sentMsg.MessageId != 0 {
+			if telegramSendOK(sentMsg, err) {
 				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
 			return
 		} else if !cfg.Telegram.SelfHostedAPI && audioMsg.GetFileLength() > utils.UploadSizeLimit {
 			bridgedText += "\n<i>Couldn't send the audio as it exceeds Telegram size restrictions.</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+			sentMsg, err := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
 				ReplyParameters: replyParameters,
 				MessageThreadId: threadId,
 			})
-			if sentMsg.MessageId != 0 {
+			if telegramSendOK(sentMsg, err) {
 				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
@@ -773,11 +785,11 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 			audioBytes, err := waClient.Download(context.Background(), audioMsg)
 			if err != nil {
 				bridgedText += "\n<i>Couldn't download the audio due to some errors</i>"
-				sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+				sentMsg, err := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
 					ReplyParameters: replyParameters,
 					MessageThreadId: threadId,
 				})
-				if sentMsg.MessageId != 0 {
+				if telegramSendOK(sentMsg, err) {
 					database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 						cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 				}
@@ -789,13 +801,13 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 				Data: bytes.NewReader(audioBytes),
 			}
 
-			sentMsg, _ := tgBot.SendAudio(cfg.Telegram.TargetChatID, &fileToSend, &gotgbot.SendAudioOpts{
+			sentMsg, err := tgBot.SendAudio(cfg.Telegram.TargetChatID, &fileToSend, &gotgbot.SendAudioOpts{
 				Caption:         bridgedText,
 				Duration:        int64(audioMsg.GetSeconds()),
 				ReplyParameters: replyParameters,
 				MessageThreadId: threadId,
 			})
-			if sentMsg.MessageId != 0 {
+			if telegramSendOK(sentMsg, err) {
 				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
@@ -811,22 +823,22 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 
 		if cfg.WhatsApp.SkipDocuments {
 			bridgedText += "\n<i>Skipping document because 'skip_documents' set in config file</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+			sentMsg, err := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
 				ReplyParameters: replyParameters,
 				MessageThreadId: threadId,
 			})
-			if sentMsg.MessageId != 0 {
+			if telegramSendOK(sentMsg, err) {
 				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
 			return
 		} else if !cfg.Telegram.SelfHostedAPI && documentMsg.GetFileLength() > utils.UploadSizeLimit {
 			bridgedText += "\n<i>Couldn't send the document as it exceeds Telegram size restrictions.</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+			sentMsg, err := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
 				ReplyParameters: replyParameters,
 				MessageThreadId: threadId,
 			})
-			if sentMsg.MessageId != 0 {
+			if telegramSendOK(sentMsg, err) {
 				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
@@ -835,11 +847,11 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 			documentBytes, err := waClient.Download(context.Background(), documentMsg)
 			if err != nil {
 				bridgedText += "\n<i>Couldn't download the document due to some errors</i>"
-				sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+				sentMsg, err := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
 					ReplyParameters: replyParameters,
 					MessageThreadId: threadId,
 				})
-				if sentMsg.MessageId != 0 {
+				if telegramSendOK(sentMsg, err) {
 					database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 						cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 				}
@@ -859,12 +871,12 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 				Data: bytes.NewReader(documentBytes),
 			}
 
-			sentMsg, _ := tgBot.SendDocument(cfg.Telegram.TargetChatID, &fileToSend, &gotgbot.SendDocumentOpts{
+			sentMsg, err := tgBot.SendDocument(cfg.Telegram.TargetChatID, &fileToSend, &gotgbot.SendDocumentOpts{
 				Caption:         bridgedText,
 				ReplyParameters: replyParameters,
 				MessageThreadId: threadId,
 			})
-			if sentMsg.MessageId != 0 {
+			if telegramSendOK(sentMsg, err) {
 				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
@@ -880,22 +892,22 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 
 		if cfg.WhatsApp.SkipStickers {
 			bridgedText += "\n<i>Skipping sticker because 'skip_stickers' set in config file</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+			sentMsg, err := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
 				ReplyParameters: replyParameters,
 				MessageThreadId: threadId,
 			})
-			if sentMsg.MessageId != 0 {
+			if telegramSendOK(sentMsg, err) {
 				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
 			return
 		} else if !cfg.Telegram.SelfHostedAPI && stickerMsg.GetFileLength() > utils.UploadSizeLimit {
 			bridgedText += "\n<i>Couldn't send the sticker as it exceeds Telegram size restrictions.</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+			sentMsg, err := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
 				ReplyParameters: replyParameters,
 				MessageThreadId: threadId,
 			})
-			if sentMsg.MessageId != 0 {
+			if telegramSendOK(sentMsg, err) {
 				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
@@ -904,11 +916,11 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 			stickerBytes, err := waClient.Download(context.Background(), stickerMsg)
 			if err != nil {
 				bridgedText += "\n<i>Couldn't download the sticker due to some errors</i>"
-				sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+				sentMsg, err := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
 					ReplyParameters: replyParameters,
 					MessageThreadId: threadId,
 				})
-				if sentMsg.MessageId != 0 {
+				if telegramSendOK(sentMsg, err) {
 					database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 						cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 				}
@@ -925,13 +937,13 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 					Data: bytes.NewReader(gifBytes),
 				}
 
-				sentMsg, _ := tgBot.SendAnimation(cfg.Telegram.TargetChatID, &fileToSend, &gotgbot.SendAnimationOpts{
+				sentMsg, err := tgBot.SendAnimation(cfg.Telegram.TargetChatID, &fileToSend, &gotgbot.SendAnimationOpts{
 					Caption:         bridgedText,
 					ReplyParameters: replyParameters,
 					MessageThreadId: threadId,
 					ReplyMarkup:     replyMarkup,
 				})
-				if sentMsg.MessageId != 0 {
+				if telegramSendOK(sentMsg, err) {
 					database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 						cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 				}
@@ -939,12 +951,12 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 
 			}
 		WEBP_TO_GIF_FAILED:
-			sentMsg, _ := tgBot.SendSticker(cfg.Telegram.TargetChatID, &gotgbot.FileReader{Data: bytes.NewReader(stickerBytes)}, &gotgbot.SendStickerOpts{
+			sentMsg, err := tgBot.SendSticker(cfg.Telegram.TargetChatID, &gotgbot.FileReader{Data: bytes.NewReader(stickerBytes)}, &gotgbot.SendStickerOpts{
 				ReplyParameters: replyParameters,
 				MessageThreadId: threadId,
 				ReplyMarkup:     replyMarkup,
 			})
-			if sentMsg.MessageId != 0 {
+			if telegramSendOK(sentMsg, err) {
 				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
@@ -955,11 +967,11 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 
 		if cfg.WhatsApp.SkipContacts {
 			bridgedText += "\n<i>Skipping contact because 'skip_contacts' set in config file</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+			sentMsg, err := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
 				ReplyParameters: replyParameters,
 				MessageThreadId: threadId,
 			})
-			if sentMsg.MessageId != 0 {
+			if telegramSendOK(sentMsg, err) {
 				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
@@ -970,25 +982,25 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 		card, err := decoder.Decode()
 		if err != nil {
 			bridgedText += "\n<i>Couldn't send the vCard as failed to parse it</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+			sentMsg, err := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
 				ReplyParameters: replyParameters,
 				MessageThreadId: threadId,
 			})
-			if sentMsg.MessageId != 0 {
+			if telegramSendOK(sentMsg, err) {
 				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
 			return
 		}
 
-		sentMsg, _ := tgBot.SendContact(cfg.Telegram.TargetChatID, card.PreferredValue(goVCard.FieldTelephone), contactMsg.GetDisplayName(),
+		sentMsg, err := tgBot.SendContact(cfg.Telegram.TargetChatID, card.PreferredValue(goVCard.FieldTelephone), contactMsg.GetDisplayName(),
 			&gotgbot.SendContactOpts{
 				Vcard:           contactMsg.GetVcard(),
 				ReplyParameters: replyParameters,
 				MessageThreadId: threadId,
 				ReplyMarkup:     replyMarkup,
 			})
-		if sentMsg.MessageId != 0 {
+		if telegramSendOK(sentMsg, err) {
 			database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 				cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 		}
@@ -1000,11 +1012,11 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 
 		if cfg.WhatsApp.SkipContacts {
 			bridgedText += "\n<i>Skipping contact array because 'skip_contacts' set in config file</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+			sentMsg, err := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
 				ReplyParameters: replyParameters,
 				MessageThreadId: threadId,
 			})
-			if sentMsg.MessageId != 0 {
+			if telegramSendOK(sentMsg, err) {
 				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
@@ -1022,14 +1034,14 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 				continue
 			}
 
-			sentMsg, _ := tgBot.SendContact(cfg.Telegram.TargetChatID, card.PreferredValue(goVCard.FieldTelephone), contactMsg.GetDisplayName(),
+			sentMsg, err := tgBot.SendContact(cfg.Telegram.TargetChatID, card.PreferredValue(goVCard.FieldTelephone), contactMsg.GetDisplayName(),
 				&gotgbot.SendContactOpts{
 					Vcard:           contactMsg.GetVcard(),
 					ReplyParameters: replyParameters,
 					MessageThreadId: threadId,
 					ReplyMarkup:     replyMarkup,
 				})
-			if sentMsg.MessageId != 0 {
+			if telegramSendOK(sentMsg, err) {
 				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
@@ -1042,23 +1054,23 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 
 		if cfg.WhatsApp.SkipLocations {
 			bridgedText += "\n<i>Skipping location because 'skip_locations' set in config file</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+			sentMsg, err := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
 				ReplyParameters: replyParameters,
 				MessageThreadId: threadId,
 			})
-			if sentMsg.MessageId != 0 {
+			if telegramSendOK(sentMsg, err) {
 				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
 			return
 		}
-		sentMsg, _ := tgBot.SendLocation(cfg.Telegram.TargetChatID, locationMsg.GetDegreesLatitude(), locationMsg.GetDegreesLongitude(),
+		sentMsg, err := tgBot.SendLocation(cfg.Telegram.TargetChatID, locationMsg.GetDegreesLatitude(), locationMsg.GetDegreesLongitude(),
 			&gotgbot.SendLocationOpts{
 				HorizontalAccuracy: float64(locationMsg.GetAccuracyInMeters()),
 				ReplyParameters:    replyParameters,
 				MessageThreadId:    threadId,
 			})
-		if sentMsg.MessageId != 0 {
+		if telegramSendOK(sentMsg, err) {
 			database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 				cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 		}
@@ -1071,22 +1083,22 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 
 		if cfg.WhatsApp.SkipLocations {
 			bridgedText += "\n<i>Skipping live location because 'skip_locations' set in config file</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+			sentMsg, err := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
 				ReplyParameters: replyParameters,
 				MessageThreadId: threadId,
 			})
-			if sentMsg.MessageId != 0 {
+			if telegramSendOK(sentMsg, err) {
 				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 			}
 			return
 		}
 
-		sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+		sentMsg, err := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
 			ReplyParameters: replyParameters,
 			MessageThreadId: threadId,
 		})
-		if sentMsg.MessageId != 0 {
+		if telegramSendOK(sentMsg, err) {
 			database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 				cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 		}
@@ -1114,11 +1126,11 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 			bridgedText += fmt.Sprintf("%v. %s\n", optionNum+1, html.EscapeString(option.GetOptionName()))
 		}
 
-		sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
+		sentMsg, err := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
 			ReplyParameters: replyParameters,
 			MessageThreadId: threadId,
 		})
-		if sentMsg.MessageId != 0 {
+		if telegramSendOK(sentMsg, err) {
 			database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 				cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 		}
@@ -1172,7 +1184,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 					if err != nil {
 						panic(fmt.Errorf("failed to send telegram message: %s", err))
 					}
-					if sentMsg.MessageId != 0 {
+					if telegramSendOK(sentMsg, err) {
 						database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), waChatIdForLookup,
 							cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 					}
@@ -1210,7 +1222,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 		if err != nil {
 			panic(fmt.Errorf("failed to send telegram message: %s", err))
 		}
-		if sentMsg.MessageId != 0 {
+		if telegramSendOK(sentMsg, err) {
 			database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 				cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 		}
@@ -1323,7 +1335,7 @@ func UndecryptableMessageEventHandler(v *events.UndecryptableMessage) {
 	if err != nil {
 		panic(fmt.Errorf("failed to send telegram message: %s", err))
 	}
-	if sentMsg.MessageId != 0 {
+	if sentMsg != nil && sentMsg.MessageId != 0 {
 		database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
 			cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
 	}
