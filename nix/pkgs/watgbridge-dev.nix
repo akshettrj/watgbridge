@@ -28,7 +28,7 @@ in
 
     src = localSrc;
 
-    vendorHash = "sha256-Wy4Y5XzbLP+VidZPFY93Q5+ewpsARVE2pNwxMwkTLVY=";
+    vendorHash = "sha256-9mguAhhHgqLasH55socRhE2j51eOVVEClKZhiVpSb7k=";
 
     subPackages = ["."];
 
