@@ -83,9 +83,8 @@ func NewWhatsAppClient() error {
 	waDatabaseLogger := &whatsmeowLogger{logger: logger.Sugar().Named("WhatsMeow_Database")}
 	waClientLogger := &whatsmeowLogger{logger: logger.Sugar().Named("WhatsMeow_Client")}
 
-	// Configure device as Android if enabled or if client mode is set to android/android_business
-	isAndroidEmulation := cfg.WhatsApp.EmulateAndroidPhone ||
-		cfg.WhatsApp.ClientMode == clientModeAndroid ||
+	// Configure device as Android if client mode is set to android/android_business
+	isAndroidEmulation := cfg.WhatsApp.ClientMode == clientModeAndroid ||
 		cfg.WhatsApp.ClientMode == clientModeAndroidBusiness
 
 	if isAndroidEmulation {
