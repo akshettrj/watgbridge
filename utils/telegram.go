@@ -34,6 +34,18 @@ const (
 	UploadSizeLimit   uint64 = 52428800
 )
 
+func TgMakeReplyParameters(messageId, chatId int64) *gotgbot.ReplyParameters {
+	if messageId == 0 {
+		return nil
+	}
+
+	replyParameters := &gotgbot.ReplyParameters{MessageId: messageId}
+	if chatId != 0 {
+		replyParameters.ChatId = chatId
+	}
+	return replyParameters
+}
+
 func TgRegisterBotCommands(b *gotgbot.Bot, commands ...gotgbot.BotCommand) error {
 	_, err := b.SetMyCommands(commands, &gotgbot.SetMyCommandsOpts{
 		LanguageCode: "en",
@@ -311,7 +323,7 @@ func TgSendErrorById(b *gotgbot.Bot, chatId, threadId int64, eMessage string, e 
 
 func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 	msgToForward, msgToReplyTo *gotgbot.Message,
-	waChatJID waTypes.JID, participant, stanzaId string,
+	waChatJID waTypes.JID, participant, stanzaId, quotedWaChatID string,
 	isReply bool) error {
 
 	var (
@@ -396,6 +408,11 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		}
 	}
 
+	replyRemoteJID := ""
+	if quotedWaChatID != "" && quotedWaChatID != waChatJID.String() {
+		replyRemoteJID = quotedWaChatID
+	}
+
 	if msgToForward.Photo != nil && len(msgToForward.Photo) > 0 {
 
 		bestPhoto := msgToForward.Photo[0]
@@ -447,9 +464,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			},
 		}
 		if isReply {
-			msgToSend.ImageMessage.ContextInfo.StanzaID = proto.String(stanzaId)
-			msgToSend.ImageMessage.ContextInfo.Participant = proto.String(participant)
-			msgToSend.ImageMessage.ContextInfo.QuotedMessage = &waE2E.Message{Conversation: proto.String("")}
+			WaSetReplyContext(msgToSend.ImageMessage.ContextInfo, stanzaId, participant, replyRemoteJID)
 		}
 		if len(mentions) > 0 {
 			msgToSend.ImageMessage.ContextInfo.MentionedJID = mentions
@@ -516,9 +531,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			},
 		}
 		if isReply {
-			msgToSend.VideoMessage.ContextInfo.StanzaID = proto.String(stanzaId)
-			msgToSend.VideoMessage.ContextInfo.Participant = proto.String(participant)
-			msgToSend.VideoMessage.ContextInfo.QuotedMessage = &waE2E.Message{Conversation: proto.String("")}
+			WaSetReplyContext(msgToSend.VideoMessage.ContextInfo, stanzaId, participant, replyRemoteJID)
 		}
 		if len(mentions) > 0 {
 			msgToSend.VideoMessage.ContextInfo.MentionedJID = mentions
@@ -582,9 +595,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			},
 		}
 		if isReply {
-			msgToSend.PtvMessage.ContextInfo.StanzaID = proto.String(stanzaId)
-			msgToSend.PtvMessage.ContextInfo.Participant = proto.String(participant)
-			msgToSend.PtvMessage.ContextInfo.QuotedMessage = &waE2E.Message{Conversation: proto.String("")}
+			WaSetReplyContext(msgToSend.PtvMessage.ContextInfo, stanzaId, participant, replyRemoteJID)
 		}
 		if len(mentions) > 0 {
 			msgToSend.PtvMessage.ContextInfo.MentionedJID = mentions
@@ -651,9 +662,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			},
 		}
 		if isReply {
-			msgToSend.VideoMessage.ContextInfo.StanzaID = proto.String(stanzaId)
-			msgToSend.VideoMessage.ContextInfo.Participant = proto.String(participant)
-			msgToSend.VideoMessage.ContextInfo.QuotedMessage = &waE2E.Message{Conversation: proto.String("")}
+			WaSetReplyContext(msgToSend.VideoMessage.ContextInfo, stanzaId, participant, replyRemoteJID)
 		}
 		if len(mentions) > 0 {
 			msgToSend.VideoMessage.ContextInfo.MentionedJID = mentions
@@ -724,9 +733,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			},
 		}
 		if isReply {
-			msgToSend.AudioMessage.ContextInfo.StanzaID = proto.String(stanzaId)
-			msgToSend.AudioMessage.ContextInfo.Participant = proto.String(participant)
-			msgToSend.AudioMessage.ContextInfo.QuotedMessage = &waE2E.Message{Conversation: proto.String("")}
+			WaSetReplyContext(msgToSend.AudioMessage.ContextInfo, stanzaId, participant, replyRemoteJID)
 		}
 		if len(mentions) > 0 {
 			msgToSend.AudioMessage.ContextInfo.MentionedJID = mentions
@@ -797,9 +804,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			},
 		}
 		if isReply {
-			msgToSend.AudioMessage.ContextInfo.StanzaID = proto.String(stanzaId)
-			msgToSend.AudioMessage.ContextInfo.Participant = proto.String(participant)
-			msgToSend.AudioMessage.ContextInfo.QuotedMessage = &waE2E.Message{Conversation: proto.String("")}
+			WaSetReplyContext(msgToSend.AudioMessage.ContextInfo, stanzaId, participant, replyRemoteJID)
 		}
 		if len(mentions) > 0 {
 			msgToSend.AudioMessage.ContextInfo.MentionedJID = mentions
@@ -862,9 +867,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			},
 		}
 		if isReply {
-			msgToSend.DocumentMessage.ContextInfo.StanzaID = proto.String(stanzaId)
-			msgToSend.DocumentMessage.ContextInfo.Participant = proto.String(participant)
-			msgToSend.DocumentMessage.ContextInfo.QuotedMessage = &waE2E.Message{Conversation: proto.String("")}
+			WaSetReplyContext(msgToSend.DocumentMessage.ContextInfo, stanzaId, participant, replyRemoteJID)
 		}
 		if len(mentions) > 0 {
 			msgToSend.DocumentMessage.ContextInfo.MentionedJID = mentions
@@ -970,9 +973,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			},
 		}
 		if isReply {
-			msgToSend.StickerMessage.ContextInfo.StanzaID = proto.String(stanzaId)
-			msgToSend.StickerMessage.ContextInfo.Participant = proto.String(participant)
-			msgToSend.StickerMessage.ContextInfo.QuotedMessage = &waE2E.Message{Conversation: proto.String("")}
+			WaSetReplyContext(msgToSend.StickerMessage.ContextInfo, stanzaId, participant, replyRemoteJID)
 		}
 		if isEphemeral {
 			msgToSend.StickerMessage.ContextInfo.Expiration = &ephemeralTimer
@@ -1033,9 +1034,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			},
 		}
 		if isReply {
-			msgToSend.ContactMessage.ContextInfo.StanzaID = proto.String(stanzaId)
-			msgToSend.ContactMessage.ContextInfo.Participant = proto.String(participant)
-			msgToSend.ContactMessage.ContextInfo.QuotedMessage = &waE2E.Message{Conversation: proto.String("")}
+			WaSetReplyContext(msgToSend.ContactMessage.ContextInfo, stanzaId, participant, replyRemoteJID)
 		}
 		if isEphemeral {
 			msgToSend.ContactMessage.ContextInfo.Expiration = &ephemeralTimer
@@ -1070,9 +1069,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 				ContextInfo:                       &waE2E.ContextInfo{},
 			}
 			if isReply {
-				msgToSend.LiveLocationMessage.ContextInfo.StanzaID = proto.String(stanzaId)
-				msgToSend.LiveLocationMessage.ContextInfo.Participant = proto.String(participant)
-				msgToSend.LiveLocationMessage.ContextInfo.QuotedMessage = &waE2E.Message{Conversation: proto.String("")}
+				WaSetReplyContext(msgToSend.LiveLocationMessage.ContextInfo, stanzaId, participant, replyRemoteJID)
 			}
 			if isEphemeral {
 				msgToSend.LiveLocationMessage.ContextInfo.Expiration = &ephemeralTimer
@@ -1086,9 +1083,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 				ContextInfo:                       &waE2E.ContextInfo{},
 			}
 			if isReply {
-				msgToSend.LocationMessage.ContextInfo.StanzaID = proto.String(stanzaId)
-				msgToSend.LocationMessage.ContextInfo.Participant = proto.String(participant)
-				msgToSend.LocationMessage.ContextInfo.QuotedMessage = &waE2E.Message{Conversation: proto.String("")}
+				WaSetReplyContext(msgToSend.LocationMessage.ContextInfo, stanzaId, participant, replyRemoteJID)
 			}
 			if isEphemeral {
 				msgToSend.LocationMessage.ContextInfo.Expiration = &ephemeralTimer
@@ -1142,12 +1137,11 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		msgToSend := &waE2E.Message{}
 		if isReply || len(mentions) > 0 || isEphemeral {
 			msgToSend.ExtendedTextMessage = &waE2E.ExtendedTextMessage{
-				Text: proto.String(formattedText),
-				ContextInfo: &waE2E.ContextInfo{
-					StanzaID:      proto.String(stanzaId),
-					Participant:   proto.String(participant),
-					QuotedMessage: &waE2E.Message{Conversation: proto.String("")},
-				},
+				Text:        proto.String(formattedText),
+				ContextInfo: &waE2E.ContextInfo{},
+			}
+			if isReply {
+				WaSetReplyContext(msgToSend.ExtendedTextMessage.ContextInfo, stanzaId, participant, replyRemoteJID)
 			}
 			if len(mentions) > 0 {
 				msgToSend.ExtendedTextMessage.ContextInfo.MentionedJID = mentions

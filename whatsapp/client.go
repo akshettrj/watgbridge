@@ -16,7 +16,7 @@ import (
 	"github.com/skip2/go-qrcode"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waCompanionReg"
-	"go.mau.fi/whatsmeow/proto/waWa6"
+	waWa6 "go.mau.fi/whatsmeow/proto/waWa6"
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	waLog "go.mau.fi/whatsmeow/util/log"
@@ -48,6 +48,13 @@ func (wl whatsmeowLogger) Sub(module string) waLog.Logger {
 	return whatsmeowLogger{logger: wl.logger.Named(module)}
 }
 
+// WhatsApp client identities the session can register as.
+const (
+	clientModeAndroid         = "android"
+	clientModeAndroidBusiness = "android_business"
+)
+
+
 func NewWhatsAppClient() error {
 
 	var (
@@ -76,8 +83,12 @@ func NewWhatsAppClient() error {
 	waDatabaseLogger := &whatsmeowLogger{logger: logger.Sugar().Named("WhatsMeow_Database")}
 	waClientLogger := &whatsmeowLogger{logger: logger.Sugar().Named("WhatsMeow_Client")}
 
-	// Configure device as Android if enabled
-	if cfg.WhatsApp.EmulateAndroidPhone {
+	// Configure device as Android if enabled or if client mode is set to android/android_business
+	isAndroidEmulation := cfg.WhatsApp.EmulateAndroidPhone ||
+		cfg.WhatsApp.ClientMode == clientModeAndroid ||
+		cfg.WhatsApp.ClientMode == clientModeAndroidBusiness
+
+	if isAndroidEmulation {
 		store.DeviceProps.Os = proto.String("Android")
 		store.DeviceProps.RequireFullSync = proto.Bool(false)
 		store.DeviceProps.PlatformType = waCompanionReg.DeviceProps_ANDROID_PHONE.Enum()
@@ -98,7 +109,13 @@ func NewWhatsAppClient() error {
 		}
 
 		// Configure client payload as Android
-		store.BaseClientPayload.UserAgent.Platform = waWa6.ClientPayload_UserAgent_ANDROID.Enum()
+		var platform waWa6.ClientPayload_UserAgent_Platform
+		if cfg.WhatsApp.ClientMode == clientModeAndroidBusiness {
+			platform = waWa6.ClientPayload_UserAgent_SMB_ANDROID
+		} else {
+			platform = waWa6.ClientPayload_UserAgent_ANDROID
+		}
+		store.BaseClientPayload.UserAgent.Platform = platform.Enum()
 		store.BaseClientPayload.UserAgent.Device = proto.String("SM-G900F")
 		store.BaseClientPayload.UserAgent.Manufacturer = proto.String("Samsung")
 		store.BaseClientPayload.UserAgent.OsVersion = proto.String("14")
@@ -110,7 +127,11 @@ func NewWhatsAppClient() error {
 		}
 		store.BaseClientPayload.WebInfo = nil // Remove WebInfo as it's only for web
 
-		logger.Info("WhatsApp client configured to emulate Android phone")
+		if cfg.WhatsApp.ClientMode == clientModeAndroidBusiness {
+			logger.Info("WhatsApp client configured to emulate Android phone (WhatsApp Business)")
+		} else {
+			logger.Info("WhatsApp client configured to emulate Android phone")
+		}
 	} else {
 		// Keep default Web configuration
 		store.DeviceProps.Os = proto.String(state.State.Config.WhatsApp.SessionName)

@@ -36,6 +36,84 @@ func WaParseJID(s string) (types.JID, bool) {
 	return recipient, true
 }
 
+func WaContextInfoReplyChatID(contextInfo *waE2E.ContextInfo, fallback string) string {
+	if contextInfo == nil {
+		return fallback
+	}
+
+	if placeholderKey := contextInfo.GetPlaceholderKey(); placeholderKey != nil && placeholderKey.GetRemoteJID() != "" {
+		return placeholderKey.GetRemoteJID()
+	}
+	if remoteJID := contextInfo.GetRemoteJID(); remoteJID != "" {
+		return remoteJID
+	}
+	if parentGroupJID := contextInfo.GetParentGroupJID(); parentGroupJID != "" {
+		return parentGroupJID
+	}
+	return fallback
+}
+
+func WaContextInfoReplyMessageID(contextInfo *waE2E.ContextInfo) string {
+	if contextInfo == nil {
+		return ""
+	}
+
+	if stanzaID := contextInfo.GetStanzaID(); stanzaID != "" {
+		return stanzaID
+	}
+	if placeholderKey := contextInfo.GetPlaceholderKey(); placeholderKey != nil {
+		return placeholderKey.GetID()
+	}
+	return ""
+}
+
+func WaSetReplyContext(contextInfo *waE2E.ContextInfo, stanzaID, participant, remoteJID string) {
+	contextInfo.StanzaID = proto.String(stanzaID)
+	contextInfo.Participant = proto.String(participant)
+	contextInfo.QuotedMessage = &waE2E.Message{Conversation: proto.String("")}
+	if remoteJID != "" {
+		contextInfo.RemoteJID = proto.String(remoteJID)
+	}
+}
+
+func WaReplyContextAllowed(destinationChatID, quotedChatID, quotedParticipantID string) bool {
+	destinationChatID = waNormalizeChatID(destinationChatID)
+	quotedChatID = waNormalizeChatID(quotedChatID)
+	quotedParticipantID = waNormalizeChatID(quotedParticipantID)
+
+	if quotedChatID == "" || destinationChatID == quotedChatID {
+		return true
+	}
+
+	if quotedChatID == "status@broadcast" {
+		return destinationChatID == quotedParticipantID
+	}
+
+	quotedChatJID, ok := WaParseJID(quotedChatID)
+	if !ok || quotedChatJID.Server != types.GroupServer {
+		return false
+	}
+	return destinationChatID == quotedParticipantID
+}
+
+func waNormalizeChatID(chatID string) string {
+	if chatID == "" {
+		return ""
+	}
+
+	jid, ok := WaParseJID(chatID)
+	if !ok {
+		return chatID
+	}
+	if jid.Server == types.HiddenUserServer {
+		pn, err := state.State.WhatsAppClient.Store.LIDs.GetPNForLID(context.Background(), jid)
+		if err == nil {
+			jid = pn
+		}
+	}
+	return jid.ToNonAD().String()
+}
+
 func WaFuzzyFindContacts(query string) (map[string]string, int, error) {
 	var (
 		results      = make(map[string]string)
@@ -194,15 +272,23 @@ func WaTagAll(group types.JID, msg *waE2E.Message, msgId, msgSender string, msgI
 		mentioned = append(mentioned, participant.JID.String())
 	}
 
+	contextInfo := &waE2E.ContextInfo{
+		StanzaID:      proto.String(msgId),
+		Participant:   proto.String(msgSender),
+		QuotedMessage: msg,
+		MentionedJID:  mentioned,
+	}
+
+	// Apply ephemeral settings if the chat has disappearing messages enabled
+	isEphemeral, ephemeralTimer, _, err := database.GetEphemeralSettings(group.String())
+	if err == nil && isEphemeral && ephemeralTimer > 0 {
+		contextInfo.Expiration = &ephemeralTimer
+	}
+
 	_, err = waClient.SendMessage(context.Background(), group, &waE2E.Message{
 		ExtendedTextMessage: &waE2E.ExtendedTextMessage{
-			Text: proto.String(replyText),
-			ContextInfo: &waE2E.ContextInfo{
-				StanzaID:      proto.String(msgId),
-				Participant:   proto.String(msgSender),
-				QuotedMessage: msg,
-				MentionedJID:  mentioned,
-			},
+			Text:        proto.String(replyText),
+			ContextInfo: contextInfo,
 		},
 	})
 	if err != nil {
