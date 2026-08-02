@@ -1,0 +1,13 @@
+services:
+  watgbridge:
+    #build:
+    #  context: .
+    #  dockerfile: Dockerfile
+    image: ghcr.io/wa-bridge/watgbridge:latest
+    container_name: watgbridge
+    volumes:
+      - ./config.yaml:/go/src/watgbridge/config.yaml
+      - ./gobot.sqlite.db:/go/src/watgbridge/gobot.sqlite.db
+      - ./wawebstore.db:/go/src/watgbridge/wawebstore.db
+      - ./.git:/go/src/watgbridge/.git
+    restart: unless-stopped

@@ -51,8 +51,48 @@ PRs are welcome :)
 - Clone this repository anywhere and navigate to the cloned directory
 - Run `go build`
 - Copy `sample_config.yaml` to `config.yaml` and fill the values, there are comments to help you.
+- Optional: configure automatic DB backups in `config.yaml` via `backup.mode` (`none`, `private`, `thread`) and `backup.cron_schedule`.
 - Execute the binary by running `./watgbridge`
 - On first run, it will show QR code for logging into WhatsApp that can by scanned by the WhatsApp app in `Linked devices`
 - It is recommended to restart the bot after every few hours becuase WhatsApp likes to disconnect a lot. So a sample Systemd service file has been provided (`watgbridge.service.sample`). Edit the `User` and `ExecStart` according to your setup:
     - If you do not have local bot API server, remove `tgbotapi.service` from the `After` key in `Unit` section.
     - This service file will restart the bot every 24 hours
+
+## Docker
+
+Before starting the container, copy `sample_config.yaml` to `config.yaml` and fill in the values you need. Keep these files in the same folder as the project so the bot can persist its state:
+
+- `config.yaml`
+- `gobot.sqlite.db`
+- `wawebstore.db`
+
+Pull the image:
+
+```bash
+docker pull ghcr.io/rianfc/watgbridge:last
+```
+
+Run the container:
+
+```bash
+docker run -d \
+  --name watgbridge \
+  --restart unless-stopped \
+  -v $(pwd)/config.yaml:/go/src/watgbridge/config.yaml \
+  -v $(pwd)/gobot.sqlite.db:/go/src/watgbridge/gobot.sqlite.db \
+  -v $(pwd)/wawebstore.db:/go/src/watgbridge/wawebstore.db \
+  -v $(pwd)/.git:/go/src/watgbridge/.git \
+  ghcr.io/rianfc/watgbridge:last
+```
+
+Check the logs with:
+
+```bash
+docker logs -f watgbridge
+```
+
+To stop it, run:
+
+```bash
+docker stop watgbridge
+```

@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"time"
 	"unicode"
@@ -143,6 +144,125 @@ func TgSendTextById(b *gotgbot.Bot, chatId int64, threadId int64, text string) e
 	return err
 }
 
+func TgMessageTextForWhatsApp(msg *gotgbot.Message) string {
+	if msg == nil {
+		return ""
+	}
+
+	if msg.Text != "" {
+		return tgTextWithWhatsAppFormatting(msg.Text, msg.ParseEntities())
+	}
+
+	if msg.Caption != "" {
+		return tgTextWithWhatsAppFormatting(msg.Caption, msg.ParseCaptionEntities())
+	}
+
+	return ""
+}
+
+func tgTextWithWhatsAppFormatting(text string, entities []gotgbot.ParsedMessageEntity) string {
+	if len(entities) == 0 {
+		return text
+	}
+
+	sortedEntities := append([]gotgbot.ParsedMessageEntity(nil), entities...)
+	sort.SliceStable(sortedEntities, func(i, j int) bool {
+		if sortedEntities[i].Offset == sortedEntities[j].Offset {
+			return sortedEntities[i].Length > sortedEntities[j].Length
+		}
+		return sortedEntities[i].Offset < sortedEntities[j].Offset
+	})
+
+	return tgFormatWhatsAppTextRange(text, 0, int64(len(text)), sortedEntities)
+}
+
+func tgFormatWhatsAppTextRange(text string, start, end int64, entities []gotgbot.ParsedMessageEntity) string {
+	if start >= end {
+		return ""
+	}
+
+	if len(entities) == 0 {
+		return text[int(start):int(end)]
+	}
+
+	var builder strings.Builder
+	cursor := start
+	for _, entity := range tgUpperEntities(entities) {
+		entityEnd := entity.Offset + entity.Length
+		if entity.Offset >= end {
+			break
+		}
+		if entityEnd > end {
+			continue
+		}
+		if entity.Offset < cursor {
+			continue
+		}
+
+		if entity.Offset > cursor {
+			builder.WriteString(text[int(cursor):int(entity.Offset)])
+		}
+
+		inner := tgFormatWhatsAppTextRange(text, entity.Offset, entityEnd, tgChildEntities(entity, entities))
+		builder.WriteString(tgWhatsAppEntityWrapper(entity.Type, inner))
+		cursor = entityEnd
+	}
+
+	if cursor < end {
+		builder.WriteString(text[int(cursor):int(end)])
+	}
+
+	return builder.String()
+}
+
+func tgUpperEntities(entities []gotgbot.ParsedMessageEntity) []gotgbot.ParsedMessageEntity {
+	prev := int64(0)
+	uppers := make([]gotgbot.ParsedMessageEntity, 0, len(entities))
+	for _, entity := range entities {
+		if entity.Offset < prev {
+			continue
+		}
+		uppers = append(uppers, entity)
+		prev = entity.Offset + entity.Length
+	}
+	return uppers
+}
+
+func tgChildEntities(entity gotgbot.ParsedMessageEntity, entities []gotgbot.ParsedMessageEntity) []gotgbot.ParsedMessageEntity {
+	end := entity.Offset + entity.Length
+	children := make([]gotgbot.ParsedMessageEntity, 0, len(entities))
+	for _, child := range entities {
+		if child.Offset < entity.Offset || child == entity {
+			continue
+		}
+		if child.Offset >= end {
+			break
+		}
+		if child.Offset+child.Length > end {
+			continue
+		}
+		children = append(children, child)
+	}
+	return children
+}
+
+func tgWhatsAppEntityWrapper(entityType, text string) string {
+	switch entityType {
+	case "bold":
+		return "*" + text + "*"
+	case "italic":
+		return "_" + text + "_"
+	case "strikethrough":
+		return "~" + text + "~"
+	case "code":
+		return "`" + text + "`"
+	case "pre":
+		return "```" + text + "```"
+	default:
+		return text
+	}
+}
+
 func TgUpdateIsAuthorized(b *gotgbot.Bot, c *ext.Context) bool {
 	var (
 		cfg         = state.State.Config
@@ -212,6 +332,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		waClient = state.State.WhatsAppClient
 		mentions = []string{}
 	)
+	formattedText := TgMessageTextForWhatsApp(msgToForward)
 
 	var entities []gotgbot.ParsedMessageEntity
 	if len(msgToForward.Entities) > 0 {
@@ -327,7 +448,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 
 		msgToSend := &waE2E.Message{
 			ImageMessage: &waE2E.ImageMessage{
-				Caption:           proto.String(msgToForward.Caption),
+				Caption:           proto.String(formattedText),
 				URL:               proto.String(uploadedImage.URL),
 				DirectPath:        proto.String(uploadedImage.DirectPath),
 				MediaKey:          uploadedImage.MediaKey,
@@ -393,7 +514,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 
 		msgToSend := &waE2E.Message{
 			VideoMessage: &waE2E.VideoMessage{
-				Caption:       proto.String(msgToForward.Caption),
+				Caption:       proto.String(formattedText),
 				URL:           proto.String(uploadedVideo.URL),
 				DirectPath:    proto.String(uploadedVideo.DirectPath),
 				MediaKey:      uploadedVideo.MediaKey,
@@ -459,7 +580,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 
 		msgToSend := &waE2E.Message{
 			PtvMessage: &waE2E.VideoMessage{
-				Caption:       proto.String(msgToForward.Caption),
+				Caption:       proto.String(formattedText),
 				URL:           proto.String(uploadedVideo.URL),
 				DirectPath:    proto.String(uploadedVideo.DirectPath),
 				MediaKey:      uploadedVideo.MediaKey,
@@ -523,7 +644,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 
 		msgToSend := &waE2E.Message{
 			VideoMessage: &waE2E.VideoMessage{
-				Caption:        proto.String(msgToForward.Caption),
+				Caption:        proto.String(formattedText),
 				URL:            proto.String(uploadedAnimation.URL),
 				DirectPath:     proto.String(uploadedAnimation.DirectPath),
 				MediaKey:       uploadedAnimation.MediaKey,
@@ -583,7 +704,16 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			return TgReplyWithErrorByContext(b, c, "Failed to download audio from Telegram", err)
 		}
 
-		uploadedAudio, err := waClient.Upload(context.Background(), audioBytes, whatsmeow.MediaAudio)
+		// Convert audio to a WhatsApp-compatible format
+		convertedAudioBytes, err := ConvertAudioToWhatsAppFormat(audioBytes, c.UpdateId)
+		if err != nil {
+			logger.Warn("failed to convert audio to WhatsApp format, using original",
+				zap.Error(err),
+			)
+			convertedAudioBytes = audioBytes
+		}
+
+		uploadedAudio, err := waClient.Upload(context.Background(), convertedAudioBytes, whatsmeow.MediaAudio)
 		if err != nil {
 			return TgReplyWithErrorByContext(b, c, "Failed to upload audio to WhatsApp", err)
 		}
@@ -593,10 +723,10 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 				URL:           proto.String(uploadedAudio.URL),
 				DirectPath:    proto.String(uploadedAudio.DirectPath),
 				MediaKey:      uploadedAudio.MediaKey,
-				Mimetype:      proto.String(msgToForward.Audio.MimeType),
+				Mimetype:      proto.String("audio/ogg; codecs=opus"),
 				FileEncSHA256: uploadedAudio.FileEncSHA256,
 				FileSHA256:    uploadedAudio.FileSHA256,
-				FileLength:    proto.Uint64(uint64(len(audioBytes))),
+				FileLength:    proto.Uint64(uint64(len(convertedAudioBytes))),
 				Seconds:       proto.Uint32(uint32(msgToForward.Audio.Duration)),
 				PTT:           proto.Bool(false),
 				ContextInfo:   &waE2E.ContextInfo{},
@@ -645,7 +775,16 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			return TgReplyWithErrorByContext(b, c, "Failed to download voice from Telegram", err)
 		}
 
-		uploadedVoice, err := waClient.Upload(context.Background(), voiceBytes, whatsmeow.MediaAudio)
+		// Convert voice note to a WhatsApp-compatible format
+		convertedVoiceBytes, err := ConvertAudioToWhatsAppFormat(voiceBytes, c.UpdateId)
+		if err != nil {
+			logger.Warn("failed to convert voice to WhatsApp format, using original",
+				zap.Error(err),
+			)
+			convertedVoiceBytes = voiceBytes
+		}
+
+		uploadedVoice, err := waClient.Upload(context.Background(), convertedVoiceBytes, whatsmeow.MediaAudio)
 		if err != nil {
 			return TgReplyWithErrorByContext(b, c, "Failed to upload voice to WhatsApp", err)
 		}
@@ -658,7 +797,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 				Mimetype:      proto.String("audio/ogg; codecs=opus"),
 				FileEncSHA256: uploadedVoice.FileEncSHA256,
 				FileSHA256:    uploadedVoice.FileSHA256,
-				FileLength:    proto.Uint64(uint64(len(voiceBytes))),
+				FileLength:    proto.Uint64(uint64(len(convertedVoiceBytes))),
 				Seconds:       proto.Uint32(uint32(msgToForward.Voice.Duration)),
 				PTT:           proto.Bool(true),
 				ContextInfo:   &waE2E.ContextInfo{},
@@ -714,7 +853,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 
 		msgToSend := &waE2E.Message{
 			DocumentMessage: &waE2E.DocumentMessage{
-				Caption:       proto.String(msgToForward.Caption),
+				Caption:       proto.String(formattedText),
 				Title:         proto.String(msgToForward.Document.FileName),
 				FileName:      proto.String(msgToForward.Document.FileName),
 				URL:           proto.String(uploadedDocument.URL),
@@ -998,7 +1137,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		msgToSend := &waE2E.Message{}
 		if isReply || len(mentions) > 0 || isEphemeral {
 			msgToSend.ExtendedTextMessage = &waE2E.ExtendedTextMessage{
-				Text:        proto.String(msgToForward.Text),
+				Text:        proto.String(formattedText),
 				ContextInfo: &waE2E.ContextInfo{},
 			}
 			if isReply {
@@ -1011,7 +1150,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 				msgToSend.ExtendedTextMessage.ContextInfo.Expiration = &ephemeralTimer
 			}
 		} else {
-			msgToSend.Conversation = proto.String(msgToForward.Text)
+			msgToSend.Conversation = proto.String(formattedText)
 		}
 
 		sentMsg, err := waClient.SendMessage(context.Background(), waChatJID, msgToSend)
@@ -1028,9 +1167,11 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		}
 
 		{
-			textSplit := strings.Fields(strings.ToLower(msgToForward.Text))
-			if slices.Contains(textSplit, "@all") || slices.Contains(textSplit, "@everyone") {
+			if cfg.Telegram.TagAllEnabled {
+				textSplit := strings.Fields(strings.ToLower(msgToForward.Text))
+				if slices.Contains(textSplit, "@all") || slices.Contains(textSplit, "@everyone") || slices.Contains(textSplit, "@everybody") {
 				WaTagAll(waChatJID, msgToSend, sentMsg.ID, waClient.Store.ID.String(), true)
+				}
 			}
 		}
 
@@ -1108,11 +1249,30 @@ func SendMessageConfirmation(
 ) {
 	switch cfg.Telegram.ConfirmationType {
 	case "emoji":
+		if cfg.Telegram.AutoReactWhenAllRead {
+			msg, err := TgReplyTextByContext(b, c, "Successfully sent", revokeKeyboard, cfg.Telegram.SilentConfirmation)
+			if err == nil {
+				go func(_b *gotgbot.Bot, _m *gotgbot.Message) {
+					time.Sleep(15 * time.Second)
+					_b.DeleteMessage(_m.Chat.Id, _m.MessageId, &gotgbot.DeleteMessageOpts{})
+				}(b, msg)
+			}
+			return
+		}
+
 		b.SetMessageReaction(
 			msgToForward.Chat.Id,
 			msgToForward.MessageId,
 			&gotgbot.SetMessageReactionOpts{Reaction: []gotgbot.ReactionType{gotgbot.ReactionTypeEmoji{Emoji: "👍"}}},
 		)
+		go func(_b *gotgbot.Bot, _c *ext.Context, _msg *gotgbot.Message) {
+			time.Sleep(15 * time.Second)
+			_b.SetMessageReaction(
+				_msg.Chat.Id,
+				_msg.MessageId,
+				&gotgbot.SetMessageReactionOpts{Reaction: []gotgbot.ReactionType{}},
+			)
+		}(b, c, msgToForward)
 	case "text":
 		msg, err := TgReplyTextByContext(b, c, "Successfully sent", revokeKeyboard, cfg.Telegram.SilentConfirmation)
 		if err == nil {

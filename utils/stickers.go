@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"image"
+
 	// "image/color"
 	"image/draw"
 	"os"
 	"os/exec"
+	"path/filepath"
 
 	"watgbridge/state"
 
@@ -112,6 +114,95 @@ func WebpImagePad(inputData []byte, wPad, hPad int, updateId int64) ([]byte, err
 	return outputBytes, nil
 }
 
+func AnimatedWebpConvertToWebm(inputData []byte, updateId string) ([]byte, error) {
+	var (
+		logger = state.State.Logger
+
+		currPath   = filepath.Join("downloads", updateId)
+		inputPath  = filepath.Join(currPath, "input.webp")
+		outputPath = filepath.Join(currPath, "output.webm")
+	)
+	defer logger.Sync()
+
+	if err := os.MkdirAll(currPath, os.ModePerm); err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(currPath)
+
+	if err := os.WriteFile(inputPath, inputData, os.ModePerm); err != nil {
+		return nil, err
+	}
+
+	// Convert WebP to WEBM with VP9 codec
+	// Following Telegram's requirements:
+	// - One side must be exactly 512px (other can be 512px or less)
+	// - Max 30 FPS
+	// - Loop for optimal UX
+	// - Max 256KB file size
+	// - VP9 codec
+	// - No audio stream
+	logger.Debug("Starting WEBM conversion",
+		zap.String("inputPath", inputPath),
+		zap.String("outputPath", outputPath),
+	)
+
+	// First convert WebP to GIF using ImageMagick (which handles animated WebP better)
+	tempGifPath := filepath.Join(currPath, "temp.gif")
+
+	convertCmd := exec.Command("convert",
+		inputPath,
+		"-coalesce",  // Ensure all frames are complete
+		"-loop", "0", // Loop infinitely
+		tempGifPath,
+	)
+
+	var convertStderr bytes.Buffer
+	convertCmd.Stderr = &convertStderr
+
+	if err := convertCmd.Run(); err != nil {
+		logger.Debug("failed to convert webp to gif with ImageMagick",
+			zap.Error(err),
+			zap.String("stderr", convertStderr.String()),
+		)
+		return nil, err
+	}
+
+	logger.Debug("WebP to GIF conversion completed, now converting to WEBM")
+
+	// Now convert GIF to WEBM with VP9 codec
+	cmd := exec.Command("ffmpeg",
+		"-i", tempGifPath,
+		"-c:v", "libvpx-vp9", // VP9 codec
+		"-an",                                                                                       // No audio stream
+		"-vf", "scale=512:512:force_original_aspect_ratio=decrease,pad=512:512:(ow-iw)/2:(oh-ih)/2", // Scale to 512px maintaining aspect ratio
+		"-r", "30", // Max 30 FPS
+		"-b:v", "0", // Use CRF mode
+		"-crf", "30", // Quality setting (lower = better quality, higher file size)
+		"-deadline", "good", // Encoding speed vs quality trade-off
+		"-cpu-used", "2", // CPU usage (0-5, higher = faster encoding)
+		"-fs", "256K", // Max file size 256KB
+		"-y", // Overwrite output file
+		outputPath,
+	)
+
+	// Capture stderr for debugging
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		logger.Debug("failed to run ffmpeg command for webm conversion",
+			zap.Error(err),
+			zap.String("stderr", stderr.String()),
+		)
+		return nil, err
+	}
+
+	logger.Debug("WEBM conversion completed successfully")
+
+	return os.ReadFile(outputPath)
+}
+
+// Fallback function to convert to GIF if WEBM conversion fails
 func AnimatedWebpConvertToGif(inputData []byte, updateId string) ([]byte, error) {
 	logger := state.State.Logger
 	defer logger.Sync()

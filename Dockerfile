@@ -9,7 +9,7 @@ COPY . ./
 RUN go build
 
 FROM alpine:3.19
-RUN apk --no-cache add tzdata libwebp-tools ffmpeg imagemagick
+RUN apk --no-cache add tzdata libwebp-tools ffmpeg imagemagick git
 WORKDIR /go/src/watgbridge
 COPY --from=build /go/src/watgbridge/watgbridge .
 CMD ["./watgbridge"]

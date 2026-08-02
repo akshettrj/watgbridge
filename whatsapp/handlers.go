@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"html"
+	"net/http"
 	"strings"
 	"time"
 
@@ -23,12 +24,14 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func WhatsAppEventHandler(evt interface{}) {
+// ============================================================
+// Top-level event dispatcher
+// ============================================================
 
+func WhatsAppEventHandler(evt interface{}) {
 	cfg := state.State.Config
 
 	switch v := evt.(type) {
-
 	case *events.LoggedOut:
 		LogoutHandler(v)
 
@@ -58,56 +61,75 @@ func WhatsAppEventHandler(evt interface{}) {
 		UndecryptableMessageEventHandler(v)
 
 	case *events.Message:
+		handleMessageEvent(cfg, v)
+	}
+}
 
-		isEdited := false
-		if protoMsg := v.Message.GetProtocolMessage(); protoMsg != nil &&
-			protoMsg.GetType() == waE2E.ProtocolMessage_MESSAGE_EDIT {
-			isEdited = true
-		}
+// handleMessageEvent processes an incoming *events.Message, checking for
+// edits, revokes and ephemeral settings before delegating to the
+// from-me / from-others handlers.
+func handleMessageEvent(cfg *state.Config, v *events.Message) {
+	isEdited := false
+	if protoMsg := v.Message.GetProtocolMessage(); protoMsg != nil &&
+		protoMsg.GetType() == waE2E.ProtocolMessage_MESSAGE_EDIT {
+		isEdited = true
+	}
 
-		if protoMsg := v.Message.GetProtocolMessage(); protoMsg != nil &&
-			protoMsg.GetType() == waE2E.ProtocolMessage_REVOKE {
-			RevokedMessageEventHandler(v)
-			return
-		}
+	if protoMsg := v.Message.GetProtocolMessage(); protoMsg != nil &&
+		protoMsg.GetType() == waE2E.ProtocolMessage_REVOKE {
+		RevokedMessageEventHandler(v)
+		return
+	}
 
-		if protoMsg := v.Message.GetProtocolMessage(); protoMsg != nil &&
-			protoMsg.GetType() == waE2E.ProtocolMessage_EPHEMERAL_SETTING {
-			if protoMsg.GetEphemeralExpiration() == 0 {
-				database.UpdateEphemeralSettings(v.Info.Chat.ToNonAD().String(), false, 0)
-			} else {
-				database.UpdateEphemeralSettings(v.Info.Chat.ToNonAD().String(), true, protoMsg.GetEphemeralExpiration())
-			}
-
-			return
-		}
-
-		text := ""
-		if isEdited {
-			msg := v.Message.GetProtocolMessage().GetEditedMessage()
-			if extendedMessageText := msg.GetExtendedTextMessage().GetText(); extendedMessageText != "" {
-				text = extendedMessageText
-			} else {
-				text = msg.GetConversation()
-			}
+	if protoMsg := v.Message.GetProtocolMessage(); protoMsg != nil &&
+		protoMsg.GetType() == waE2E.ProtocolMessage_EPHEMERAL_SETTING {
+		if protoMsg.GetEphemeralExpiration() == 0 {
+			database.UpdateEphemeralSettings(v.Info.Chat.ToNonAD().String(), false, 0)
 		} else {
-			if extendedMessageText := v.Message.GetExtendedTextMessage().GetText(); extendedMessageText != "" {
-				text = extendedMessageText
-			} else {
-				text = v.Message.GetConversation()
-			}
+			database.UpdateEphemeralSettings(v.Info.Chat.ToNonAD().String(), true, protoMsg.GetEphemeralExpiration())
 		}
+		return
+	}
 
-		if v.Info.IsFromMe {
-			MessageFromMeEventHandler(text, v, isEdited)
+	// Extract the plain-text body
+	text := ""
+	isDocument := false
+	if isEdited {
+		msg := v.Message.GetProtocolMessage().GetEditedMessage()
+		if msg.GetImageMessage() != nil {
+			text = msg.GetImageMessage().GetCaption()
+			isDocument = true
+		} else if msg.GetVideoMessage() != nil {
+			text = msg.GetVideoMessage().GetCaption()
+			isDocument = true
+		} else if msg.GetDocumentMessage() != nil {
+			text = msg.GetDocumentMessage().GetFileName()
+			isDocument = true
+		} else if extText := msg.GetExtendedTextMessage().GetText(); extText != "" {
+			text = extText
 		} else {
-			MessageFromOthersEventHandler(text, v, isEdited)
+			text = msg.GetConversation()
+		}
+	} else {
+		if extText := v.Message.GetExtendedTextMessage().GetText(); extText != "" {
+			text = extText
+		} else {
+			text = v.Message.GetConversation()
 		}
 	}
 
+	if v.Info.IsFromMe {
+		MessageFromMeEventHandler(text, v, isEdited, isDocument)
+	} else {
+		MessageFromOthersEventHandler(text, v, isEdited, isDocument)
+	}
 }
 
-func MessageFromMeEventHandler(text string, v *events.Message, isEdited bool) {
+// ============================================================
+// Messages from the bot owner's own account
+// ============================================================
+
+func MessageFromMeEventHandler(text string, v *events.Message, isEdited bool, isDocument bool) {
 	logger := state.State.Logger
 	defer logger.Sync()
 
@@ -118,26 +140,18 @@ func MessageFromMeEventHandler(text string, v *events.Message, isEdited bool) {
 		msgId = v.Info.ID
 	}
 
-	// Get ID of the current chat
+	// Reply with chat ID when ".id" is sent
 	if text == ".id" {
 		waClient := state.State.WhatsAppClient
-
-		contextInfo := &waE2E.ContextInfo{
-			StanzaID:      proto.String(msgId),
-			Participant:   proto.String(v.Info.MessageSource.Sender.String()),
-			QuotedMessage: v.Message,
-		}
-
-		// Apply ephemeral settings if the chat has disappearing messages enabled
-		isEphemeral, ephemeralTimer, _, err := database.GetEphemeralSettings(v.Info.Chat.String())
-		if err == nil && isEphemeral && ephemeralTimer > 0 {
-			contextInfo.Expiration = &ephemeralTimer
-		}
-
-		_, err = waClient.SendMessage(context.Background(), v.Info.Chat, &waE2E.Message{
+		_, err := waClient.SendMessage(context.Background(), v.Info.Chat, &waE2E.Message{
 			ExtendedTextMessage: &waE2E.ExtendedTextMessage{
-				Text:        proto.String(fmt.Sprintf("The ID of the current chat is:\n\n```%s```", v.Info.Chat.String())),
-				ContextInfo: contextInfo,
+				Text: proto.String(fmt.Sprintf(
+					"The ID of the current chat is:\n\n```%s```", v.Info.Chat.String())),
+				ContextInfo: &waE2E.ContextInfo{
+					StanzaID:      proto.String(msgId),
+					Participant:   proto.String(v.Info.MessageSource.Sender.String()),
+					QuotedMessage: v.Message,
+				},
 			},
 		})
 		if err != nil {
@@ -148,22 +162,25 @@ func MessageFromMeEventHandler(text string, v *events.Message, isEdited bool) {
 		}
 	}
 
+	// Tag everyone when @all / @everyone is used
 	if !isEdited {
-		// Tag everyone in the group
 		textSplit := strings.Fields(strings.ToLower(text))
 		if v.Info.IsGroup &&
 			(slices.Contains(textSplit, "@all") || slices.Contains(textSplit, "@everyone")) {
-
 			utils.WaTagAll(v.Info.Chat, v.Message, msgId, v.Info.MessageSource.Sender.String(), true)
 		}
 	}
 
 	if state.State.Config.WhatsApp.SendMyMessagesFromOtherDevices {
-		MessageFromOthersEventHandler(text, v, isEdited)
+		MessageFromOthersEventHandler(text, v, isEdited, isDocument)
 	}
 }
 
-func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool) {
+// ============================================================
+// Messages from other people (main bridge path)
+// ============================================================
+
+func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool, isDocument bool) {
 	var (
 		cfg      = state.State.Config
 		logger   = state.State.Logger
@@ -172,6 +189,7 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 	)
 	defer logger.Sync()
 
+	// Determine message ID
 	var msgId string
 	if isEdited {
 		msgId = v.Message.GetProtocolMessage().GetKey().GetID()
@@ -179,8 +197,8 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 		msgId = v.Info.ID
 	}
 
+	// Skip duplicate events
 	if !isEdited {
-		// Return if duplicate event is emitted
 		tgChatId, _, _, _ := database.MsgIdGetTgFromWa(msgId, v.Info.Chat.String())
 		if tgChatId == cfg.Telegram.TargetChatID {
 			logger.Debug("returning because duplicate event id emitted",
@@ -191,17 +209,16 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 		}
 	}
 
+	// Skip status from ignored chats or fully-ignored chats
 	if v.Info.Chat.String() == "status@broadcast" &&
 		(cfg.WhatsApp.SkipStatus ||
 			slices.Contains(cfg.WhatsApp.StatusIgnoredChats, v.Info.MessageSource.Sender.User)) {
-		// Return if status is from ignored chat
 		logger.Debug("returning because status from a ignored chat",
 			zap.String("event_id", v.Info.ID),
 			zap.String("chat_jid", v.Info.Chat.String()),
 		)
 		return
 	} else if slices.Contains(cfg.WhatsApp.IgnoreChats, v.Info.Chat.User) {
-		// Return if the chat is ignored
 		logger.Debug("returning because message from an ignored chat",
 			zap.String("event_id", v.Info.ID),
 			zap.String("chat_jid", v.Info.Chat.String()),
@@ -209,66 +226,31 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 		return
 	}
 
-	replyMarkup := utils.TgBuildUrlButton(utils.WaGetContactName(v.Info.Sender), fmt.Sprintf("https://wa.me/%s", v.Info.MessageSource.Sender.ToNonAD().User))
+	replyMarkup := utils.TgBuildUrlButton(
+		utils.WaGetContactName(v.Info.Sender),
+		fmt.Sprintf("https://wa.me/%s", v.Info.MessageSource.Sender.ToNonAD().User),
+	)
+
+	// Handle @all / @everyone from allowed groups
 	if !isEdited {
-		if lowercaseText := strings.ToLower(text); !v.Info.IsFromMe && v.Info.IsGroup && slices.Contains(cfg.WhatsApp.TagAllAllowedGroups, v.Info.Chat.User) &&
+		if lowercaseText := strings.ToLower(text); !v.Info.IsFromMe && v.Info.IsGroup &&
+			slices.Contains(cfg.WhatsApp.TagAllAllowedGroups, v.Info.Chat.User) &&
 			(strings.Contains(lowercaseText, "@all") || strings.Contains(lowercaseText, "@everyone")) {
-			logger.Debug("usage of @all/@everyone command from your account",
-				zap.String("event_id", v.Info.ID),
-				zap.String("chat_jid", v.Info.Chat.String()),
-			)
 			utils.WaTagAll(v.Info.Chat, v.Message, msgId, v.Info.MessageSource.Sender.String(), false)
 		}
 	}
 
-	var bridgedText string
-	if cfg.WhatsApp.SkipChatDetails {
-		logger.Debug("skipping to add chat details as configured",
-			zap.String("event_id", v.Info.ID),
-		)
-		if v.Info.IsIncomingBroadcast() {
-			bridgedText += "👥: <b>(Broadcast)</b>\n"
-		} else if v.Info.IsFromMe {
-			bridgedText += "🧑: <b>You [other device]</b>\n"
-		} else if v.Info.IsGroup {
-			bridgedText += fmt.Sprintf("🧑: <b>%s</b>\n", html.EscapeString(utils.WaGetContactName(v.Info.MessageSource.Sender)))
-		}
+	// Build header (sender, group, timestamp)
+	bridgedText := buildBridgedHeader(v.Info, cfg, isEdited)
 
-	} else {
-
-		if v.Info.IsFromMe {
-			bridgedText += "🧑: <b>You [other device]</b>\n"
-		} else {
-			bridgedText += fmt.Sprintf("🧑: <b>%s</b>\n", html.EscapeString(utils.WaGetContactName(v.Info.MessageSource.Sender)))
-		}
-		if v.Info.IsIncomingBroadcast() {
-			bridgedText += "👥: <b>(Broadcast)</b>\n"
-		} else if v.Info.IsGroup {
-			bridgedText += fmt.Sprintf("👥: <b>%s</b>\n", html.EscapeString(utils.WaGetGroupName(v.Info.Chat)))
-		} else {
-			bridgedText += "👥: <b>(PVT)</b>\n"
-		}
-
-	}
-
-	if isEdited {
-		bridgedText += "<i>Edited</i>\n"
-	}
-
-	if time.Since(v.Info.Timestamp).Seconds() > 60 {
-		bridgedText += fmt.Sprintf("🕛: <b>%s</b>\n",
-			html.EscapeString(v.Info.Timestamp.In(state.State.LocalLocation).Format(cfg.TimeFormat)))
-	}
-
+	// Resolve reply-to mapping and thread ID
 	var (
 		replyToMsgId  int64
-		replyToChatId int64
 		threadId      int64
 		threadIdFound bool
 	)
 
 	if isEdited {
-
 		tgChatId, tgThreadId, tgMsgId, err := database.MsgIdGetTgFromWa(
 			v.Message.GetProtocolMessage().GetKey().GetID(),
 			v.Info.Chat.String(),
@@ -278,133 +260,45 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 			threadId = tgThreadId
 			threadIdFound = true
 		}
-
 	} else {
-
-		logger.Debug("trying to retrieve context info from Message",
-			zap.String("event_id", v.Info.ID),
-		)
-		var contextInfo *waE2E.ContextInfo = nil
-
-		if v.Message.GetExtendedTextMessage().GetContextInfo() != nil {
-			logger.Debug("taking context info from ExtendedTextMessage",
-				zap.String("event_id", v.Info.ID),
-			)
-			contextInfo = v.Message.GetExtendedTextMessage().GetContextInfo()
-		} else if v.Message.GetImageMessage() != nil {
-			logger.Debug("taking context info from ImageMessage",
-				zap.String("event_id", v.Info.ID),
-			)
-			contextInfo = v.Message.GetImageMessage().GetContextInfo()
-		} else if v.Message.GetVideoMessage() != nil {
-			logger.Debug("taking context info from VideoMessage",
-				zap.String("event_id", v.Info.ID),
-			)
-			contextInfo = v.Message.GetVideoMessage().GetContextInfo()
-		} else if v.Message.GetPtvMessage() != nil {
-			logger.Debug("taking context info from PtvMessage",
-				zap.String("event_id", v.Info.ID),
-			)
-			contextInfo = v.Message.GetPtvMessage().GetContextInfo()
-		} else if v.Message.GetAudioMessage() != nil {
-			logger.Debug("taking context info from AudioMessage",
-				zap.String("event_id", v.Info.ID),
-			)
-			contextInfo = v.Message.GetAudioMessage().GetContextInfo()
-		} else if v.Message.GetDocumentMessage() != nil {
-			logger.Debug("taking context info from DocumentMessage",
-				zap.String("event_id", v.Info.ID),
-			)
-			contextInfo = v.Message.GetDocumentMessage().GetContextInfo()
-		} else if v.Message.GetStickerMessage() != nil {
-			logger.Debug("taking context info from StickerMessage",
-				zap.String("event_id", v.Info.ID),
-			)
-			contextInfo = v.Message.GetStickerMessage().GetContextInfo()
-		} else if v.Message.GetContactMessage() != nil {
-			logger.Debug("taking context info from ContactMessage",
-				zap.String("event_id", v.Info.ID),
-			)
-			contextInfo = v.Message.GetContactMessage().GetContextInfo()
-		} else if v.Message.GetContactsArrayMessage() != nil {
-			logger.Debug("taking context info from ContactsArrayMessage",
-				zap.String("event_id", v.Info.ID),
-			)
-			contextInfo = v.Message.GetContactsArrayMessage().GetContextInfo()
-		} else if v.Message.GetLocationMessage() != nil {
-			logger.Debug("taking context info from LocationMessage",
-				zap.String("event_id", v.Info.ID),
-			)
-			contextInfo = v.Message.GetLocationMessage().GetContextInfo()
-		} else if v.Message.GetLiveLocationMessage() != nil {
-			logger.Debug("taking context info from LiveLocationMessage",
-				zap.String("event_id", v.Info.ID),
-			)
-			contextInfo = v.Message.GetLiveLocationMessage().GetContextInfo()
-		} else if v.Message.GetPollCreationMessage() != nil {
-			logger.Debug("taking context info from PollCreationMessage",
-				zap.String("event_id", v.Info.ID),
-			)
-			contextInfo = v.Message.GetPollCreationMessage().GetContextInfo()
-		} else if v.Message.GetPollCreationMessageV2() != nil {
-			logger.Debug("taking context info from PollCreationMessageV2",
-				zap.String("event_id", v.Info.ID),
-			)
-			contextInfo = v.Message.GetPollCreationMessageV2().GetContextInfo()
-		} else if v.Message.GetPollCreationMessageV3() != nil {
-			logger.Debug("taking context info from PollCreationMessageV3",
-				zap.String("event_id", v.Info.ID),
-			)
-			contextInfo = v.Message.GetPollCreationMessageV3().GetContextInfo()
-		} else {
-			logger.Debug("no context info found in any kind of messages",
-				zap.String("event_id", v.Info.ID),
-			)
-		}
-
+		contextInfo := getContextInfo(v.Message)
 		if contextInfo != nil {
-
 			if contextInfo.GetIsForwarded() {
 				bridgedText += fmt.Sprintf("⏩: Forwarded %v times\n", contextInfo.GetForwardingScore())
 			}
 
-			logger.Debug("checking if your account is mentioned in the message",
-				zap.String("event_id", v.Info.ID),
-			)
+			// Notify when the bot owner is mentioned
 			if mentioned := contextInfo.GetMentionedJID(); v.Info.IsGroup && mentioned != nil {
 				for _, jid := range mentioned {
 					parsedJid, _ := utils.WaParseJID(jid)
 					if parsedJid.User == waClient.Store.ID.User {
+						tagInfoText := "#mentions\n\n" + bridgedText +
+							fmt.Sprintf("\n<i>You were tagged in %s</i>",
+								html.EscapeString(utils.WaGetGroupName(v.Info.Chat)))
 
-						tagInfoText := "#mentions\n\n" + bridgedText + fmt.Sprintf("\n<i>You were tagged in %s</i>",
-							html.EscapeString(utils.WaGetGroupName(v.Info.Chat)))
-
-						mentionsThreadId, err := utils.TgGetOrMakeThreadFromWa_String("mentions", cfg.Telegram.TargetChatID, "Mentions")
+						mentionThreadId, err := utils.TgGetOrMakeThreadFromWa_String(
+							"mentions", cfg.Telegram.TargetChatID, "Mentions")
 						if err != nil {
-							utils.TgSendErrorById(tgBot, cfg.Telegram.TargetChatID, 0, "failed to create/find thread id for 'mentions'", err)
+							utils.TgSendErrorById(tgBot, cfg.Telegram.TargetChatID, 0,
+								"failed to create/find thread id for 'mentions'", err)
 						} else {
 							tgBot.SendMessage(cfg.Telegram.TargetChatID, tagInfoText, &gotgbot.SendMessageOpts{
-								MessageThreadId: mentionsThreadId,
+								MessageThreadId: mentionThreadId,
 								ReplyMarkup:     replyMarkup,
 							})
 						}
-
 						break
 					}
 				}
 			}
 
-			logger.Debug("trying to retrieve mapped Message in Telegram",
-				zap.String("event_id", v.Info.ID),
-			)
-			stanzaId := utils.WaContextInfoReplyMessageID(contextInfo)
-			replyWaChatId := utils.WaContextInfoReplyChatID(contextInfo, v.Info.Chat.String())
-			tgChatId, _, tgMsgId, err := database.MsgIdGetTgFromWa(stanzaId, replyWaChatId)
+			// Resolve the quoted-message mapping
+			stanzaId := contextInfo.GetStanzaID()
+			tgChatId, tgThreadId, tgMsgId, err := database.MsgIdGetTgFromWa(stanzaId, v.Info.Chat.String())
 			if err == nil && tgChatId == cfg.Telegram.TargetChatID {
 				replyToMsgId = tgMsgId
-				if replyWaChatId != v.Info.Chat.String() {
-					replyToChatId = tgChatId
-				}
+				threadId = tgThreadId
+				threadIdFound = true
 			}
 		}
 	}
@@ -413,810 +307,656 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 		bridgedText += "\n"
 	}
 
+	// Resolve thread if not found from reply context
 	if !threadIdFound {
 		var err error
-		if v.Info.Chat.String() == "status@broadcast" {
-			threadId, err = utils.TgGetOrMakeThreadFromWa_String("status@broadcast", cfg.Telegram.TargetChatID,
-				"Status")
-			if err != nil {
-				utils.TgSendErrorById(tgBot, cfg.Telegram.TargetChatID, 0, "failed to create/find thread id for 'status@broadcast'", err)
-				return
-			}
-		} else if v.Info.IsIncomingBroadcast() {
-			if (v.Info.MessageSource.AddressingMode == waTypes.AddressingModePN) || v.Info.MessageSource.SenderAlt.IsEmpty() {
-				threadId, err = utils.TgGetOrMakeThreadFromWa(v.Info.MessageSource.Sender.ToNonAD(), cfg.Telegram.TargetChatID,
-					utils.WaGetContactName(v.Info.MessageSource.Sender.ToNonAD()))
-			} else {
-				threadId, err = utils.TgGetOrMakeThreadFromWa(v.Info.MessageSource.SenderAlt.ToNonAD(), cfg.Telegram.TargetChatID,
-					utils.WaGetContactName(v.Info.MessageSource.SenderAlt.ToNonAD()))
-			}
-			if err != nil {
-				utils.TgSendErrorById(tgBot, cfg.Telegram.TargetChatID, 0, fmt.Sprintf("failed to create/find thread id for '%s'",
-					v.Info.MessageSource.Sender.ToNonAD().String()), err)
-				return
-			}
-		} else if v.Info.IsGroup {
-			threadId, err = utils.TgGetOrMakeThreadFromWa(v.Info.Chat, cfg.Telegram.TargetChatID,
-				utils.WaGetGroupName(v.Info.Chat))
-			if err != nil {
-				utils.TgSendErrorById(tgBot, cfg.Telegram.TargetChatID, 0, fmt.Sprintf("failed to create/find thread id for '%s'",
-					v.Info.Chat.String()), err)
-				return
-			}
-		} else {
-			target_chat_jid := v.Info.Chat.ToNonAD()
-
-			threadId, err = utils.TgGetOrMakeThreadFromWa(target_chat_jid, cfg.Telegram.TargetChatID, utils.WaGetContactName(target_chat_jid))
-			if err != nil {
-				utils.TgSendErrorById(tgBot, cfg.Telegram.TargetChatID, 0, fmt.Sprintf("failed to create/find thread id for '%s'",
-					target_chat_jid.String()), err)
-				return
-			}
+		threadId, err = resolveThreadId(v.Info, cfg, tgBot)
+		if err != nil {
+			utils.TgSendErrorById(tgBot, cfg.Telegram.TargetChatID, 0,
+				fmt.Sprintf("failed to create/find thread id for '%s'", v.Info.Chat.String()), err)
+			return
 		}
 	}
 
-	replyParameters := utils.TgMakeReplyParameters(replyToMsgId, replyToChatId)
+	// Build bridge context for media handlers
+	bc := &bridgeContext{
+		cfg:          cfg,
+		logger:       logger,
+		tgBot:        tgBot,
+		waClient:     waClient,
+		bridgedText:  bridgedText,
+		replyToMsgId: replyToMsgId,
+		threadId:     threadId,
+		msgId:        msgId,
+		senderStr:    v.Info.MessageSource.Sender.String(),
+		chatStr:      v.Info.Chat.String(),
+		replyMarkup:  replyMarkup,
+	}
 
-	if v.Message.GetImageMessage() != nil {
+	// Dispatch to the appropriate media-type handler
+	switch {
+	case v.Message.GetImageMessage() != nil:
+		bc.handleImageMessage(v)
+	case v.Message.GetVideoMessage() != nil && v.Message.GetVideoMessage().GetGifPlayback():
+		bc.handleGifMessage(v)
+	case v.Message.GetVideoMessage() != nil || v.Message.GetPtvMessage() != nil:
+		bc.handleVideoMessage(v)
+	case v.Message.GetAudioMessage() != nil && v.Message.GetAudioMessage().GetPTT():
+		bc.handleVoiceNoteMessage(v)
+	case v.Message.GetAudioMessage() != nil:
+		bc.handleAudioMessage(v)
+	case v.Message.GetDocumentMessage() != nil:
+		bc.handleDocumentMessage(v)
+	case v.Message.GetStickerMessage() != nil:
+		bc.handleStickerMessage(v)
+	case v.Message.GetContactMessage() != nil:
+		bc.handleContactMessage(v)
+	case v.Message.GetContactsArrayMessage() != nil:
+		bc.handleContactsArrayMessage(v)
+	case v.Message.GetLocationMessage() != nil:
+		bc.handleLocationMessage(v)
+	case v.Message.GetLiveLocationMessage() != nil:
+		bc.handleLiveLocationMessage(v)
+	case v.Message.GetPollCreationMessage() != nil ||
+		v.Message.GetPollCreationMessageV2() != nil ||
+		v.Message.GetPollCreationMessageV3() != nil:
+		bc.handlePollMessage(v)
+	case v.Message.GetEventMessage() != nil:
+		bc.handleEventMessage(v)
+	default:
+		bc.handleTextOrReaction(text, v, isEdited, isDocument)
+	}
+}
 
-		imageMsg := v.Message.GetImageMessage()
-		if imageMsg.GetURL() == "" {
-			return
+// ============================================================
+// Individual media-type handlers (methods on bridgeContext)
+// ============================================================
+
+func (bc *bridgeContext) handleImageMessage(v *events.Message) {
+	imageMsg := v.Message.GetImageMessage()
+	if imageMsg.GetURL() == "" {
+		return
+	}
+
+	if bc.cfg.WhatsApp.SkipImages {
+		bc.sendFallbackText("\n<i>Skipping image because 'skip_images' set in config file</i>")
+		return
+	}
+	if !bc.cfg.Telegram.SelfHostedAPI && imageMsg.GetFileLength() > utils.UploadSizeLimit {
+		bc.sendFallbackText("\n<i>Couldn't send the photo as it exceeds Telegram size restrictions.</i>")
+		return
+	}
+
+	imageBytes, err := bc.waClient.Download(context.Background(), imageMsg)
+	if err != nil {
+		bc.sendFallbackText("\n<i>Couldn't download the photo due to some errors</i>")
+		return
+	}
+
+	addCaption(&bc.bridgedText, imageMsg.GetCaption())
+
+	if bc.cfg.Telegram.SendImagesAsFile {
+		fileName := "image." + strings.Split(http.DetectContentType(imageBytes), "/")[1]
+		sentMsg, _ := bc.tgBot.SendDocument(bc.cfg.Telegram.TargetChatID,
+			&gotgbot.FileReader{Name: fileName, Data: bytes.NewReader(imageBytes)},
+			&gotgbot.SendDocumentOpts{
+				Caption:         bc.bridgedText,
+				ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+				MessageThreadId: bc.threadId,
+			})
+		bc.savePair(sentMsg)
+		return
+	}
+
+	sentMsg, _ := bc.tgBot.SendPhoto(bc.cfg.Telegram.TargetChatID,
+		&gotgbot.FileReader{Data: bytes.NewReader(imageBytes)},
+		&gotgbot.SendPhotoOpts{
+			Caption:         bc.bridgedText,
+			ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+			HasSpoiler:      imageMsg.GetViewOnce(),
+			MessageThreadId: bc.threadId,
+		})
+	bc.savePair(sentMsg)
+}
+
+func (bc *bridgeContext) handleGifMessage(v *events.Message) {
+	gifMsg := v.Message.GetVideoMessage()
+	if gifMsg.GetURL() == "" {
+		return
+	}
+
+	if bc.cfg.WhatsApp.SkipGIFs {
+		bc.sendFallbackText("\n<i>Skipping GIF because 'skip_gifs' set in config file</i>")
+		return
+	}
+	if !bc.cfg.Telegram.SelfHostedAPI && gifMsg.GetFileLength() > utils.UploadSizeLimit {
+		bc.sendFallbackText("\n<i>Couldn't send the GIF as it exceeds Telegram size restrictions.</i>")
+		return
+	}
+
+	gifBytes, err := bc.waClient.Download(context.Background(), gifMsg)
+	if err != nil {
+		bc.sendFallbackText("\n<i>Couldn't download the GIF due to some errors</i>")
+		return
+	}
+
+	addCaption(&bc.bridgedText, gifMsg.GetCaption())
+
+	sentMsg, _ := bc.tgBot.SendAnimation(bc.cfg.Telegram.TargetChatID,
+		&gotgbot.FileReader{Name: "animation.gif", Data: bytes.NewReader(gifBytes)},
+		&gotgbot.SendAnimationOpts{
+			Caption:         bc.bridgedText,
+			ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+			MessageThreadId: bc.threadId,
+		})
+	bc.savePair(sentMsg)
+}
+
+func (bc *bridgeContext) handleVideoMessage(v *events.Message) {
+	var videoMsg *waE2E.VideoMessage
+	isPTV := false
+	if v.Message.GetVideoMessage() != nil {
+		videoMsg = v.Message.GetVideoMessage()
+	} else {
+		videoMsg = v.Message.GetPtvMessage()
+		isPTV = true
+	}
+
+	if videoMsg.GetURL() == "" {
+		return
+	}
+
+	if bc.cfg.WhatsApp.SkipVideos {
+		bc.sendFallbackText("\n<i>Skipping video because 'skip_videos' set in config file</i>")
+		return
+	}
+	if !bc.cfg.Telegram.SelfHostedAPI && videoMsg.GetFileLength() > utils.UploadSizeLimit {
+		bc.sendFallbackText("\n<i>Couldn't send the video as it exceeds Telegram size restrictions.</i>")
+		return
+	}
+
+	videoBytes, err := bc.waClient.Download(context.Background(), videoMsg)
+	if err != nil {
+		bc.sendFallbackText("\n<i>Couldn't download the video due to some errors</i>")
+		return
+	}
+
+	addCaption(&bc.bridgedText, videoMsg.GetCaption())
+
+	fileToSend := gotgbot.FileReader{
+		Name: "video." + strings.Split(videoMsg.GetMimetype(), "/")[1],
+		Data: bytes.NewReader(videoBytes),
+	}
+
+	var sentMsg *gotgbot.Message
+	if isPTV {
+		sentMsg, _ = bc.tgBot.SendVideoNote(bc.cfg.Telegram.TargetChatID, &fileToSend,
+			&gotgbot.SendVideoNoteOpts{
+				ReplyMarkup:     bc.replyMarkup,
+				ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+				MessageThreadId: bc.threadId,
+			})
+	} else {
+		sentMsg, _ = bc.tgBot.SendVideo(bc.cfg.Telegram.TargetChatID, &fileToSend,
+			&gotgbot.SendVideoOpts{
+				Caption:         bc.bridgedText,
+				ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+				HasSpoiler:      videoMsg.GetViewOnce(),
+				MessageThreadId: bc.threadId,
+			})
+	}
+	bc.savePair(sentMsg)
+}
+
+func (bc *bridgeContext) handleVoiceNoteMessage(v *events.Message) {
+	audioMsg := v.Message.GetAudioMessage()
+	if audioMsg.GetURL() == "" {
+		return
+	}
+
+	if bc.cfg.WhatsApp.SkipVoiceNotes {
+		bc.sendFallbackText("\n<i>Skipping voice note because 'skip_voice_notes' set in config file</i>")
+		return
+	}
+	if !bc.cfg.Telegram.SelfHostedAPI && audioMsg.GetFileLength() > utils.UploadSizeLimit {
+		bc.sendFallbackText("\n<i>Couldn't send the audio as it exceeds Telegram size restrictions.</i>")
+		return
+	}
+
+	audioBytes, err := bc.waClient.Download(context.Background(), audioMsg)
+	if err != nil {
+		bc.sendFallbackText("\n<i>Couldn't download the audio due to some errors</i>")
+		return
+	}
+
+	sentMsg, _ := bc.tgBot.SendAudio(bc.cfg.Telegram.TargetChatID,
+		&gotgbot.FileReader{Name: "audio.ogg", Data: bytes.NewReader(audioBytes)},
+		&gotgbot.SendAudioOpts{
+			Caption:         bc.bridgedText,
+			Duration:        int64(audioMsg.GetSeconds()),
+			ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+			MessageThreadId: bc.threadId,
+		})
+	bc.savePair(sentMsg)
+}
+
+func (bc *bridgeContext) handleAudioMessage(v *events.Message) {
+	audioMsg := v.Message.GetAudioMessage()
+	if audioMsg.GetURL() == "" {
+		return
+	}
+
+	if bc.cfg.WhatsApp.SkipAudios {
+		bc.sendFallbackText("\n<i>Skipping audio because 'skip_audios' set in config file</i>")
+		return
+	}
+	if !bc.cfg.Telegram.SelfHostedAPI && audioMsg.GetFileLength() > utils.UploadSizeLimit {
+		bc.sendFallbackText("\n<i>Couldn't send the audio as it exceeds Telegram size restrictions.</i>")
+		return
+	}
+
+	audioBytes, err := bc.waClient.Download(context.Background(), audioMsg)
+	if err != nil {
+		bc.sendFallbackText("\n<i>Couldn't download the audio due to some errors</i>")
+		return
+	}
+
+	sentMsg, _ := bc.tgBot.SendAudio(bc.cfg.Telegram.TargetChatID,
+		&gotgbot.FileReader{Name: "audio.m4a", Data: bytes.NewReader(audioBytes)},
+		&gotgbot.SendAudioOpts{
+			Caption:         bc.bridgedText,
+			Duration:        int64(audioMsg.GetSeconds()),
+			ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+			MessageThreadId: bc.threadId,
+		})
+	bc.savePair(sentMsg)
+}
+
+func (bc *bridgeContext) handleDocumentMessage(v *events.Message) {
+	documentMsg := v.Message.GetDocumentMessage()
+	if documentMsg.GetURL() == "" {
+		return
+	}
+
+	if bc.cfg.WhatsApp.SkipDocuments {
+		bc.sendFallbackText("\n<i>Skipping document because 'skip_documents' set in config file</i>")
+		return
+	}
+	if !bc.cfg.Telegram.SelfHostedAPI && documentMsg.GetFileLength() > utils.UploadSizeLimit {
+		bc.sendFallbackText("\n<i>Couldn't send the document as it exceeds Telegram size restrictions.</i>")
+		return
+	}
+
+	documentBytes, err := bc.waClient.Download(context.Background(), documentMsg)
+	if err != nil {
+		bc.sendFallbackText("\n<i>Couldn't download the document due to some errors</i>")
+		return
+	}
+
+	addCaption(&bc.bridgedText, documentMsg.GetCaption())
+
+	sentMsg, _ := bc.tgBot.SendDocument(bc.cfg.Telegram.TargetChatID,
+		&gotgbot.FileReader{Name: documentMsg.GetFileName(), Data: bytes.NewReader(documentBytes)},
+		&gotgbot.SendDocumentOpts{
+			Caption:         bc.bridgedText,
+			ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+			MessageThreadId: bc.threadId,
+		})
+	bc.savePair(sentMsg)
+}
+
+func (bc *bridgeContext) handleStickerMessage(v *events.Message) {
+	stickerMsg := v.Message.GetStickerMessage()
+	if stickerMsg.GetURL() == "" {
+		return
+	}
+
+	if bc.cfg.WhatsApp.SkipStickers {
+		bc.sendFallbackText("\n<i>Skipping sticker because 'skip_stickers' set in config file</i>")
+		return
+	}
+	if !bc.cfg.Telegram.SelfHostedAPI && stickerMsg.GetFileLength() > utils.UploadSizeLimit {
+		bc.sendFallbackText("\n<i>Couldn't send the sticker as it exceeds Telegram size restrictions.</i>")
+		return
+	}
+
+	stickerBytes, err := bc.waClient.Download(context.Background(), stickerMsg)
+	if err != nil {
+		bc.sendFallbackText("\n<i>Couldn't download the sticker due to some errors</i>")
+		return
+	}
+
+	// Send as file if configured
+	if bc.cfg.Telegram.SendStickersAsFile {
+		stickerExt := "webp"
+		if mimeType := stickerMsg.GetMimetype(); mimeType != "" {
+			if _, ext, ok := strings.Cut(mimeType, "/"); ok && ext != "" {
+				stickerExt = ext
+			}
 		}
+		sentMsg, _ := bc.tgBot.SendDocument(bc.cfg.Telegram.TargetChatID,
+			&gotgbot.FileReader{Name: "sticker." + stickerExt, Data: bytes.NewReader(stickerBytes)},
+			&gotgbot.SendDocumentOpts{
+				ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+				MessageThreadId: bc.threadId,
+				ReplyMarkup:     bc.replyMarkup,
+			})
+		bc.savePair(sentMsg)
+		return
+	}
 
-		if cfg.WhatsApp.SkipImages {
-			bridgedText += "\n<i>Skipping image because 'skip_images' set in config file</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
-				ReplyParameters: replyParameters,
-				MessageThreadId: threadId,
-			})
-			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
-					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
-			}
-			return
-		} else if !cfg.Telegram.SelfHostedAPI && imageMsg.GetFileLength() > utils.UploadSizeLimit {
-			bridgedText += "\n<i>Couldn't send the photo as it exceeds Telegram size restrictions.</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
-				ReplyParameters: replyParameters,
-				MessageThreadId: threadId,
-			})
-			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
-					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
-			}
-			return
-		} else {
-			imageBytes, err := waClient.Download(context.Background(), imageMsg)
-			if err != nil {
-				bridgedText += "\n<i>Couldn't download the photo due to some errors</i>"
-				sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
-					ReplyParameters: replyParameters,
-					MessageThreadId: threadId,
+	// Animated / avatar sticker → try WEBM, then GIF, then raw
+	if stickerMsg.GetIsAnimated() || stickerMsg.GetIsAvatar() {
+		// Try WEBM conversion (preferred for animated stickers)
+		if webmBytes, err := utils.AnimatedWebpConvertToWebm(stickerBytes, v.Info.ID); err == nil {
+			sentMsg, _ := bc.tgBot.SendSticker(bc.cfg.Telegram.TargetChatID,
+				&gotgbot.FileReader{Name: "sticker.webm", Data: bytes.NewReader(webmBytes)},
+				&gotgbot.SendStickerOpts{
+					ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+					MessageThreadId: bc.threadId,
+					ReplyMarkup:     bc.replyMarkup,
 				})
-				if sentMsg.MessageId != 0 {
-					database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
-						cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
-				}
-				return
-			}
-
-			if caption := imageMsg.GetCaption(); caption != "" {
-				if len(caption) > 1020 {
-					bridgedText += html.EscapeString(utils.SubString(caption, 0, 1020)) + "..."
-				} else {
-					bridgedText += html.EscapeString(caption)
-				}
-			}
-
-			sentMsg, _ := tgBot.SendPhoto(cfg.Telegram.TargetChatID, &gotgbot.FileReader{Data: bytes.NewReader(imageBytes)}, &gotgbot.SendPhotoOpts{
-				Caption:         bridgedText,
-				ReplyParameters: replyParameters,
-				HasSpoiler:      imageMsg.GetViewOnce(),
-				MessageThreadId: threadId,
-			})
-			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
-					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
-			}
+			bc.savePair(sentMsg)
 			return
 		}
 
-	} else if v.Message.GetVideoMessage() != nil && v.Message.GetVideoMessage().GetGifPlayback() {
-
-		gifMsg := v.Message.GetVideoMessage()
-		if gifMsg.GetURL() == "" {
-			return
-		}
-
-		if cfg.WhatsApp.SkipGIFs {
-			bridgedText += "\n<i>Skipping GIF because 'skip_gifs' set in config file</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
-				ReplyParameters: replyParameters,
-				MessageThreadId: threadId,
-			})
-			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
-					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
-			}
-			return
-		} else if !cfg.Telegram.SelfHostedAPI && gifMsg.GetFileLength() > utils.UploadSizeLimit {
-			bridgedText += "\n<i>Couldn't send the GIF as it exceeds Telegram size restrictions.</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
-				ReplyParameters: replyParameters,
-				MessageThreadId: threadId,
-			})
-			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
-					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
-			}
-			return
-		} else {
-			gifBytes, err := waClient.Download(context.Background(), gifMsg)
-			if err != nil {
-				bridgedText += "\n<i>Couldn't download the GIF due to some errors</i>"
-				sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
-					ReplyParameters: replyParameters,
-					MessageThreadId: threadId,
+		// Fallback: try GIF conversion
+		if gifBytes, err := utils.AnimatedWebpConvertToGif(stickerBytes, v.Info.ID); err == nil {
+			sentMsg, _ := bc.tgBot.SendAnimation(bc.cfg.Telegram.TargetChatID,
+				&gotgbot.FileReader{Name: "animation.gif", Data: bytes.NewReader(gifBytes)},
+				&gotgbot.SendAnimationOpts{
+					Caption:         bc.bridgedText,
+					ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+					MessageThreadId: bc.threadId,
+					ReplyMarkup:     bc.replyMarkup,
 				})
-				if sentMsg.MessageId != 0 {
-					database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
-						cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
-				}
-				return
-			}
-
-			if caption := gifMsg.GetCaption(); caption != "" {
-				if len(caption) > 1020 {
-					bridgedText += html.EscapeString(utils.SubString(caption, 0, 1020)) + "..."
-				} else {
-					bridgedText += html.EscapeString(caption)
-				}
-			}
-
-			fileToSend := gotgbot.FileReader{
-				Name: "animation.gif",
-				Data: bytes.NewReader(gifBytes),
-			}
-
-			sentMsg, _ := tgBot.SendAnimation(cfg.Telegram.TargetChatID, &fileToSend, &gotgbot.SendAnimationOpts{
-				Caption:         bridgedText,
-				ReplyParameters: replyParameters,
-				MessageThreadId: threadId,
-			})
-			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
-					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
-			}
+			bc.savePair(sentMsg)
 			return
 		}
+	}
 
-	} else if v.Message.GetVideoMessage() != nil || v.Message.GetPtvMessage() != nil {
+	// Static sticker or all conversions failed → send raw
+	sentMsg, _ := bc.tgBot.SendSticker(bc.cfg.Telegram.TargetChatID,
+		&gotgbot.FileReader{Data: bytes.NewReader(stickerBytes)},
+		&gotgbot.SendStickerOpts{
+			ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+			MessageThreadId: bc.threadId,
+			ReplyMarkup:     bc.replyMarkup,
+		})
+	bc.savePair(sentMsg)
+}
 
-		var videoMsg *waE2E.VideoMessage = nil
-		isPtvMsg := false
-		if v.Message.GetVideoMessage() != nil {
-			videoMsg = v.Message.GetVideoMessage()
-		} else {
-			videoMsg = v.Message.GetPtvMessage()
-			isPtvMsg = true
-		}
+func (bc *bridgeContext) handleContactMessage(v *events.Message) {
+	contactMsg := v.Message.GetContactMessage()
 
-		if videoMsg.GetURL() == "" {
-			return
-		}
+	if bc.cfg.WhatsApp.SkipContacts {
+		bc.sendFallbackText("\n<i>Skipping contact because 'skip_contacts' set in config file</i>")
+		return
+	}
 
-		if cfg.WhatsApp.SkipVideos {
-			bridgedText += "\n<i>Skipping video because 'skip_videos' set in config file</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
-				ReplyParameters: replyParameters,
-				MessageThreadId: threadId,
-			})
-			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
-					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
-			}
-			return
-		} else if !cfg.Telegram.SelfHostedAPI && videoMsg.GetFileLength() > utils.UploadSizeLimit {
-			bridgedText += "\n<i>Couldn't send the video as it exceeds Telegram size restrictions.</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
-				ReplyParameters: replyParameters,
-				MessageThreadId: threadId,
-			})
-			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
-					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
-			}
-			return
-		} else {
-			videoBytes, err := waClient.Download(context.Background(), videoMsg)
-			if err != nil {
-				bridgedText += "\n<i>Couldn't download the video due to some errors</i>"
-				sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
-					ReplyParameters: replyParameters,
-					MessageThreadId: threadId,
-				})
-				if sentMsg.MessageId != 0 {
-					database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
-						cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
-				}
-				return
-			}
+	decoder := goVCard.NewDecoder(bytes.NewReader([]byte(contactMsg.GetVcard())))
+	card, err := decoder.Decode()
+	if err != nil {
+		bc.sendFallbackText("\n<i>Couldn't send the vCard as failed to parse it</i>")
+		return
+	}
 
-			if caption := videoMsg.GetCaption(); caption != "" {
-				if len(caption) > 1020 {
-					bridgedText += html.EscapeString(utils.SubString(caption, 0, 1020)) + "..."
-				} else {
-					bridgedText += html.EscapeString(caption)
-				}
-			}
+	sentMsg, _ := bc.tgBot.SendContact(bc.cfg.Telegram.TargetChatID,
+		card.PreferredValue(goVCard.FieldTelephone), contactMsg.GetDisplayName(),
+		&gotgbot.SendContactOpts{
+			Vcard:           contactMsg.GetVcard(),
+			ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+			MessageThreadId: bc.threadId,
+			ReplyMarkup:     bc.replyMarkup,
+		})
+	bc.savePair(sentMsg)
+}
 
-			fileToSend := gotgbot.FileReader{
-				Name: "video." + strings.Split(videoMsg.GetMimetype(), "/")[1],
-				Data: bytes.NewReader(videoBytes),
-			}
+func (bc *bridgeContext) handleContactsArrayMessage(v *events.Message) {
+	contactsMsg := v.Message.GetContactsArrayMessage()
 
-			var sentMsg *gotgbot.Message = nil
-			if isPtvMsg {
-				sentMsg, _ = tgBot.SendVideoNote(cfg.Telegram.TargetChatID, &fileToSend, &gotgbot.SendVideoNoteOpts{
-					ReplyMarkup:     replyMarkup,
-					ReplyParameters: replyParameters,
-					MessageThreadId: threadId,
-				})
-			} else {
-				sentMsg, _ = tgBot.SendVideo(cfg.Telegram.TargetChatID, &fileToSend, &gotgbot.SendVideoOpts{
-					Caption:         bridgedText,
-					ReplyParameters: replyParameters,
-					HasSpoiler:      videoMsg.GetViewOnce(),
-					MessageThreadId: threadId,
-				})
-			}
-			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
-					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
-			}
-			return
-		}
+	if bc.cfg.WhatsApp.SkipContacts {
+		bc.sendFallbackText("\n<i>Skipping contact array because 'skip_contacts' set in config file</i>")
+		return
+	}
 
-	} else if v.Message.GetAudioMessage() != nil && v.Message.GetAudioMessage().GetPTT() {
-
-		audioMsg := v.Message.GetAudioMessage()
-		if audioMsg.GetURL() == "" {
-			return
-		}
-
-		if cfg.WhatsApp.SkipVoiceNotes {
-			bridgedText += "\n<i>Skipping voice note because 'skip_voice_notes' set in config file</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
-				ReplyParameters: replyParameters,
-				MessageThreadId: threadId,
-			})
-			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
-					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
-			}
-			return
-		} else if !cfg.Telegram.SelfHostedAPI && audioMsg.GetFileLength() > utils.UploadSizeLimit {
-			bridgedText += "\n<i>Couldn't send the audio as it exceeds Telegram size restrictions.</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
-				ReplyParameters: replyParameters,
-				MessageThreadId: threadId,
-			})
-			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
-					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
-			}
-			return
-		} else {
-			audioBytes, err := waClient.Download(context.Background(), audioMsg)
-			if err != nil {
-				bridgedText += "\n<i>Couldn't download the audio due to some errors</i>"
-				sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
-					ReplyParameters: replyParameters,
-					MessageThreadId: threadId,
-				})
-				if sentMsg.MessageId != 0 {
-					database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
-						cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
-				}
-				return
-			}
-
-			fileToSend := gotgbot.FileReader{
-				Name: "audio.ogg",
-				Data: bytes.NewReader(audioBytes),
-			}
-
-			sentMsg, _ := tgBot.SendAudio(cfg.Telegram.TargetChatID, &fileToSend, &gotgbot.SendAudioOpts{
-				Caption:         bridgedText,
-				Duration:        int64(audioMsg.GetSeconds()),
-				ReplyParameters: replyParameters,
-				MessageThreadId: threadId,
-			})
-			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
-					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
-			}
-			return
-		}
-
-	} else if v.Message.GetAudioMessage() != nil {
-
-		audioMsg := v.Message.GetAudioMessage()
-		if audioMsg.GetURL() == "" {
-			return
-		}
-
-		if cfg.WhatsApp.SkipAudios {
-			bridgedText += "\n<i>Skipping audio because 'skip_audios' set in config file</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
-				ReplyParameters: replyParameters,
-				MessageThreadId: threadId,
-			})
-			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
-					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
-			}
-			return
-		} else if !cfg.Telegram.SelfHostedAPI && audioMsg.GetFileLength() > utils.UploadSizeLimit {
-			bridgedText += "\n<i>Couldn't send the audio as it exceeds Telegram size restrictions.</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
-				ReplyParameters: replyParameters,
-				MessageThreadId: threadId,
-			})
-			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
-					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
-			}
-			return
-		} else {
-			audioBytes, err := waClient.Download(context.Background(), audioMsg)
-			if err != nil {
-				bridgedText += "\n<i>Couldn't download the audio due to some errors</i>"
-				sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
-					ReplyParameters: replyParameters,
-					MessageThreadId: threadId,
-				})
-				if sentMsg.MessageId != 0 {
-					database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
-						cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
-				}
-				return
-			}
-
-			fileToSend := gotgbot.FileReader{
-				Name: "audio.m4a",
-				Data: bytes.NewReader(audioBytes),
-			}
-
-			sentMsg, _ := tgBot.SendAudio(cfg.Telegram.TargetChatID, &fileToSend, &gotgbot.SendAudioOpts{
-				Caption:         bridgedText,
-				Duration:        int64(audioMsg.GetSeconds()),
-				ReplyParameters: replyParameters,
-				MessageThreadId: threadId,
-			})
-			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
-					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
-			}
-			return
-		}
-
-	} else if v.Message.GetDocumentMessage() != nil {
-
-		documentMsg := v.Message.GetDocumentMessage()
-		if documentMsg.GetURL() == "" {
-			return
-		}
-
-		if cfg.WhatsApp.SkipDocuments {
-			bridgedText += "\n<i>Skipping document because 'skip_documents' set in config file</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
-				ReplyParameters: replyParameters,
-				MessageThreadId: threadId,
-			})
-			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
-					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
-			}
-			return
-		} else if !cfg.Telegram.SelfHostedAPI && documentMsg.GetFileLength() > utils.UploadSizeLimit {
-			bridgedText += "\n<i>Couldn't send the document as it exceeds Telegram size restrictions.</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
-				ReplyParameters: replyParameters,
-				MessageThreadId: threadId,
-			})
-			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
-					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
-			}
-			return
-		} else {
-			documentBytes, err := waClient.Download(context.Background(), documentMsg)
-			if err != nil {
-				bridgedText += "\n<i>Couldn't download the document due to some errors</i>"
-				sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
-					ReplyParameters: replyParameters,
-					MessageThreadId: threadId,
-				})
-				if sentMsg.MessageId != 0 {
-					database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
-						cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
-				}
-				return
-			}
-
-			if caption := documentMsg.GetCaption(); caption != "" {
-				if len(caption) > 1020 {
-					bridgedText += html.EscapeString(utils.SubString(caption, 0, 1020)) + "..."
-				} else {
-					bridgedText += html.EscapeString(caption)
-				}
-			}
-
-			fileToSend := gotgbot.FileReader{
-				Name: documentMsg.GetFileName(),
-				Data: bytes.NewReader(documentBytes),
-			}
-
-			sentMsg, _ := tgBot.SendDocument(cfg.Telegram.TargetChatID, &fileToSend, &gotgbot.SendDocumentOpts{
-				Caption:         bridgedText,
-				ReplyParameters: replyParameters,
-				MessageThreadId: threadId,
-			})
-			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
-					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
-			}
-			return
-		}
-
-	} else if v.Message.GetStickerMessage() != nil {
-
-		stickerMsg := v.Message.GetStickerMessage()
-		if stickerMsg.GetURL() == "" {
-			return
-		}
-
-		if cfg.WhatsApp.SkipStickers {
-			bridgedText += "\n<i>Skipping sticker because 'skip_stickers' set in config file</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
-				ReplyParameters: replyParameters,
-				MessageThreadId: threadId,
-			})
-			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
-					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
-			}
-			return
-		} else if !cfg.Telegram.SelfHostedAPI && stickerMsg.GetFileLength() > utils.UploadSizeLimit {
-			bridgedText += "\n<i>Couldn't send the sticker as it exceeds Telegram size restrictions.</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
-				ReplyParameters: replyParameters,
-				MessageThreadId: threadId,
-			})
-			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
-					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
-			}
-			return
-		} else {
-			stickerBytes, err := waClient.Download(context.Background(), stickerMsg)
-			if err != nil {
-				bridgedText += "\n<i>Couldn't download the sticker due to some errors</i>"
-				sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
-					ReplyParameters: replyParameters,
-					MessageThreadId: threadId,
-				})
-				if sentMsg.MessageId != 0 {
-					database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
-						cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
-				}
-				return
-			}
-			if stickerMsg.GetIsAnimated() || stickerMsg.GetIsAvatar() {
-				gifBytes, err := utils.AnimatedWebpConvertToGif(stickerBytes, v.Info.ID)
-				if err != nil {
-					goto WEBP_TO_GIF_FAILED
-				}
-
-				fileToSend := gotgbot.FileReader{
-					Name: "animation.gif",
-					Data: bytes.NewReader(gifBytes),
-				}
-
-				sentMsg, _ := tgBot.SendAnimation(cfg.Telegram.TargetChatID, &fileToSend, &gotgbot.SendAnimationOpts{
-					Caption:         bridgedText,
-					ReplyParameters: replyParameters,
-					MessageThreadId: threadId,
-					ReplyMarkup:     replyMarkup,
-				})
-				if sentMsg.MessageId != 0 {
-					database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
-						cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
-				}
-				return
-
-			}
-		WEBP_TO_GIF_FAILED:
-			sentMsg, _ := tgBot.SendSticker(cfg.Telegram.TargetChatID, &gotgbot.FileReader{Data: bytes.NewReader(stickerBytes)}, &gotgbot.SendStickerOpts{
-				ReplyParameters: replyParameters,
-				MessageThreadId: threadId,
-				ReplyMarkup:     replyMarkup,
-			})
-			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
-					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
-			}
-		}
-
-	} else if v.Message.GetContactMessage() != nil {
-		contactMsg := v.Message.GetContactMessage()
-
-		if cfg.WhatsApp.SkipContacts {
-			bridgedText += "\n<i>Skipping contact because 'skip_contacts' set in config file</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
-				ReplyParameters: replyParameters,
-				MessageThreadId: threadId,
-			})
-			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
-					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
-			}
-			return
-		}
-
+	for _, contactMsg := range contactsMsg.Contacts {
 		decoder := goVCard.NewDecoder(bytes.NewReader([]byte(contactMsg.GetVcard())))
 		card, err := decoder.Decode()
 		if err != nil {
-			bridgedText += "\n<i>Couldn't send the vCard as failed to parse it</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
-				ReplyParameters: replyParameters,
-				MessageThreadId: threadId,
-			})
-			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
-					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
-			}
-			return
+			bc.tgBot.SendMessage(bc.cfg.Telegram.TargetChatID,
+				"Couldn't send the vCard as failed to parse it",
+				&gotgbot.SendMessageOpts{
+					ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+					MessageThreadId: bc.threadId,
+				})
+			continue
 		}
 
-		sentMsg, _ := tgBot.SendContact(cfg.Telegram.TargetChatID, card.PreferredValue(goVCard.FieldTelephone), contactMsg.GetDisplayName(),
+		sentMsg, _ := bc.tgBot.SendContact(bc.cfg.Telegram.TargetChatID,
+			card.PreferredValue(goVCard.FieldTelephone), contactMsg.GetDisplayName(),
 			&gotgbot.SendContactOpts{
 				Vcard:           contactMsg.GetVcard(),
-				ReplyParameters: replyParameters,
-				MessageThreadId: threadId,
-				ReplyMarkup:     replyMarkup,
+				ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+				MessageThreadId: bc.threadId,
+				ReplyMarkup:     bc.replyMarkup,
 			})
-		if sentMsg.MessageId != 0 {
-			database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
-				cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
-		}
+		bc.savePair(sentMsg)
+	}
+}
+
+func (bc *bridgeContext) handleLocationMessage(v *events.Message) {
+	locationMsg := v.Message.GetLocationMessage()
+
+	if bc.cfg.WhatsApp.SkipLocations {
+		bc.sendFallbackText("\n<i>Skipping location because 'skip_locations' set in config file</i>")
 		return
+	}
 
-	} else if v.Message.GetContactsArrayMessage() != nil {
-
-		contactsMsg := v.Message.GetContactsArrayMessage()
-
-		if cfg.WhatsApp.SkipContacts {
-			bridgedText += "\n<i>Skipping contact array because 'skip_contacts' set in config file</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
-				ReplyParameters: replyParameters,
-				MessageThreadId: threadId,
-			})
-			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
-					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
-			}
-			return
-		}
-		for _, contactMsg := range contactsMsg.Contacts {
-			decoder := goVCard.NewDecoder(bytes.NewReader([]byte(contactMsg.GetVcard())))
-			card, err := decoder.Decode()
-			if err != nil {
-				tgBot.SendMessage(cfg.Telegram.TargetChatID, "Couldn't send the vCard as failed to parse it",
-					&gotgbot.SendMessageOpts{
-						ReplyParameters: replyParameters,
-						MessageThreadId: threadId,
-					})
-				continue
-			}
-
-			sentMsg, _ := tgBot.SendContact(cfg.Telegram.TargetChatID, card.PreferredValue(goVCard.FieldTelephone), contactMsg.GetDisplayName(),
-				&gotgbot.SendContactOpts{
-					Vcard:           contactMsg.GetVcard(),
-					ReplyParameters: replyParameters,
-					MessageThreadId: threadId,
-					ReplyMarkup:     replyMarkup,
-				})
-			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
-					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
-			}
-		}
-		return
-
-	} else if v.Message.GetLocationMessage() != nil {
-
-		locationMsg := v.Message.GetLocationMessage()
-
-		if cfg.WhatsApp.SkipLocations {
-			bridgedText += "\n<i>Skipping location because 'skip_locations' set in config file</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
-				ReplyParameters: replyParameters,
-				MessageThreadId: threadId,
-			})
-			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
-					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
-			}
-			return
-		}
-		sentMsg, _ := tgBot.SendLocation(cfg.Telegram.TargetChatID, locationMsg.GetDegreesLatitude(), locationMsg.GetDegreesLongitude(),
-			&gotgbot.SendLocationOpts{
-				HorizontalAccuracy: float64(locationMsg.GetAccuracyInMeters()),
-				ReplyParameters:    replyParameters,
-				MessageThreadId:    threadId,
-			})
-		if sentMsg.MessageId != 0 {
-			database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
-				cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
-		}
-
-		return
-
-	} else if v.Message.GetLiveLocationMessage() != nil {
-
-		bridgedText += "\n<i>Shared their live location with you</i>"
-
-		if cfg.WhatsApp.SkipLocations {
-			bridgedText += "\n<i>Skipping live location because 'skip_locations' set in config file</i>"
-			sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
-				ReplyParameters: replyParameters,
-				MessageThreadId: threadId,
-			})
-			if sentMsg.MessageId != 0 {
-				database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
-					cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
-			}
-			return
-		}
-
-		sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
-			ReplyParameters: replyParameters,
-			MessageThreadId: threadId,
+	sentMsg, _ := bc.tgBot.SendLocation(bc.cfg.Telegram.TargetChatID,
+		locationMsg.GetDegreesLatitude(), locationMsg.GetDegreesLongitude(),
+		&gotgbot.SendLocationOpts{
+			HorizontalAccuracy: float64(locationMsg.GetAccuracyInMeters()),
+			ReplyParameters:    &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+			MessageThreadId:    bc.threadId,
 		})
-		if sentMsg.MessageId != 0 {
-			database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
-				cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
-		}
+	bc.savePair(sentMsg)
+}
+
+func (bc *bridgeContext) handleLiveLocationMessage(v *events.Message) {
+	bc.bridgedText += "\n<i>Shared their live location with you</i>"
+
+	if bc.cfg.WhatsApp.SkipLocations {
+		bc.sendFallbackText("\n<i>Skipping live location because 'skip_locations' set in config file</i>")
 		return
+	}
 
-	} else if v.Message.GetPollCreationMessage() != nil || v.Message.GetPollCreationMessageV2() != nil || v.Message.GetPollCreationMessageV3() != nil {
-
-		var pollMsg *waE2E.PollCreationMessage
-		if i := v.Message.GetPollCreationMessage(); i != nil {
-			pollMsg = i
-		} else if i := v.Message.GetPollCreationMessageV2(); i != nil {
-			pollMsg = i
-		} else if i := v.Message.GetPollCreationMessageV3(); i != nil {
-			pollMsg = i
-		}
-
-		bridgedText += "\n<i>It was the following poll:</i>\n\n"
-		bridgedText += fmt.Sprintf("<b>%s</b>: (%v options selectable)\n\n",
-			html.EscapeString(pollMsg.GetName()), pollMsg.GetSelectableOptionsCount())
-		for optionNum, option := range pollMsg.GetOptions() {
-			if len(bridgedText) > 4000 {
-				bridgedText += "\n... <i>Plus some other options</i>"
-				break
-			}
-			bridgedText += fmt.Sprintf("%v. %s\n", optionNum+1, html.EscapeString(option.GetOptionName()))
-		}
-
-		sentMsg, _ := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
-			ReplyParameters: replyParameters,
-			MessageThreadId: threadId,
+	sentMsg, _ := bc.tgBot.SendMessage(bc.cfg.Telegram.TargetChatID, bc.bridgedText,
+		&gotgbot.SendMessageOpts{
+			ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+			MessageThreadId: bc.threadId,
 		})
-		if sentMsg.MessageId != 0 {
-			database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
-				cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
+	bc.savePair(sentMsg)
+}
+
+func (bc *bridgeContext) handlePollMessage(v *events.Message) {
+	var pollMsg *waE2E.PollCreationMessage
+	if i := v.Message.GetPollCreationMessage(); i != nil {
+		pollMsg = i
+	} else if i := v.Message.GetPollCreationMessageV2(); i != nil {
+		pollMsg = i
+	} else if i := v.Message.GetPollCreationMessageV3(); i != nil {
+		pollMsg = i
+	}
+
+	bc.bridgedText += "\n<i>It was the following poll:</i>\n\n"
+	bc.bridgedText += fmt.Sprintf("<b>%s</b>: (%v options selectable)\n\n",
+		html.EscapeString(pollMsg.GetName()), pollMsg.GetSelectableOptionsCount())
+
+	for optionNum, option := range pollMsg.GetOptions() {
+		if len(bc.bridgedText) > 4000 {
+			bc.bridgedText += "\n... <i>Plus some other options</i>"
+			break
 		}
-		return
+		bc.bridgedText += fmt.Sprintf("%v. %s\n", optionNum+1, html.EscapeString(option.GetOptionName()))
+	}
 
-	} else {
-		if text == "" {
-			if reactionMsg := v.Message.GetReactionMessage(); cfg.Telegram.Reactions && reactionMsg != nil {
-				// Resolve LID to PN for private chats using new WhatsApp LID system
-				waChatIdForLookup := v.Info.Chat.String()
-				if v.Info.Chat.Server == waTypes.HiddenUserServer {
-					pn, err := waClient.Store.LIDs.GetPNForLID(context.Background(), v.Info.Chat.ToNonAD())
-					if err != nil {
-						logger.Warn(
-							"failed to get PN for LID when handling reaction",
-							zap.Error(err),
-							zap.String("lid", v.Info.Chat.String()),
-						)
-					} else {
-						waChatIdForLookup = pn.String()
-					}
-				}
-
-				tgChatId, _, tgMsgId, err := database.MsgIdGetTgFromWa(reactionMsg.Key.GetID(), waChatIdForLookup)
-				if err != nil {
-					logger.Error(
-						"failed to get message ID mapping from database",
-						zap.Error(err),
-						zap.String("stanza_id", reactionMsg.Key.GetID()),
-						zap.String("chat_id", waChatIdForLookup),
-					)
-				} else if tgChatId == cfg.Telegram.TargetChatID {
-
-					if *reactionMsg.Text != "" {
-						text = fmt.Sprintf(
-							"<code>Reacted to this message with %s</code>",
-							html.EscapeString(*reactionMsg.Text),
-						)
-					} else {
-						text = "<code>Revoked their reaction to this message</code>"
-					}
-
-					bridgedText += text
-
-					sentMsg, err := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
-						ReplyParameters: &gotgbot.ReplyParameters{
-							MessageId: tgMsgId,
-						},
-						MessageThreadId: threadId,
-					})
-					if err != nil {
-						panic(fmt.Errorf("failed to send telegram message: %s", err))
-					}
-					if sentMsg.MessageId != 0 {
-						database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), waChatIdForLookup,
-							cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
-					}
-				}
-
-			}
-
-			return
-		}
-
-		if len(text) > 4000 {
-			bridgedText += html.EscapeString(utils.SubString(text, 0, 4000)) + "..."
-		} else {
-			bridgedText += html.EscapeString(text)
-		}
-
-		if mentioned := v.Message.GetExtendedTextMessage().GetContextInfo().GetMentionedJID(); mentioned != nil {
-			for _, jid := range mentioned {
-				parsedJid, _ := utils.WaParseJID(jid)
-				name := utils.WaGetContactName(parsedJid)
-				// text = strings.ReplaceAll(text, "@"+parsedJid.User, "@("+html.EscapeString(name)+")")
-				bridgedText = strings.ReplaceAll(
-					bridgedText, "@"+parsedJid.User,
-					fmt.Sprintf(
-						"<a href=\"https://wa.me/%s\">@%s</a>",
-						parsedJid.User, html.EscapeString(name),
-					),
-				)
-			}
-		}
-		sentMsg, err := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
-			ReplyParameters: replyParameters,
-			MessageThreadId: threadId,
+	sentMsg, _ := bc.tgBot.SendMessage(bc.cfg.Telegram.TargetChatID, bc.bridgedText,
+		&gotgbot.SendMessageOpts{
+			ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+			MessageThreadId: bc.threadId,
 		})
-		if err != nil {
-			panic(fmt.Errorf("failed to send telegram message: %s", err))
-		}
-		if sentMsg.MessageId != 0 {
-			database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
-				cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
+	bc.savePair(sentMsg)
+}
+
+func (bc *bridgeContext) handleEventMessage(v *events.Message) {
+	bc.bridgedText += "<i>New event created</i>\n\n"
+	eventMsg := v.Message.GetEventMessage()
+	bc.bridgedText += "Name: " + html.EscapeString(eventMsg.GetName()) + "\n"
+	if eventMsg.GetDescription() != "" {
+		bc.bridgedText += "Description: " + html.EscapeString(eventMsg.GetDescription()) + "\n"
+	}
+	bc.bridgedText += "Start: " + time.Unix(eventMsg.GetStartTime(), 0).Format(bc.cfg.TimeFormat)
+	if eventMsg.GetEndTime() != 0 {
+		bc.bridgedText += "\nEnd: " + time.Unix(eventMsg.GetEndTime(), 0).Format(bc.cfg.TimeFormat)
+	}
+	if eventMsg.GetLocation() != nil {
+		bc.bridgedText += "\nLocation: " + html.EscapeString(*eventMsg.GetLocation().Name) + "\n"
+	}
+	if eventMsg.GetJoinLink() != "" {
+		bc.bridgedText += "Join link: " + html.EscapeString(eventMsg.GetJoinLink()) + "\n"
+	}
+
+	sentMsg, _ := bc.tgBot.SendMessage(bc.cfg.Telegram.TargetChatID, bc.bridgedText,
+		&gotgbot.SendMessageOpts{
+			ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+			MessageThreadId: bc.threadId,
+		})
+	bc.savePair(sentMsg)
+}
+
+func (bc *bridgeContext) handleTextOrReaction(text string, v *events.Message, isEdited bool, isDocument bool) {
+	if text == "" {
+		// Handle reactions
+		if reactionMsg := v.Message.GetReactionMessage(); bc.cfg.Telegram.Reactions && reactionMsg != nil {
+			bc.handleReaction(v, reactionMsg)
 		}
 		return
 	}
+
+	// Truncate very long text
+	if len(text) > 4000 {
+		bc.bridgedText += html.EscapeString(utils.SubString(text, 0, 4000)) + "..."
+	} else {
+		bc.bridgedText += html.EscapeString(text)
+	}
+
+	// Replace @mentions with links
+	if mentioned := v.Message.GetExtendedTextMessage().GetContextInfo().GetMentionedJID(); mentioned != nil {
+		for _, jid := range mentioned {
+			parsedJid, _ := utils.WaParseJID(jid)
+			name := utils.WaGetContactName(parsedJid)
+			bc.bridgedText = strings.ReplaceAll(
+				bc.bridgedText, "@"+parsedJid.User,
+				fmt.Sprintf("<a href=\"https://wa.me/%s\">@%s</a>", parsedJid.User, html.EscapeString(name)),
+			)
+		}
+	}
+
+	// Send (edit-in-place or new message)
+	var sentMsg *gotgbot.Message
+	var err error
+
+	if isEdited && !bc.cfg.WhatsApp.SendEditedMessageUpdates {
+		if isDocument {
+			sentMsg, _, err = bc.tgBot.EditMessageCaption(&gotgbot.EditMessageCaptionOpts{
+				ChatId:    bc.cfg.Telegram.TargetChatID,
+				MessageId: bc.replyToMsgId,
+				Caption:   bc.bridgedText,
+			})
+		} else {
+			sentMsg, _, err = bc.tgBot.EditMessageText(bc.bridgedText, &gotgbot.EditMessageTextOpts{
+				ChatId:    bc.cfg.Telegram.TargetChatID,
+				MessageId: bc.replyToMsgId,
+			})
+		}
+	} else {
+		sentMsg, err = bc.tgBot.SendMessage(bc.cfg.Telegram.TargetChatID, bc.bridgedText,
+			&gotgbot.SendMessageOpts{
+				ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+				MessageThreadId: bc.threadId,
+			})
+	}
+
+	if err != nil {
+		bc.logger.Error("failed to send telegram message",
+			zap.String("event_id", v.Info.ID),
+			zap.Error(err),
+		)
+		return
+	}
+	bc.savePair(sentMsg)
 }
+
+func (bc *bridgeContext) handleReaction(v *events.Message, reactionMsg *waE2E.ReactionMessage) {
+	// Resolve LID → PN for chats using the new WhatsApp LID system
+	waChatIdForLookup := v.Info.Chat.String()
+	if v.Info.Chat.Server == waTypes.HiddenUserServer {
+		pn, err := bc.waClient.Store.LIDs.GetPNForLID(context.Background(), v.Info.Chat.ToNonAD())
+		if err != nil {
+			bc.logger.Warn("failed to get PN for LID when handling reaction",
+				zap.Error(err),
+				zap.String("lid", v.Info.Chat.String()),
+			)
+		} else {
+			waChatIdForLookup = pn.String()
+		}
+	}
+
+	tgChatId, _, tgMsgId, err := database.MsgIdGetTgFromWa(reactionMsg.Key.GetID(), waChatIdForLookup)
+	if err != nil {
+		bc.logger.Error("failed to get message ID mapping from database",
+			zap.Error(err),
+			zap.String("stanza_id", reactionMsg.Key.GetID()),
+			zap.String("chat_id", waChatIdForLookup),
+		)
+		return
+	}
+
+	if tgChatId != bc.cfg.Telegram.TargetChatID {
+		return
+	}
+
+	var reactionText string
+	if *reactionMsg.Text != "" {
+		reactionText = fmt.Sprintf("<code>Reacted to this message with %s</code>",
+			html.EscapeString(*reactionMsg.Text))
+	} else {
+		reactionText = "<code>Revoked their reaction to this message</code>"
+	}
+	bc.bridgedText += reactionText
+
+	sentMsg, err := bc.tgBot.SendMessage(bc.cfg.Telegram.TargetChatID, bc.bridgedText,
+		&gotgbot.SendMessageOpts{
+			ReplyParameters: &gotgbot.ReplyParameters{MessageId: tgMsgId},
+			MessageThreadId: bc.threadId,
+		})
+	if err != nil {
+		bc.logger.Error("failed to send telegram reaction message",
+			zap.String("event_id", v.Info.ID),
+			zap.Error(err),
+		)
+		return
+	}
+	if sentMsg.MessageId != 0 {
+		database.MsgIdAddNewPair(bc.msgId, bc.senderStr, waChatIdForLookup,
+			bc.cfg.Telegram.TargetChatID, sentMsg.MessageId, sentMsg.MessageThreadId)
+	}
+}
+
+// ============================================================
+// Undecryptable / View-Once messages
+// ============================================================
 
 func UndecryptableMessageEventHandler(v *events.UndecryptableMessage) {
 	var (
@@ -1229,7 +969,8 @@ func UndecryptableMessageEventHandler(v *events.UndecryptableMessage) {
 
 	if v.UnavailableType != events.UnavailableTypeViewOnce {
 		return
-	} else if slices.Contains(cfg.WhatsApp.IgnoreChats, v.Info.Chat.User) {
+	}
+	if slices.Contains(cfg.WhatsApp.IgnoreChats, v.Info.Chat.User) {
 		logger.Debug("returning because message from an ignored chat",
 			zap.String("event_id", v.Info.ID),
 			zap.String("chat_jid", v.Info.Chat.String()),
@@ -1237,91 +978,24 @@ func UndecryptableMessageEventHandler(v *events.UndecryptableMessage) {
 		return
 	}
 
-	var bridgedText string
-	if cfg.WhatsApp.SkipChatDetails {
-		logger.Debug("skipping to add chat details as configured",
-			zap.String("event_id", v.Info.ID),
-		)
-		if v.Info.IsIncomingBroadcast() {
-			bridgedText += "👥: <b>(Broadcast)</b>\n"
-		} else if v.Info.IsFromMe {
-			bridgedText += "🧑: <b>You [other device]</b>\n"
-		} else if v.Info.IsGroup {
-			bridgedText += fmt.Sprintf("🧑: <b>%s</b>\n", html.EscapeString(utils.WaGetContactName(v.Info.MessageSource.Sender)))
-		}
-
-	} else {
-
-		if v.Info.IsFromMe {
-			bridgedText += "🧑: <b>You [other device]</b>\n"
-		} else {
-			bridgedText += fmt.Sprintf("🧑: <b>%s</b>\n", html.EscapeString(utils.WaGetContactName(v.Info.MessageSource.Sender)))
-		}
-		if v.Info.IsIncomingBroadcast() {
-			bridgedText += "👥: <b>(Broadcast)</b>\n"
-		} else if v.Info.IsGroup {
-			bridgedText += fmt.Sprintf("👥: <b>%s</b>\n", html.EscapeString(utils.WaGetGroupName(v.Info.Chat)))
-		} else {
-			bridgedText += "👥: <b>(PVT)</b>\n"
-		}
-
-	}
-
-	if time.Since(v.Info.Timestamp).Seconds() > 60 {
-		bridgedText += fmt.Sprintf("🕛: <b>%s</b>\n",
-			html.EscapeString(v.Info.Timestamp.In(state.State.LocalLocation).Format(cfg.TimeFormat)))
-	}
-
+	bridgedText := buildBridgedHeader(v.Info, cfg, false)
 	bridgedText += "\n<i>It is a View Once message.\nPlease check in your official WhatsApp application</i>"
 
-	var threadId int64
-
-	var err error
-	if v.Info.Chat.String() == "status@broadcast" {
-		threadId, err = utils.TgGetOrMakeThreadFromWa_String("status@broadcast", cfg.Telegram.TargetChatID,
-			"Status")
-		if err != nil {
-			utils.TgSendErrorById(tgBot, cfg.Telegram.TargetChatID, 0, "failed to create/find thread id for 'status@broadcast'", err)
-			return
-		}
-	} else if v.Info.IsIncomingBroadcast() {
-		if (v.Info.MessageSource.AddressingMode == waTypes.AddressingModePN) || v.Info.MessageSource.SenderAlt.IsEmpty() {
-			threadId, err = utils.TgGetOrMakeThreadFromWa(v.Info.MessageSource.Sender.ToNonAD(), cfg.Telegram.TargetChatID,
-				utils.WaGetContactName(v.Info.MessageSource.Sender.ToNonAD()))
-		} else {
-			threadId, err = utils.TgGetOrMakeThreadFromWa(v.Info.MessageSource.SenderAlt.ToNonAD(), cfg.Telegram.TargetChatID,
-				utils.WaGetContactName(v.Info.MessageSource.SenderAlt.ToNonAD()))
-		}
-
-		if err != nil {
-			utils.TgSendErrorById(tgBot, cfg.Telegram.TargetChatID, 0, fmt.Sprintf("failed to create/find thread id for '%s'",
-				v.Info.MessageSource.Sender.ToNonAD().String()), err)
-			return
-		}
-	} else if v.Info.IsGroup {
-		threadId, err = utils.TgGetOrMakeThreadFromWa(v.Info.Chat, cfg.Telegram.TargetChatID,
-			utils.WaGetGroupName(v.Info.Chat))
-		if err != nil {
-			utils.TgSendErrorById(tgBot, cfg.Telegram.TargetChatID, 0, fmt.Sprintf("failed to create/find thread id for '%s'",
-				v.Info.Chat.String()), err)
-			return
-		}
-	} else {
-		target_chat_jid := v.Info.Chat.ToNonAD()
-
-		threadId, err = utils.TgGetOrMakeThreadFromWa(target_chat_jid, cfg.Telegram.TargetChatID, utils.WaGetContactName(target_chat_jid))
-		if err != nil {
-			utils.TgSendErrorById(tgBot, cfg.Telegram.TargetChatID, 0, fmt.Sprintf("failed to create/find thread id for '%s'",
-				target_chat_jid.String()), err)
-			return
-		}
+	threadId, err := resolveThreadId(v.Info, cfg, tgBot)
+	if err != nil {
+		utils.TgSendErrorById(tgBot, cfg.Telegram.TargetChatID, 0,
+			fmt.Sprintf("failed to create/find thread id for '%s'", v.Info.Chat.String()), err)
+		return
 	}
 
-	sentMsg, err := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText, &gotgbot.SendMessageOpts{
-		MessageThreadId: threadId,
-	})
+	sentMsg, err := tgBot.SendMessage(cfg.Telegram.TargetChatID, bridgedText,
+		&gotgbot.SendMessageOpts{MessageThreadId: threadId})
 	if err != nil {
-		panic(fmt.Errorf("failed to send telegram message: %s", err))
+		logger.Error("failed to send telegram message for view-once notification",
+			zap.String("event_id", v.Info.ID),
+			zap.Error(err),
+		)
+		return
 	}
 	if sentMsg.MessageId != 0 {
 		database.MsgIdAddNewPair(msgId, v.Info.MessageSource.Sender.String(), v.Info.Chat.String(),
@@ -1329,34 +1003,133 @@ func UndecryptableMessageEventHandler(v *events.UndecryptableMessage) {
 	}
 }
 
+// ============================================================
+// Call events
+// ============================================================
+
 func CallOfferEventHandler(v *events.CallOffer) {
 	var (
 		cfg   = state.State.Config
 		tgBot = state.State.TelegramBot
 	)
 
-	// TODO : Check and handle group calls
 	callerName := utils.WaGetContactName(v.CallCreator)
-
 	callThreadId, err := utils.TgGetOrMakeThreadFromWa_String("calls", cfg.Telegram.TargetChatID, "Calls")
 	if err != nil {
-		utils.TgSendErrorById(tgBot, cfg.Telegram.TargetChatID, 0, "Failed to create/retreive corresponding thread id for calls", err)
+		utils.TgSendErrorById(tgBot, cfg.Telegram.TargetChatID, 0,
+			"Failed to create/retreive corresponding thread id for calls", err)
 		return
 	}
 
-	bridgeText := fmt.Sprintf("#calls\n\n🧑: <b>%s</b>\n🕛: <b>%s</b>\n\n<i>You received a new call</i>",
-		html.EscapeString(callerName), html.EscapeString(v.Timestamp.In(state.State.LocalLocation).Format(cfg.TimeFormat)))
-
+	bridgeText := fmt.Sprintf(
+		"#calls\n\n🧑: <b>%s</b>\n🕛: <b>%s</b>\n\n<i>You received a new call</i>",
+		html.EscapeString(callerName),
+		html.EscapeString(v.Timestamp.In(state.State.LocalLocation).Format(cfg.TimeFormat)),
+	)
 	utils.TgSendTextById(tgBot, cfg.Telegram.TargetChatID, callThreadId, bridgeText)
 }
 
+// ============================================================
+// Receipts (delivered / read)
+// ============================================================
+
 func ReceiptEventHandler(v *events.Receipt) {
-	if v.Type == waTypes.ReceiptTypeReadSelf {
-		for _, msgId := range v.MessageIDs {
-			database.MsgIdMarkRead(v.Chat.String(), msgId)
+	participantID := v.Sender.ToNonAD().String()
+	waChatID := v.Chat.ToNonAD().String()
+	cfg := state.State.Config
+	waClient := state.State.WhatsAppClient
+	tgBot := state.State.TelegramBot
+
+	for _, msgId := range v.MessageIDs {
+		if participantID != "" {
+			database.MsgReceiptUpsert(msgId, waChatID, participantID, v.Type, v.Timestamp)
 		}
 	}
+
+	if v.Type == waTypes.ReceiptTypeReadSelf {
+		for _, msgId := range v.MessageIDs {
+			database.MsgIdMarkRead(waChatID, msgId)
+		}
+	}
+
+	if !cfg.Telegram.AutoReactWhenAllRead || waClient == nil || tgBot == nil {
+		return
+	}
+	if v.Type != waTypes.ReceiptTypeRead {
+		return
+	}
+	if !v.IsGroup && participantID == "" {
+		return
+	}
+
+	for _, msgId := range v.MessageIDs {
+		autoReacted, err := database.MsgIdHasAutoReacted(waChatID, msgId)
+		if err != nil || autoReacted {
+			continue
+		}
+
+		tgChatId, _, tgMsgId, err := database.MsgIdGetTgFromWa(msgId, waChatID)
+		if err != nil || tgChatId == 0 || tgMsgId == 0 {
+			continue
+		}
+
+		expectedReaders := 1
+		if v.IsGroup {
+			groupInfo, err := waClient.GetGroupInfo(context.Background(), v.Chat.ToNonAD())
+			if err != nil {
+				continue
+			}
+			expectedReaders = 0
+			for _, participant := range groupInfo.Participants {
+				if participant.JID.ToNonAD().String() == waClient.Store.ID.ToNonAD().String() {
+					continue
+				}
+				expectedReaders++
+			}
+		}
+
+		receipts, err := database.MsgReceiptGetByMsg(msgId, waChatID)
+		if err != nil {
+			continue
+		}
+
+		readers := map[string]struct{}{}
+		for _, receipt := range receipts {
+			if receipt.ReceiptType != string(waTypes.ReceiptTypeRead) {
+				continue
+			}
+			readers[receipt.ParticipantId] = struct{}{}
+		}
+		if len(readers) < expectedReaders {
+			continue
+		}
+
+		_, err = tgBot.SetMessageReaction(tgChatId, tgMsgId,
+			&gotgbot.SetMessageReactionOpts{
+				Reaction: []gotgbot.ReactionType{gotgbot.ReactionTypeEmoji{Emoji: "👀"}},
+			})
+		if err != nil {
+			continue
+		}
+
+		if cfg.Telegram.AutoReactRemoveAfter > 0 {
+			go func(chatID, messageID, delaySeconds int64) {
+				time.Sleep(time.Duration(delaySeconds) * time.Second)
+				if state.State.TelegramBot == nil {
+					return
+				}
+				state.State.TelegramBot.SetMessageReaction(chatID, messageID,
+					&gotgbot.SetMessageReactionOpts{Reaction: []gotgbot.ReactionType{}})
+			}(tgChatId, tgMsgId, cfg.Telegram.AutoReactRemoveAfter)
+		}
+
+		database.MsgIdMarkAutoReacted(waChatID, msgId)
+	}
 }
+
+// ============================================================
+// Push name / User about
+// ============================================================
 
 func PushNameEventHandler(v *events.PushName) {
 	logger := state.State.Logger
@@ -1367,7 +1140,6 @@ func PushNameEventHandler(v *events.PushName) {
 		zap.String("old_push_name", v.OldPushName),
 		zap.String("new_push_name", v.NewPushName),
 	)
-
 	database.ContactUpdatePushName(v.JID.User, v.JID.Server, v.NewPushName)
 }
 
@@ -1402,55 +1174,42 @@ func UserAboutEventHandler(v *events.UserAbout) {
 		tgThreadId, threadFound, err = database.ChatThreadGetTgFromWa(v.JID.ToNonAD().String(), cfg.Telegram.TargetChatID)
 	}
 	if err != nil {
-		logger.Warn(
-			"failed to find thread for a WhatsApp chat (handling UserAbout event)",
-			zap.String("chat", v.JID.String()),
-			zap.Error(err),
-		)
+		logger.Warn("failed to find thread for a WhatsApp chat (handling UserAbout event)",
+			zap.String("chat", v.JID.String()), zap.Error(err))
 		return
 	}
 	if !threadFound || tgThreadId == 0 {
-		logger.Warn(
-			"no thread found for a WhatsApp chat (handling UserAbout event)",
-			zap.String("chat", v.JID.String()),
-		)
+		logger.Warn("no thread found for a WhatsApp chat (handling UserAbout event)",
+			zap.String("chat", v.JID.String()))
 		if !cfg.WhatsApp.CreateThreadForInfoUpdates {
 			return
 		}
 	}
 
-	tgThreadId, err = utils.TgGetOrMakeThreadFromWa(v.JID.ToNonAD(), cfg.Telegram.TargetChatID, utils.WaGetContactName(v.JID.ToNonAD()))
+	tgThreadId, err = utils.TgGetOrMakeThreadFromWa(v.JID.ToNonAD(), cfg.Telegram.TargetChatID,
+		utils.WaGetContactName(v.JID.ToNonAD()))
 	if err != nil {
-		logger.Warn(
-			"failed to create a new thread for a WhatsApp chat (handling UserAbout event)",
-			zap.String("chat", v.JID.String()),
-			zap.Error(err),
-		)
+		logger.Warn("failed to create a new thread for a WhatsApp chat (handling UserAbout event)",
+			zap.String("chat", v.JID.String()), zap.Error(err))
 		return
 	}
 
 	updateMessageText := "User's about message was updated"
 	if time.Since(v.Timestamp).Seconds() > 60 {
-		updateMessageText += fmt.Sprintf(
-			" at %s:\n\n",
-			html.EscapeString(
-				v.Timestamp.
-					In(state.State.LocalLocation).
-					Format(cfg.TimeFormat),
-			),
-		)
+		updateMessageText += fmt.Sprintf(" at %s:\n\n",
+			html.EscapeString(v.Timestamp.In(state.State.LocalLocation).Format(cfg.TimeFormat)))
 	} else {
 		updateMessageText += ":\n\n"
 	}
-
 	updateMessageText += fmt.Sprintf("<code>%s</code>", html.EscapeString(v.Status))
 
-	tgBot.SendMessage(
-		cfg.Telegram.TargetChatID,
-		updateMessageText,
-		&gotgbot.SendMessageOpts{MessageThreadId: tgThreadId},
-	)
+	tgBot.SendMessage(cfg.Telegram.TargetChatID, updateMessageText,
+		&gotgbot.SendMessageOpts{MessageThreadId: tgThreadId})
 }
+
+// ============================================================
+// Revoked messages
+// ============================================================
 
 func RevokedMessageEventHandler(v *events.Message) {
 	var (
@@ -1466,7 +1225,6 @@ func RevokedMessageEventHandler(v *events.Message) {
 	}
 
 	deleter := v.Info.MessageSource.Sender
-
 	var deleterName string
 	if v.Info.IsFromMe {
 		deleterName = "you"
@@ -1479,171 +1237,127 @@ func RevokedMessageEventHandler(v *events.Message) {
 		return
 	}
 
-	tgBot.SendMessage(tgChatId, fmt.Sprintf(
-		"<i>This message was revoked by %s</i>",
-		html.EscapeString(deleterName),
-	), &gotgbot.SendMessageOpts{
-		MessageThreadId: tgThreadId,
-		ReplyParameters: &gotgbot.ReplyParameters{
-			MessageId: tgMsgId,
-		},
-	})
+	tgBot.SendMessage(tgChatId,
+		fmt.Sprintf("<i>This message was revoked by %s</i>", html.EscapeString(deleterName)),
+		&gotgbot.SendMessageOpts{
+			MessageThreadId: tgThreadId,
+			ReplyParameters: &gotgbot.ReplyParameters{MessageId: tgMsgId},
+		})
 }
+
+// ============================================================
+// Profile picture updates
+// ============================================================
 
 func PictureEventHandler(v *events.Picture) {
 	var (
-		cfg      = state.State.Config
-		logger   = state.State.Logger
-		tgBot    = state.State.TelegramBot
-		waClient = state.State.WhatsAppClient
+		cfg    = state.State.Config
+		logger = state.State.Logger
+		tgBot  = state.State.TelegramBot
 	)
 	defer logger.Sync()
 
-	var (
-		tgThreadId  int64       = 0
-		threadFound bool        = false
-		err         error       = nil
-		pn          waTypes.JID = waTypes.EmptyJID
-	)
-
-	if v.JID.Server == waTypes.HiddenUserServer {
-		pn, err = waClient.Store.LIDs.GetPNForLID(context.Background(), v.JID.ToNonAD())
-		if err == nil {
-			tgThreadId, threadFound, err = database.ChatThreadGetTgFromWa(pn.String(), cfg.Telegram.TargetChatID)
-		}
-	} else {
-		tgThreadId, threadFound, err = database.ChatThreadGetTgFromWa(v.JID.ToNonAD().String(), cfg.Telegram.TargetChatID)
-	}
-	if err != nil {
-		logger.Warn(
-			"failed to find thread for a WhatsApp chat (handling Picture event)",
-			zap.String("chat", v.JID.String()),
-			zap.Error(err),
-		)
-		return
-	}
-	if !threadFound || tgThreadId == 0 {
-		logger.Warn(
-			"no thread found for a WhatsApp chat (handling Picture event)",
-			zap.String("chat", v.JID.String()),
-		)
-		if !cfg.WhatsApp.CreateThreadForInfoUpdates {
-			return
-		}
-	}
-
-	if v.JID.Server == waTypes.GroupServer {
-		tgThreadId, err = utils.TgGetOrMakeThreadFromWa(v.JID.ToNonAD(), cfg.Telegram.TargetChatID, utils.WaGetGroupName(v.JID))
-		if err != nil {
-			logger.Warn(
-				"failed to create a new thread for a WhatsApp chat (handling Picture event)",
-				zap.String("chat", v.JID.String()),
-				zap.Error(err),
-			)
-			return
-		}
-		changer := utils.WaGetContactName(v.Author)
-		if v.Remove {
-			updateText := fmt.Sprintf("The profile picture was removed by %s", html.EscapeString(changer))
-			err = utils.TgSendTextById(
-				tgBot, cfg.Telegram.TargetChatID, tgThreadId,
-				updateText,
-			)
-			if err != nil {
-				logger.Error("failed to send message to the target chat", zap.Error(err))
-				return
-			}
-		} else {
-			pictureInfo, err := waClient.GetProfilePictureInfo(
-				context.Background(),
-				v.JID,
-				&whatsmeow.GetProfilePictureParams{
-					Preview: false,
-				},
-			)
-			if err != nil {
-				logger.Error("failed to get profile picture info", zap.Error(err), zap.String("group", v.JID.String()))
-				return
-			}
-			if pictureInfo == nil {
-				logger.Error("failed to get profile picture info, received null", zap.String("group", v.JID.String()))
-				return
-			}
-
-			newPictureBytes, err := utils.DownloadFileBytesByURL(pictureInfo.URL)
-			if err != nil {
-				logger.Error("failed to download profile picture", zap.Error(err), zap.String("group", v.JID.String()))
-				return
-			}
-
-			_, err = tgBot.SendPhoto(cfg.Telegram.TargetChatID, &gotgbot.FileReader{Data: bytes.NewReader(newPictureBytes)}, &gotgbot.SendPhotoOpts{
-				MessageThreadId: tgThreadId,
-				Caption:         fmt.Sprintf("The profile picture was updated by %s", html.EscapeString(changer)),
-			})
-			if err != nil {
-				logger.Error("failed to send message to the group", zap.Error(err))
-				return
-			}
-		}
-	} else if v.JID.Server == waTypes.DefaultUserServer {
-		tgThreadId, err = utils.TgGetOrMakeThreadFromWa(v.JID.ToNonAD(), cfg.Telegram.TargetChatID, utils.WaGetContactName(v.JID.ToNonAD()))
-		if err != nil {
-			logger.Warn(
-				"failed to create a new thread for a WhatsApp chat (handling Picture event)",
-				zap.String("chat", v.JID.String()),
-				zap.Error(err),
-			)
-			return
-		}
-		if v.Remove {
-			updateText := "The profile picture was removed"
-			err = utils.TgSendTextById(
-				tgBot, cfg.Telegram.TargetChatID, tgThreadId,
-				updateText,
-			)
-			if err != nil {
-				logger.Error("failed to send message to the target chat", zap.Error(err))
-				return
-			}
-		} else {
-			pictureInfo, err := waClient.GetProfilePictureInfo(
-				context.Background(),
-				v.JID,
-				&whatsmeow.GetProfilePictureParams{
-					Preview: false,
-				},
-			)
-			if err != nil {
-				logger.Error("failed to get profile picture info", zap.Error(err), zap.String("group", v.JID.String()))
-				return
-			}
-			if pictureInfo == nil {
-				logger.Error("failed to get profile picture info, received null", zap.String("group", v.JID.String()))
-				return
-			}
-
-			newPictureBytes, err := utils.DownloadFileBytesByURL(pictureInfo.URL)
-			if err != nil {
-				logger.Error("failed to download profile picture", zap.Error(err), zap.String("group", v.JID.String()))
-				return
-			}
-
-			_, err = tgBot.SendPhoto(cfg.Telegram.TargetChatID, &gotgbot.FileReader{Data: bytes.NewReader(newPictureBytes)}, &gotgbot.SendPhotoOpts{
-				MessageThreadId: tgThreadId,
-				Caption:         "The profile picture was updated",
-			})
-			if err != nil {
-				logger.Error("failed to send message to the group", zap.Error(err))
-				return
-			}
-		}
-	} else {
-		logger.Warn(
-			"Received Picture event for unknown JID type",
-			zap.String("jid", v.JID.String()),
-		)
+	switch v.JID.Server {
+	case waTypes.GroupServer:
+		handleGroupPictureEvent(v, cfg, logger, tgBot)
+	case waTypes.DefaultUserServer, waTypes.HiddenUserServer:
+		handleUserPictureEvent(v, cfg, logger, tgBot)
+	default:
+		logger.Warn("Received Picture event for unknown JID type",
+			zap.String("jid", v.JID.String()))
 	}
 }
+
+func handleGroupPictureEvent(v *events.Picture, cfg *state.Config, logger *zap.Logger, tgBot *gotgbot.Bot) {
+	// Use the concrete client for proper typing
+	client := state.State.WhatsAppClient
+	tgThreadId, err := utils.TgGetOrMakeThreadFromWa(v.JID.ToNonAD(), cfg.Telegram.TargetChatID,
+		utils.WaGetGroupName(v.JID))
+	if err != nil {
+		logger.Warn("failed to create a new thread for a WhatsApp chat (handling Picture event)",
+			zap.String("chat", v.JID.String()), zap.Error(err))
+		return
+	}
+
+	changer := utils.WaGetContactName(v.Author)
+
+	if v.Remove {
+		updateText := fmt.Sprintf("The profile picture was removed by %s", html.EscapeString(changer))
+		if err := utils.TgSendTextById(tgBot, cfg.Telegram.TargetChatID, tgThreadId, updateText); err != nil {
+			logger.Error("failed to send message to the target chat", zap.Error(err))
+		}
+		return
+	}
+
+	sendUpdatedPicture(client, tgBot, cfg, logger, v.JID, tgThreadId,
+		fmt.Sprintf("The profile picture was updated by %s", html.EscapeString(changer)))
+}
+
+func handleUserPictureEvent(v *events.Picture, cfg *state.Config, logger *zap.Logger, tgBot *gotgbot.Bot) {
+	client := state.State.WhatsAppClient
+	targetJID := v.JID.ToNonAD()
+	threadName := utils.WaGetContactName(targetJID)
+
+	if v.JID.Server == waTypes.HiddenUserServer {
+		pn, pnErr := client.Store.LIDs.GetPNForLID(context.Background(), v.JID.ToNonAD())
+		if pnErr == nil && pn.User != "" {
+			targetJID = pn.ToNonAD()
+			threadName = utils.WaGetContactName(targetJID)
+		}
+	}
+	if threadName == "" {
+		threadName = targetJID.String()
+	}
+
+	tgThreadId, err := utils.TgGetOrMakeThreadFromWa(targetJID, cfg.Telegram.TargetChatID, threadName)
+	if err != nil {
+		logger.Warn("failed to create a new thread for a WhatsApp chat (handling Picture event)",
+			zap.String("chat", v.JID.String()), zap.Error(err))
+		return
+	}
+
+	if v.Remove {
+		if err := utils.TgSendTextById(tgBot, cfg.Telegram.TargetChatID, tgThreadId,
+			"The profile picture was removed"); err != nil {
+			logger.Error("failed to send message to the target chat", zap.Error(err))
+		}
+		return
+	}
+
+	sendUpdatedPicture(client, tgBot, cfg, logger, v.JID, tgThreadId, "The profile picture was updated")
+}
+
+func sendUpdatedPicture(client *whatsmeow.Client, tgBot *gotgbot.Bot, cfg *state.Config, logger *zap.Logger, jid waTypes.JID, tgThreadId int64, caption string) {
+	pictureInfo, err := client.GetProfilePictureInfo(context.Background(), jid, &whatsmeow.GetProfilePictureParams{})
+	if err != nil {
+		logger.Error("failed to get profile picture info", zap.Error(err), zap.String("jid", jid.String()))
+		return
+	}
+	if pictureInfo == nil {
+		logger.Error("failed to get profile picture info, received null", zap.String("jid", jid.String()))
+		return
+	}
+
+	newPictureBytes, err := utils.DownloadFileBytesByURL(pictureInfo.URL)
+	if err != nil {
+		logger.Error("failed to download profile picture", zap.Error(err), zap.String("jid", jid.String()))
+		return
+	}
+
+	_, err = tgBot.SendPhoto(cfg.Telegram.TargetChatID,
+		&gotgbot.FileReader{Data: bytes.NewReader(newPictureBytes)},
+		&gotgbot.SendPhotoOpts{
+			MessageThreadId: tgThreadId,
+			Caption:         caption,
+		})
+	if err != nil {
+		logger.Error("failed to send photo message", zap.Error(err))
+	}
+}
+
+// ============================================================
+// Group info changes
+// ============================================================
 
 func GroupInfoEventHandler(v *events.GroupInfo) {
 	var (
@@ -1654,6 +1368,7 @@ func GroupInfoEventHandler(v *events.GroupInfo) {
 	)
 	defer logger.Sync()
 
+	// Resolve existing thread
 	var (
 		tgThreadId  int64       = 0
 		threadFound bool        = false
@@ -1670,26 +1385,19 @@ func GroupInfoEventHandler(v *events.GroupInfo) {
 		tgThreadId, threadFound, err = database.ChatThreadGetTgFromWa(v.JID.ToNonAD().String(), cfg.Telegram.TargetChatID)
 	}
 	if err != nil {
-		logger.Warn(
-			"failed to find thread for a WhatsApp chat (handling GroupInfo event)",
-			zap.String("chat", v.JID.String()),
-			zap.Error(err),
-		)
+		logger.Warn("failed to find thread for a WhatsApp chat (handling GroupInfo event)",
+			zap.String("chat", v.JID.String()), zap.Error(err))
 		return
 	}
 	if !threadFound || tgThreadId == 0 {
-		logger.Warn(
-			"no thread found for a WhatsApp chat (handling GroupInfo event)",
-			zap.String("chat", v.JID.String()),
-		)
+		logger.Warn("no thread found for a WhatsApp chat (handling GroupInfo event)",
+			zap.String("chat", v.JID.String()))
 		if cfg.WhatsApp.CreateThreadForInfoUpdates {
-			tgThreadId, err = utils.TgGetOrMakeThreadFromWa(v.JID.ToNonAD(), cfg.Telegram.TargetChatID, utils.WaGetGroupName(v.JID))
+			tgThreadId, err = utils.TgGetOrMakeThreadFromWa(v.JID.ToNonAD(), cfg.Telegram.TargetChatID,
+				utils.WaGetGroupName(v.JID))
 			if err != nil {
-				logger.Warn(
-					"failed to create a new thread for a WhatsApp chat (handling GroupInfo event)",
-					zap.String("chat", v.JID.String()),
-					zap.Error(err),
-				)
+				logger.Warn("failed to create a new thread (handling GroupInfo event)",
+					zap.String("chat", v.JID.String()), zap.Error(err))
 				return
 			}
 		} else {
@@ -1697,87 +1405,82 @@ func GroupInfoEventHandler(v *events.GroupInfo) {
 		}
 	}
 
-	if v.Announce != nil {
-		var authorInfo string
+	// Helper to get author display name
+	authorName := func() string {
 		if v.Sender != nil {
-			authorName := utils.WaGetContactName(*v.Sender)
-			authorInfo = fmt.Sprintf(" by %s", html.EscapeString(authorName))
+			return utils.WaGetContactName(*v.Sender)
 		}
+		return ""
+	}
+	authorSuffix := func() string {
+		if name := authorName(); name != "" {
+			return fmt.Sprintf(" by %s", html.EscapeString(name))
+		}
+		return ""
+	}
 
+	// Announce setting changed
+	if v.Announce != nil {
 		var updateText string
 		if v.Announce.IsAnnounce {
-			updateText = fmt.Sprintf("Group settings have been changed%s, only admins can send messages now", authorInfo)
+			updateText = fmt.Sprintf("Group settings have been changed%s, only admins can send messages now", authorSuffix())
 		} else {
-			updateText = fmt.Sprintf("Group settings have been changed%s, everybody can send messages now", authorInfo)
+			updateText = fmt.Sprintf("Group settings have been changed%s, everybody can send messages now", authorSuffix())
 		}
-		err = utils.TgSendTextById(tgBot, cfg.Telegram.TargetChatID, tgThreadId, updateText)
-		if err != nil {
+		if err := utils.TgSendTextById(tgBot, cfg.Telegram.TargetChatID, tgThreadId, updateText); err != nil {
 			logger.Error("failed to send message", zap.Error(err))
 		}
 	}
 
+	// Ephemeral setting changed
 	if v.Ephemeral != nil {
-		var authorInfo string
-		if v.Sender != nil {
-			authorName := utils.WaGetContactName(*v.Sender)
-			authorInfo = fmt.Sprintf(" by %s", html.EscapeString(authorName))
-		}
-
 		var updateText string
 		if v.Ephemeral.IsEphemeral {
 			err = database.UpdateEphemeralSettings(v.JID.ToNonAD().String(), true, v.Ephemeral.DisappearingTimer)
-			updateText = fmt.Sprintf("Group's auto deletion timer has been turned on%s:\n", authorInfo)
+			updateText = fmt.Sprintf("Group's auto deletion timer has been turned on%s:\n", authorSuffix())
 			updateText += fmt.Sprintf("Timer: %s\n", time.Second*time.Duration(v.Ephemeral.DisappearingTimer))
 			if err != nil {
 				updateText += fmt.Sprintf("Failed to save to DB: %s", html.EscapeString(err.Error()))
 			}
 		} else {
 			err = database.UpdateEphemeralSettings(v.JID.ToNonAD().String(), false, 0)
-			updateText = fmt.Sprintf("Group's auto deletion timer has been disabled%s:\n", authorInfo)
+			updateText = fmt.Sprintf("Group's auto deletion timer has been disabled%s:\n", authorSuffix())
 			if err != nil {
 				updateText += fmt.Sprintf("Failed to save to DB: %s", html.EscapeString(err.Error()))
 			}
 		}
-		err = utils.TgSendTextById(tgBot, cfg.Telegram.TargetChatID, tgThreadId, updateText)
-		if err != nil {
+		if err := utils.TgSendTextById(tgBot, cfg.Telegram.TargetChatID, tgThreadId, updateText); err != nil {
 			logger.Error("failed to send message", zap.Error(err))
 		}
 	}
 
+	// Group deleted
 	if v.Delete != nil {
-		var authorInfo string
-		if v.Sender != nil {
-			authorName := utils.WaGetContactName(*v.Sender)
-			authorInfo = fmt.Sprintf(" by %s", html.EscapeString(authorName))
-		}
-
-		updateText := fmt.Sprintf("The group has been deleted%s", authorInfo)
+		updateText := fmt.Sprintf("The group has been deleted%s", authorSuffix())
 		if v.Delete.DeleteReason != "" {
-			updateText += fmt.Sprintf(
-				"\nReason: <code>%s</code>",
-				html.EscapeString(v.Delete.DeleteReason),
-			)
+			updateText += fmt.Sprintf("\nReason: <code>%s</code>", html.EscapeString(v.Delete.DeleteReason))
 		}
-		err = utils.TgSendTextById(
-			tgBot, cfg.Telegram.TargetChatID, tgThreadId,
-			"The group has been deleted",
-		)
-		if err != nil {
+		if err := utils.TgSendTextById(tgBot, cfg.Telegram.TargetChatID, tgThreadId, updateText); err != nil {
 			logger.Error("failed to send message", zap.Error(err))
 		}
 	}
 
-	if len(v.Join) > 0 {
-		var adderName string
-		if v.Sender != nil {
-			adderName = utils.WaGetContactName(*v.Sender)
-		}
+	// Skip member join/leave for ignored chats
+	if slices.Contains(cfg.WhatsApp.IgnoreChats, v.JID.ToNonAD().User) {
+		logger.Debug("returning because message from an ignored chat",
+			zap.String("chat_jid", v.JID.String()))
+		return
+	}
 
+	// Members joined
+	if len(v.Join) > 0 {
+		adderName := authorName()
 		var updateText string
 		if len(v.Join) == 1 {
 			newMemName := utils.WaGetContactName(v.Join[0])
 			if v.Sender != nil && *v.Sender != v.Join[0] {
-				updateText = fmt.Sprintf("%s was added by %s to the group\n", html.EscapeString(newMemName), html.EscapeString(adderName))
+				updateText = fmt.Sprintf("%s was added by %s to the group\n",
+					html.EscapeString(newMemName), html.EscapeString(adderName))
 			} else {
 				updateText = fmt.Sprintf("%s joined the group\n", html.EscapeString(newMemName))
 			}
@@ -1786,7 +1489,8 @@ func GroupInfoEventHandler(v *events.GroupInfo) {
 			for _, newMem := range v.Join {
 				newMemName := utils.WaGetContactName(newMem)
 				if v.Sender != nil && *v.Sender != newMem {
-					updateText += fmt.Sprintf("- %s (added by %s)\n", html.EscapeString(newMemName), html.EscapeString(adderName))
+					updateText += fmt.Sprintf("- %s (added by %s)\n",
+						html.EscapeString(newMemName), html.EscapeString(adderName))
 				} else {
 					updateText += fmt.Sprintf("- %s\n", html.EscapeString(newMemName))
 				}
@@ -1795,54 +1499,46 @@ func GroupInfoEventHandler(v *events.GroupInfo) {
 		if v.JoinReason != "" {
 			updateText += fmt.Sprintf("\nReason: %s", html.EscapeString(v.JoinReason))
 		}
-		err = utils.TgSendTextById(tgBot, cfg.Telegram.TargetChatID, tgThreadId, updateText)
-		if err != nil {
+		if err := utils.TgSendTextById(tgBot, cfg.Telegram.TargetChatID, tgThreadId, updateText); err != nil {
 			logger.Error("failed to send message", zap.Error(err))
 		}
 	}
 
+	// Members left
 	if len(v.Leave) > 0 {
-		var removerName string
-		if v.Sender != nil {
-			removerName = utils.WaGetContactName(*v.Sender)
-		}
-
+		removerName := authorName()
 		var updateText string
 		if len(v.Leave) == 1 {
 			oldMemName := utils.WaGetContactName(v.Leave[0])
 			if v.Sender != nil && *v.Sender == v.Leave[0] {
 				updateText = fmt.Sprintf("%s left the group\n", html.EscapeString(oldMemName))
 			} else {
-				updateText = fmt.Sprintf("%s was kicked by %s from the group\n", html.EscapeString(oldMemName), html.EscapeString(removerName))
+				updateText = fmt.Sprintf("%s was kicked by %s from the group\n",
+					html.EscapeString(oldMemName), html.EscapeString(removerName))
 			}
 		} else {
 			updateText = "The following people left the group:\n"
 			for _, oldMem := range v.Leave {
 				oldMemName := utils.WaGetContactName(oldMem)
 				if v.Sender != nil && *v.Sender != oldMem {
-					updateText += fmt.Sprintf("- %s (kicked by %s)\n", html.EscapeString(oldMemName), html.EscapeString(removerName))
+					updateText += fmt.Sprintf("- %s (kicked by %s)\n",
+						html.EscapeString(oldMemName), html.EscapeString(removerName))
 				} else {
 					updateText += fmt.Sprintf("- %s\n", html.EscapeString(oldMemName))
 				}
 			}
 		}
-		err = utils.TgSendTextById(tgBot, cfg.Telegram.TargetChatID, tgThreadId, updateText)
-		if err != nil {
+		if err := utils.TgSendTextById(tgBot, cfg.Telegram.TargetChatID, tgThreadId, updateText); err != nil {
 			logger.Error("failed to send message", zap.Error(err))
 		}
 	}
 
+	// Members demoted
 	if len(v.Demote) > 0 {
+		demoterName := authorName()
 		var updateText string
-
-		var demoterName string
-		if v.Sender != nil {
-			demoterName = utils.WaGetContactName(*v.Sender)
-		}
-
 		if len(v.Demote) == 1 {
-			demotedMemName := utils.WaGetContactName(v.Demote[0])
-			updateText = fmt.Sprintf("%s was demoted in the group", html.EscapeString(demotedMemName))
+			updateText = fmt.Sprintf("%s was demoted in the group", html.EscapeString(utils.WaGetContactName(v.Demote[0])))
 			if demoterName != "" {
 				updateText += fmt.Sprintf(" by %s", html.EscapeString(demoterName))
 			}
@@ -1854,27 +1550,20 @@ func GroupInfoEventHandler(v *events.GroupInfo) {
 			}
 			updateText += ":\n"
 			for _, demotedMem := range v.Demote {
-				demotedMemName := utils.WaGetContactName(demotedMem)
-				updateText += fmt.Sprintf("- %s\n", demotedMemName)
+				updateText += fmt.Sprintf("- %s\n", utils.WaGetContactName(demotedMem))
 			}
 		}
-		err = utils.TgSendTextById(tgBot, cfg.Telegram.TargetChatID, tgThreadId, updateText)
-		if err != nil {
+		if err := utils.TgSendTextById(tgBot, cfg.Telegram.TargetChatID, tgThreadId, updateText); err != nil {
 			logger.Error("failed to send message", zap.Error(err))
 		}
 	}
 
+	// Members promoted
 	if len(v.Promote) > 0 {
+		promoterName := authorName()
 		var updateText string
-
-		var promoterName string
-		if v.Sender != nil {
-			promoterName = utils.WaGetContactName(*v.Sender)
-		}
-
 		if len(v.Promote) == 1 {
-			promotedMemName := utils.WaGetContactName(v.Promote[0])
-			updateText = fmt.Sprintf("%s was promoted in the group", html.EscapeString(promotedMemName))
+			updateText = fmt.Sprintf("%s was promoted in the group", html.EscapeString(utils.WaGetContactName(v.Promote[0])))
 			if promoterName != "" {
 				updateText += fmt.Sprintf(" by %s", html.EscapeString(promoterName))
 			}
@@ -1886,57 +1575,49 @@ func GroupInfoEventHandler(v *events.GroupInfo) {
 			}
 			updateText += ":\n"
 			for _, promotedMem := range v.Promote {
-				promotedMemName := utils.WaGetContactName(promotedMem)
-				updateText += fmt.Sprintf("- %s\n", html.EscapeString(promotedMemName))
+				updateText += fmt.Sprintf("- %s\n", html.EscapeString(utils.WaGetContactName(promotedMem)))
 			}
 		}
-		err = utils.TgSendTextById(tgBot, cfg.Telegram.TargetChatID, tgThreadId, updateText)
-		if err != nil {
+		if err := utils.TgSendTextById(tgBot, cfg.Telegram.TargetChatID, tgThreadId, updateText); err != nil {
 			logger.Error("failed to send message", zap.Error(err))
 		}
 	}
 
+	// Group description changed
 	if v.Topic != nil {
 		changer := utils.WaGetContactName(v.Topic.TopicSetBy)
 		updateText := fmt.Sprintf(
 			"The group description was changed by <b>%s</b>:\n\n<code>%s</code>",
-			html.EscapeString(changer),
-			html.EscapeString(v.Topic.Topic),
-		)
-		err = utils.TgSendTextById(tgBot, cfg.Telegram.TargetChatID, tgThreadId, updateText)
-		if err != nil {
+			html.EscapeString(changer), html.EscapeString(v.Topic.Topic))
+		if err := utils.TgSendTextById(tgBot, cfg.Telegram.TargetChatID, tgThreadId, updateText); err != nil {
 			logger.Error("failed to send message", zap.Error(err))
 		}
 	}
 
+	// Group name changed
 	if v.Name != nil {
-		_, err = tgBot.EditForumTopic(
-			cfg.Telegram.TargetChatID, tgThreadId,
-			&gotgbot.EditForumTopicOpts{
-				Name: v.Name.Name,
-			},
-		)
+		_, err = tgBot.EditForumTopic(cfg.Telegram.TargetChatID, tgThreadId,
+			&gotgbot.EditForumTopicOpts{Name: v.Name.Name})
 		if err != nil {
-			logger.Error(
-				"failed to change thread name",
+			logger.Error("failed to change thread name",
 				zap.Error(err),
 				zap.String("chat", v.JID.String()),
-				zap.String("new_name", v.Name.Name),
-			)
+				zap.String("new_name", v.Name.Name))
 			return
 		}
 		changer := utils.WaGetContactName(v.Name.NameSetBy)
 		updateText := fmt.Sprintf(
 			"The group name was changed by <b>%s</b>:\n\n<code>%s</code>",
-			html.EscapeString(changer),
-			html.EscapeString(v.Name.Name),
-		)
-		err = utils.TgSendTextById(tgBot, cfg.Telegram.TargetChatID, tgThreadId, updateText)
-		if err != nil {
+			html.EscapeString(changer), html.EscapeString(v.Name.Name))
+		if err := utils.TgSendTextById(tgBot, cfg.Telegram.TargetChatID, tgThreadId, updateText); err != nil {
 			logger.Error("failed to send message", zap.Error(err))
 		}
 	}
 }
+
+// ============================================================
+// Logout
+// ============================================================
 
 func LogoutHandler(v *events.LoggedOut) {
 	var (
@@ -1948,6 +1629,5 @@ func LogoutHandler(v *events.LoggedOut) {
 
 	updateText := "You have been logged out from WhatsApp:\n\n"
 	updateText += fmt.Sprintf("<b>Reason:</b> %s", html.EscapeString(v.Reason.String()))
-
 	utils.TgSendTextById(tgBot, cfg.Telegram.OwnerID, 0, updateText)
 }

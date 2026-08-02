@@ -11,5 +11,5 @@ func SubString(s string, start, length int) string {
 		length = len(asRunes) - start
 	}
 
-	return string(s[start : start+length])
+	return string(asRunes[start : start+length])
 }

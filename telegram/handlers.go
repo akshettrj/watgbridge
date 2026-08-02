@@ -23,8 +23,11 @@ import (
 	"github.com/PaulSonOfLars/gotgbot/v2/ext/handlers"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/appstate"
+	"go.mau.fi/whatsmeow/proto/waCommon"
+	"go.mau.fi/whatsmeow/proto/waE2E"
 	waTypes "go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
+	"google.golang.org/protobuf/proto"
 )
 
 type waTgBridgeCommand struct {
@@ -46,6 +49,15 @@ func AddTelegramHandlers() {
 		}, BridgeTelegramToWhatsAppHandler,
 	), DispatcherForwardHandlerGroup)
 
+	// Handle edited messages from Telegram and mirror edits to WhatsApp
+	// Some versions of gotgbot may not expose a NewEditedMessage helper,
+	// so use NewMessage with an EditDate check to catch edited messages.
+	dispatcher.AddHandlerToGroup(handlers.NewMessage(
+		func(msg *gotgbot.Message) bool {
+			return msg.Chat.Id == cfg.Telegram.TargetChatID && msg.EditDate != 0
+		}, BridgeTelegramEditedToWhatsAppHandler,
+	).SetAllowEdited(true), DispatcherForwardHandlerGroup)
+
 	commands = append(commands,
 		waTgBridgeCommand{
 			handlers.NewCommand("start", StartCommandHandler),
@@ -58,6 +70,10 @@ func AddTelegramHandlers() {
 		waTgBridgeCommand{
 			handlers.NewCommand("findcontact", FindContactHandler),
 			"Fuzzy find contact JIDs from names in WhatsApp",
+		},
+		waTgBridgeCommand{
+			handlers.NewCommand("findgroupmembers", FindGroupMembersHandler),
+			"List WhatsApp group members with their phone numbers",
 		},
 		waTgBridgeCommand{
 			handlers.NewCommand("revoke", RevokeCommandHandler),
@@ -108,8 +124,16 @@ func AddTelegramHandlers() {
 			"Send a message to WhatsApp",
 		},
 		waTgBridgeCommand{
+			handlers.NewCommand("info", MessageInfoCommandHandler),
+			"Show delivery/read info for a replied bridged message",
+		},
+		waTgBridgeCommand{
 			handlers.NewCommand("help", HelpCommandHandler),
 			"Get all the available commands",
+		},
+		waTgBridgeCommand{
+			handlers.NewCommand("backup", BackupCommandHandler),
+			"Generate and send a database backup now",
 		},
 		waTgBridgeCommand{
 			handlers.NewCommand("block", BlockCommandHandler),
@@ -240,6 +264,68 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 	return utils.TgSendToWhatsApp(b, c, msgToForward, msgToReplyTo, waChatJID, participantID, stanzaID, quotedWaChatID, stanzaID != "")
 }
 
+// BridgeTelegramEditedToWhatsAppHandler handles edited Telegram messages and mirrors the edit to WhatsApp
+func BridgeTelegramEditedToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
+	if !utils.TgUpdateIsAuthorized(b, c) {
+		return nil
+	}
+
+	var (
+		waClient  = state.State.WhatsAppClient
+		msgEdited = c.EffectiveMessage
+	)
+
+	// Find corresponding WhatsApp message id and chat
+	stanzaID, participantID, waChatID, err := database.MsgIdGetWaFromTg(c.EffectiveChat.Id, msgEdited.MessageId, msgEdited.MessageThreadId)
+	if err != nil {
+		return utils.TgReplyWithErrorByContext(b, c, "Failed to retrieve mapping from database", err)
+	} else if stanzaID == "" {
+		// No mapping found - nothing to edit on WhatsApp
+		return nil
+	}
+
+	// Determine edited text (caption preferred)
+	var editedText string
+	if msgEdited.Caption != "" {
+		editedText = msgEdited.Caption
+	} else {
+		editedText = msgEdited.Text
+	}
+
+	if editedText == "" {
+		// Nothing meaningful to edit
+		return nil
+	}
+
+	// Build edited message payload
+	editedMsg := &waE2E.Message{
+		ExtendedTextMessage: &waE2E.ExtendedTextMessage{
+			Text: proto.String(editedText),
+		},
+	}
+
+	protocolMsg := &waE2E.Message{
+		ProtocolMessage: &waE2E.ProtocolMessage{
+			Type: waE2E.ProtocolMessage_MESSAGE_EDIT.Enum(),
+			Key: &waCommon.MessageKey{
+				ID:        proto.String(stanzaID),
+				RemoteJID: proto.String(waChatID),
+				FromMe:    proto.Bool(participantID == waClient.Store.ID.String()),
+			},
+			EditedMessage: editedMsg,
+		},
+	}
+
+	waChatJid, _ := utils.WaParseJID(waChatID)
+
+	_, err = waClient.SendMessage(context.Background(), waChatJid, protocolMsg)
+	if err != nil {
+		return utils.TgReplyWithErrorByContext(b, c, "Failed to send edit to WhatsApp", err)
+	}
+
+	return nil
+}
+
 func StartCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
 	if !utils.TgUpdateIsAuthorized(b, c) {
 		return nil
@@ -343,6 +429,156 @@ func FindContactHandler(b *gotgbot.Bot, c *ext.Context) error {
 		return err
 	}
 	return nil
+}
+
+func FindGroupMembersHandler(b *gotgbot.Bot, c *ext.Context) error {
+	if !utils.TgUpdateIsAuthorized(b, c) {
+		return nil
+	}
+
+	var groupJID waTypes.JID
+	args := c.Args()
+	if len(args) > 1 {
+		parsedGroupJID, ok := utils.WaParseJID(args[1])
+		if !ok {
+			_, err := utils.TgReplyTextByContext(b, c, "Usage : <code>"+html.EscapeString("/findgroupmembers <group_id>")+"</code>", nil, false)
+			return err
+		}
+		groupJID = parsedGroupJID
+	} else {
+		waChatID, err := database.ChatThreadGetWaFromTg(c.EffectiveChat.Id, c.EffectiveMessage.MessageThreadId)
+		if err != nil {
+			return utils.TgReplyWithErrorByContext(b, c, "Failed to resolve the current group mapping", err)
+		}
+		if waChatID == "" {
+			_, err := utils.TgReplyTextByContext(b, c, "Usage : <code>"+html.EscapeString("/findgroupmembers <group_id>")+"</code>", nil, false)
+			return err
+		}
+
+		groupJID, _ = utils.WaParseJID(waChatID)
+	}
+
+	groupInfo, err := state.State.WhatsAppClient.GetGroupInfo(context.Background(), groupJID)
+	if err != nil {
+		return utils.TgReplyWithErrorByContext(b, c, "Failed to get group info", err)
+	}
+
+	outputString := fmt.Sprintf("Group members for <i>%s</i>:\n\n", html.EscapeString(groupInfo.Name))
+	for _, participant := range groupInfo.Participants {
+		participantJID := participant.JID.ToNonAD()
+		memberName := utils.WaGetContactName(participantJID)
+		if memberName == "" {
+			memberName = participantJID.User
+		}
+
+		outputString += fmt.Sprintf("- <i>%s</i> [ <code>%s</code> ]\n",
+			html.EscapeString(memberName),
+			html.EscapeString(participantJID.String()),
+		)
+
+		if len(outputString) >= 1800 {
+			_, err = utils.TgReplyTextByContext(b, c, outputString, nil, false)
+			if err != nil {
+				return err
+			}
+			time.Sleep(500 * time.Millisecond)
+			outputString = ""
+		}
+	}
+
+	if len(outputString) > 0 {
+		_, err = utils.TgReplyTextByContext(b, c, outputString, nil, false)
+		return err
+	}
+	return nil
+}
+
+func MessageInfoCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
+	if !utils.TgUpdateIsAuthorized(b, c) {
+		return nil
+	}
+
+	repliedMsg := c.EffectiveMessage.ReplyToMessage
+	if repliedMsg == nil {
+		_, err := utils.TgReplyTextByContext(b, c, "Reply to a bridged message and run /info", nil, false)
+		return err
+	}
+
+	stanzaID, _, waChatID, err := database.MsgIdGetWaFromTg(c.EffectiveChat.Id, repliedMsg.MessageId, repliedMsg.MessageThreadId)
+	if err != nil {
+		return utils.TgReplyWithErrorByContext(b, c, "Failed to fetch message mapping", err)
+	}
+	if stanzaID == "" || waChatID == "" {
+		_, err := utils.TgReplyTextByContext(b, c, "No WhatsApp mapping found for the replied message", nil, false)
+		return err
+	}
+
+	receipts, err := database.MsgReceiptGetByMsg(stanzaID, waChatID)
+	if err != nil {
+		return utils.TgReplyWithErrorByContext(b, c, "Failed to fetch message receipts", err)
+	}
+
+	if len(receipts) == 0 {
+		_, err = utils.TgReplyTextByContext(b, c, "No delivery/read updates yet for this message", nil, false)
+		return err
+	}
+
+	waSelfJID := ""
+	if state.State.WhatsAppClient != nil && state.State.WhatsAppClient.Store != nil {
+		waSelfJID = state.State.WhatsAppClient.Store.ID.String()
+	}
+
+	delivered := []string{}
+	read := []string{}
+	other := []string{}
+
+	for _, receipt := range receipts {
+		displayName := receipt.ParticipantId
+		if receipt.ParticipantId == waSelfJID {
+			displayName = "Você"
+		}
+		participantJID, ok := utils.WaParseJID(receipt.ParticipantId)
+		if ok {
+			contactName := utils.WaGetContactName(participantJID)
+			if contactName != "" {
+				displayName = fmt.Sprintf("%s", contactName)
+				if receipt.ParticipantId != waSelfJID {
+					displayName = fmt.Sprintf("%s", contactName)
+				}
+			}
+		}
+
+		timeText := html.EscapeString(receipt.ReceiptTime.In(state.State.LocalLocation).Format(state.State.Config.TimeFormat))
+		jidText := ""
+		if receipt.ParticipantId != waSelfJID {
+			jidText = fmt.Sprintf(" <code>%s</code>", html.EscapeString(receipt.ParticipantId))
+		}
+		entry := fmt.Sprintf("• <b>%s</b>%s — %s", html.EscapeString(displayName), jidText, timeText)
+
+		switch waTypes.ReceiptType(receipt.ReceiptType) {
+		case waTypes.ReceiptTypeRead, waTypes.ReceiptTypeReadSelf:
+			read = append(read, entry)
+		case waTypes.ReceiptTypeDelivered:
+			delivered = append(delivered, entry)
+		default:
+			other = append(other, fmt.Sprintf("%s [type=%s]", entry, html.EscapeString(receipt.ReceiptType)))
+		}
+	}
+
+	infoText := "<b>Message info</b>\n"
+	infoText += fmt.Sprintf("<i>%d updates registrados</i>\n", len(receipts))
+	if len(read) > 0 {
+		infoText += fmt.Sprintf("\n<b>Seen</b> (%d)\n%s\n", len(read), strings.Join(read, "\n"))
+	}
+	if len(delivered) > 0 {
+		infoText += fmt.Sprintf("\n<b>Delivered</b> (%d)\n%s\n", len(delivered), strings.Join(delivered, "\n"))
+	}
+	if len(other) > 0 {
+		infoText += fmt.Sprintf("\n<b>Other updates</b> (%d)\n%s\n", len(other), strings.Join(other, "\n"))
+	}
+
+	_, err = utils.TgReplyTextByContext(b, c, infoText, nil, false)
+	return err
 }
 
 func UpdateAndRestartHandler(b *gotgbot.Bot, c *ext.Context) error {
@@ -664,19 +900,27 @@ func GetProfilePictureHandler(b *gotgbot.Bot, c *ext.Context) error {
 		return nil
 	}
 
-	usageString := "Usage: <code>" + html.EscapeString("/getprofilepicture <user/group_id>") + "</code>"
-	usageString += "\n\nYou need to add <code>@g.us</code> at the end for groups"
-
 	args := c.Args()
-	if len(args) <= 1 {
-		_, err := utils.TgReplyTextByContext(b, c, usageString, nil, false)
-		return err
-	}
-
 	var (
 		waClient = state.State.WhatsAppClient
-		userID   = args[1]
+		userID   string
 	)
+	if len(args) <= 1 {
+		tgChatId := c.EffectiveChat.Id
+		tgThreadId := c.EffectiveMessage.MessageThreadId
+
+		waChatId, err := database.ChatThreadGetWaFromTg(tgChatId, tgThreadId)
+		if err != nil {
+			return utils.TgReplyWithErrorByContext(b, c, "Failed to get existing chat ID pairing", err)
+		} else if waChatId == "" {
+			_, err := utils.TgReplyTextByContext(b, c, "No existing chat pairing found!!", nil, false)
+			return err
+		}
+
+		userID = waChatId
+	} else {
+		userID = args[1]
+	}
 
 	userJID, _ := utils.WaParseJID(userID)
 
@@ -764,6 +1008,30 @@ func HelpCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
 	}
 
 	_, err := utils.TgReplyTextByContext(b, c, helpString, nil, false)
+	return err
+}
+
+func BackupCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
+	if !utils.TgUpdateIsAuthorized(b, c) {
+		return nil
+	}
+
+	mode := strings.ToLower(strings.TrimSpace(state.State.Config.Backup.Mode))
+	if mode == "tread" {
+		mode = "thread"
+	}
+
+	if mode == "" || mode == "none" {
+		_, err := utils.TgReplyTextByContext(b, c,
+			"Backup está desativado no config (`backup.mode: none`).", nil, false)
+		return err
+	}
+
+	if err := utils.RunDatabaseBackupOnce(); err != nil {
+		return utils.TgReplyWithErrorByContext(b, c, "Falha ao gerar/enviar backup", err)
+	}
+
+	_, err := utils.TgReplyTextByContext(b, c, "Backup enviado com sucesso.", nil, false)
 	return err
 }
 

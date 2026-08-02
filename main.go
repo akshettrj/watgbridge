@@ -21,6 +21,48 @@ import (
 	"go.uber.org/zap"
 )
 
+func findExecutablePath(logger *zap.Logger, cfg *state.Config, name string, fatalOnErr bool) string {
+	path, err := exec.LookPath(name)
+	if err != nil && !errors.Is(err, exec.ErrDot) {
+		if fatalOnErr {
+			logger.Fatal(fmt.Sprintf("failed to set %s executable path", name), zap.Error(err))
+		}
+	}
+	return path
+}
+
+func sendRestartNotification(logger *zap.Logger) bool {
+	isRestarted, found := os.LookupEnv("WATG_IS_RESTARTED")
+	if !found || isRestarted != "1" {
+		return false
+	}
+
+	chatIdString, chatIdFound := os.LookupEnv("WATG_CHAT_ID")
+	msgIdString, msgIdFound := os.LookupEnv("WATG_MESSAGE_ID")
+	if !chatIdFound || !msgIdFound {
+		return false
+	}
+
+	chatId, err1 := strconv.ParseInt(chatIdString, 10, 64)
+	msgId, err2 := strconv.ParseInt(msgIdString, 10, 64)
+	if err1 != nil || err2 != nil {
+		return false
+	}
+
+	opts := gotgbot.SendMessageOpts{
+		ReplyParameters: &gotgbot.ReplyParameters{
+			MessageId: msgId,
+		},
+	}
+
+	_, err := state.State.TelegramBot.SendMessage(chatId, "Successfully restarted", &opts)
+	if err != nil {
+		logger.Error("failed to send restart notification", zap.Error(err))
+		return false
+	}
+	return true
+}
+
 func main() {
 	// Load configuration file
 	cfg := state.State.Config
@@ -95,66 +137,29 @@ func main() {
 		_ = logger.Sync()
 	}
 
+	configChanged := false
 	if cfg.GitExecutable == "" {
-		gitPath, err := exec.LookPath("git")
-		if err != nil && !errors.Is(err, exec.ErrDot) {
-			logger.Fatal("failed to set git executable path",
-				zap.Error(err),
-			)
-		}
-
-		cfg.GitExecutable = gitPath
-		logger.Info("setting path to git executable",
-			zap.String("path", gitPath),
-		)
-		_ = logger.Sync()
-
-		if err = cfg.SaveConfig(); err != nil {
-			logger.Fatal("failed to save config file",
-				zap.Error(err),
-			)
-		}
+		cfg.GitExecutable = findExecutablePath(logger, cfg, "git", true)
+		logger.Info("setting path to git executable", zap.String("path", cfg.GitExecutable))
+		configChanged = true
 	}
 
 	if cfg.GoExecutable == "" {
-		goPath, err := exec.LookPath("go")
-		if err != nil && !errors.Is(err, exec.ErrDot) {
-			logger.Fatal("failed to set go executable path",
-				zap.Error(err),
-			)
-		}
-
-		cfg.GoExecutable = goPath
-		logger.Info("setting path to go executable",
-			zap.String("path", goPath),
-		)
-		_ = logger.Sync()
-
-		if err = cfg.SaveConfig(); err != nil {
-			logger.Fatal("failed to save config file",
-				zap.Error(err),
-			)
-		}
+		cfg.GoExecutable = findExecutablePath(logger, cfg, "go", true)
+		logger.Info("setting path to go executable", zap.String("path", cfg.GoExecutable))
+		configChanged = true
 	}
 
 	if cfg.FfmpegExecutable == "" && !cfg.Telegram.SkipVideoStickers {
-		ffmpegPath, err := exec.LookPath("ffmpeg")
-		if err != nil && !errors.Is(err, exec.ErrDot) {
-			logger.Fatal("failed to set ffmpeg executable path",
-				zap.Error(err),
-			)
-		}
+		cfg.FfmpegExecutable = findExecutablePath(logger, cfg, "ffmpeg", true)
+		logger.Info("setting path to ffmpeg executable", zap.String("path", cfg.FfmpegExecutable))
+		configChanged = true
+	}
 
-		cfg.FfmpegExecutable = ffmpegPath
-		logger.Info("setting path to ffmpeg executable",
-			zap.String("path", ffmpegPath),
-		)
+	if configChanged {
 		_ = logger.Sync()
-
 		if err = cfg.SaveConfig(); err != nil {
-			logger.Fatal("failed to save config file",
-				zap.Error(err),
-			)
+			logger.Fatal("failed to save config file", zap.Error(err))
 		}
 	}
 
@@ -219,40 +224,13 @@ func main() {
 	}
 	_ = logger.Sync()
 
-	startMessageSuccessful := false
-
-	{
-		isRestarted, found := os.LookupEnv("WATG_IS_RESTARTED")
-		if !found || isRestarted != "1" {
-			goto SKIP_RESTART
-		}
-
-		chatIdString, chatIdFound := os.LookupEnv("WATG_CHAT_ID")
-		msgIdString, msgIdFound := os.LookupEnv("WATG_MESSAGE_ID")
-		if !chatIdFound || !msgIdFound {
-			goto SKIP_RESTART
-		}
-
-		chatId, chatIdSuccess := strconv.ParseInt(chatIdString, 10, 64)
-		msgId, msgIdSuccess := strconv.ParseInt(msgIdString, 10, 64)
-		if chatIdSuccess != nil || msgIdSuccess != nil {
-			goto SKIP_RESTART
-		}
-
-		opts := gotgbot.SendMessageOpts{
-			ReplyParameters: &gotgbot.ReplyParameters{
-				MessageId: msgId,
-			},
-		}
-
-		state.State.TelegramBot.SendMessage(chatId, "Successfully restarted", &opts)
-		startMessageSuccessful = true
-	}
-SKIP_RESTART:
+	startMessageSuccessful := sendRestartNotification(logger)
 
 	if !startMessageSuccessful && !cfg.Telegram.SkipStartupMessage {
 		state.State.TelegramBot.SendMessage(cfg.Telegram.OwnerID, "Successfully started WaTgBridge", &gotgbot.SendMessageOpts{})
 	}
+
+	utils.StartAutomaticDatabaseBackups()
 
 	state.State.TelegramUpdater.Idle()
 }

@@ -13,6 +13,8 @@ telegram:
   bot_token: 186779
   #api_url: http://localhost:8082        # Uncomment if you have a local bot API server running (for bypassing file size limits)
   self_hosted_api: false
+  send_images_as_file: false            # If set to true, WhatsApp images will be sent as documents to keep original quality
+  send_stickers_as_file: false          # If set to true, WhatsApp stickers will be sent as documents instead of stickers
   owner_id: 704338780
   sudo_users_id:
     - 704338780
@@ -31,6 +33,15 @@ telegram:
   spoiler_as_viewonce: true               # If set to true, then all the spoiler files will be sent as view-once messages
 
   reactions: true                         # If set to true, will send you new text messages whenever a user reacts to your message or revokes their reaction.
+  tag_all_enabled: false                  # If set to true, Telegram messages containing @all, @everyone, or @everybody will tag everyone in the WhatsApp group
+  auto_react_when_all_read: true          # If set to true, the bot reacts to bridged messages once everyone in the chat has read them
+  auto_react_remove_after_seconds: 0      # If greater than 0, the auto reaction is removed after this many seconds
+                                          # When this is enabled, emoji confirmations fall back to text to avoid reaction conflicts
+
+backup:
+  mode: none                             # none = disabled | private = sends to owner_id | thread = creates/reuses a single topic in target_chat_id, sends backup there, and keeps it locked
+  cron_schedule: "0 3 * * *"            # Cron de 5 campos (min hora dia mês semana). Exemplo: todo dia às 03:00
+  thread_name: Database Backups          # Used only when mode is thread
 
 whatsapp:
   session_name: watgbridge        # This will appear in your Linked Devices in mobile app
@@ -67,6 +78,7 @@ whatsapp:
   skip_group_settings_updates: false   # This includes joins, leaves, name change, etc.
   skip_chat_details: true
   send_revoked_message_updates: false
+  send_edited_message_updates: true    # If set to true, edited messages will be sent to Telegram as new messages, else they will be updated in the original message
   whatsmeow_debug_mode: false
   send_my_messages_from_other_devices: false      # If set to true, the messages sent by you from other devices will be sent to Telgram as well
   create_thread_for_info_updates: false  # If set to true, new thread will be created (if it doesn't exist) when profile picture changes for group/someone and when group metadata/members changes
@@ -78,8 +90,9 @@ whatsapp:
     author_name: WaTgBridge
 
 
-#Uncomment any on of these sections
-#Using the sqlite database will be easiest as it does not require any hosted database server and stores data in a single file on your device
+# Uncomment any one of these sections
+# Using the sqlite database will be easiest as it does not require any hosted database server and stores data in a single file on your device
+# Note: If you are using Docker, it is not recommended to change the database name. If you do, make sure to update it in the docker-compose file as well.
 
 #database:
 #  type: postgres

@@ -2,6 +2,7 @@ package database
 
 import (
 	"database/sql"
+	"time"
 
 	"watgbridge/state"
 
@@ -115,6 +116,26 @@ func MsgIdMarkRead(waChatId, waMsgId string) error {
 	return nil
 }
 
+func MsgIdHasAutoReacted(waChatId, waMsgId string) (bool, error) {
+	db := state.State.Database
+
+	var bridgePair MsgIdPair
+	res := db.Where("id = ? AND wa_chat_id = ?", waMsgId, waChatId).Find(&bridgePair)
+	if res.Error != nil {
+		return false, res.Error
+	}
+
+	return bridgePair.AutoReacted, nil
+}
+
+func MsgIdMarkAutoReacted(waChatId, waMsgId string) error {
+	db := state.State.Database
+
+	return db.Model(&MsgIdPair{}).
+		Where("id = ? AND wa_chat_id = ?", waMsgId, waChatId).
+		Update("auto_reacted", true).Error
+}
+
 func MsgIdDeletePair(tgChatId, tgMsgId int64) error {
 
 	db := state.State.Database
@@ -129,6 +150,40 @@ func MsgIdDropAllPairs() error {
 	res := db.Where("1 = 1").Delete(&MsgIdPair{})
 
 	return res.Error
+}
+
+func MsgReceiptUpsert(waMsgId, waChatId, participantId string, receiptType types.ReceiptType, receiptTime time.Time) error {
+	db := state.State.Database
+
+	var receipt MessageReceipt
+	res := db.Where("wa_msg_id = ? AND wa_chat_id = ? AND participant_id = ?", waMsgId, waChatId, participantId).Find(&receipt)
+	if res.Error != nil {
+		return res.Error
+	}
+
+	if receipt.WaMsgId == waMsgId && receipt.WaChatId == waChatId && receipt.ParticipantId == participantId {
+		receipt.ReceiptType = string(receiptType)
+		receipt.ReceiptTime = receiptTime
+		res = db.Save(&receipt)
+		return res.Error
+	}
+
+	res = db.Create(&MessageReceipt{
+		WaMsgId:       waMsgId,
+		WaChatId:      waChatId,
+		ParticipantId: participantId,
+		ReceiptType:   string(receiptType),
+		ReceiptTime:   receiptTime,
+	})
+	return res.Error
+}
+
+func MsgReceiptGetByMsg(waMsgId, waChatId string) ([]MessageReceipt, error) {
+	db := state.State.Database
+
+	var receipts []MessageReceipt
+	res := db.Where("wa_msg_id = ? AND wa_chat_id = ?", waMsgId, waChatId).Order("receipt_time DESC").Find(&receipts)
+	return receipts, res.Error
 }
 
 func ChatThreadAddNewPair(waChatId string, tgChatId, tgThreadId int64) error {

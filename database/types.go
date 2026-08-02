@@ -2,6 +2,7 @@ package database
 
 import (
 	"database/sql"
+	"time"
 
 	"watgbridge/state"
 )
@@ -18,6 +19,7 @@ type MsgIdPair struct {
 	TgMsgId    int64
 
 	MarkRead sql.NullBool
+	AutoReacted bool
 }
 
 type ChatThreadPair struct {
@@ -41,6 +43,14 @@ type ChatEphemeralSettings struct {
 	EphemeralTimer uint32
 }
 
+type MessageReceipt struct {
+	WaMsgId       string    `gorm:"primaryKey;index:idx_receipt_msg_chat_participant"`
+	WaChatId      string    `gorm:"primaryKey;index:idx_receipt_msg_chat_participant"`
+	ParticipantId string    `gorm:"primaryKey;index:idx_receipt_msg_chat_participant"`
+	ReceiptType   string
+	ReceiptTime   time.Time
+}
+
 func AutoMigrate() error {
 	db := state.State.Database
 	return db.AutoMigrate(
@@ -48,5 +58,6 @@ func AutoMigrate() error {
 		&ChatThreadPair{},
 		&ContactName{},
 		&ChatEphemeralSettings{},
+		&MessageReceipt{},
 	)
 }

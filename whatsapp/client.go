@@ -54,30 +54,6 @@ const (
 	clientModeAndroidBusiness = "android_business"
 )
 
-// applyAndroidClientIdentity makes the session register as an Android client
-// rather than the default desktop web companion, so WhatsApp delivers view-once
-// media (which it withholds from web companions). It mirrors the Baileys library
-// (WhiskeySockets/Baileys#2201): set the client payload's user-agent platform to
-// ANDROID (personal) or SMB_ANDROID (WhatsApp Business), drop the web-only
-// WebInfo, and mark the linked device an Android phone. Any other mode leaves the
-// desktop identity set above untouched.
-//
-// This is experimental and changes the protocol identity WhatsApp sees; it only
-// takes effect when a fresh session is paired.
-func applyAndroidClientIdentity(mode string) {
-	var platform waWa6.ClientPayload_UserAgent_Platform
-	switch mode {
-	case clientModeAndroid:
-		platform = waWa6.ClientPayload_UserAgent_ANDROID
-	case clientModeAndroidBusiness:
-		platform = waWa6.ClientPayload_UserAgent_SMB_ANDROID
-	default:
-		return
-	}
-	store.BaseClientPayload.UserAgent.Platform = platform.Enum()
-	store.BaseClientPayload.WebInfo = nil
-	store.DeviceProps.PlatformType = waCompanionReg.DeviceProps_ANDROID_PHONE.Enum()
-}
 
 func NewWhatsAppClient() error {
 
@@ -107,19 +83,71 @@ func NewWhatsAppClient() error {
 	waDatabaseLogger := &whatsmeowLogger{logger: logger.Sugar().Named("WhatsMeow_Database")}
 	waClientLogger := &whatsmeowLogger{logger: logger.Sugar().Named("WhatsMeow_Client")}
 
-	store.DeviceProps.Os = proto.String(state.State.Config.WhatsApp.SessionName)
-	store.DeviceProps.RequireFullSync = proto.Bool(false)
-	store.DeviceProps.PlatformType = waCompanionReg.DeviceProps_DESKTOP.Enum()
-	store.DeviceProps.HistorySyncConfig = &waCompanionReg.DeviceProps_HistorySyncConfig{
-		FullSyncDaysLimit:              proto.Uint32(0),
-		FullSyncSizeMbLimit:            proto.Uint32(0),
-		StorageQuotaMb:                 proto.Uint32(0),
-		RecentSyncDaysLimit:            proto.Uint32(0),
-		SupportCallLogHistory:          proto.Bool(false),
-		SupportBotUserAgentChatHistory: proto.Bool(false),
-		SupportCagReactionsAndPolls:    proto.Bool(false),
+	// Configure device as Android if client mode is set to android/android_business
+	isAndroidEmulation := cfg.WhatsApp.ClientMode == clientModeAndroid ||
+		cfg.WhatsApp.ClientMode == clientModeAndroidBusiness
+
+	if isAndroidEmulation {
+		store.DeviceProps.Os = proto.String("Android")
+		store.DeviceProps.RequireFullSync = proto.Bool(false)
+		store.DeviceProps.PlatformType = waCompanionReg.DeviceProps_ANDROID_PHONE.Enum()
+		store.DeviceProps.Version = &waCompanionReg.DeviceProps_AppVersion{
+			Primary:    proto.Uint32(2),
+			Secondary:  proto.Uint32(23),
+			Tertiary:   proto.Uint32(9),
+			Quaternary: proto.Uint32(0),
+		}
+		store.DeviceProps.HistorySyncConfig = &waCompanionReg.DeviceProps_HistorySyncConfig{
+			FullSyncDaysLimit:              proto.Uint32(0),
+			FullSyncSizeMbLimit:            proto.Uint32(0),
+			StorageQuotaMb:                 proto.Uint32(0),
+			RecentSyncDaysLimit:            proto.Uint32(0),
+			SupportCallLogHistory:          proto.Bool(false),
+			SupportBotUserAgentChatHistory: proto.Bool(false),
+			SupportCagReactionsAndPolls:    proto.Bool(false),
+		}
+
+		// Configure client payload as Android
+		var platform waWa6.ClientPayload_UserAgent_Platform
+		if cfg.WhatsApp.ClientMode == clientModeAndroidBusiness {
+			platform = waWa6.ClientPayload_UserAgent_SMB_ANDROID
+		} else {
+			platform = waWa6.ClientPayload_UserAgent_ANDROID
+		}
+		store.BaseClientPayload.UserAgent.Platform = platform.Enum()
+		store.BaseClientPayload.UserAgent.Device = proto.String("SM-G900F")
+		store.BaseClientPayload.UserAgent.Manufacturer = proto.String("Samsung")
+		store.BaseClientPayload.UserAgent.OsVersion = proto.String("14")
+		waVersion := store.GetWAVersion()
+		store.BaseClientPayload.UserAgent.AppVersion = &waWa6.ClientPayload_UserAgent_AppVersion{
+			Primary:   proto.Uint32(uint32(waVersion[0])),
+			Secondary: proto.Uint32(uint32(waVersion[1])),
+			Tertiary:  proto.Uint32(uint32(waVersion[2])),
+		}
+		store.BaseClientPayload.WebInfo = nil // Remove WebInfo as it's only for web
+
+		if cfg.WhatsApp.ClientMode == clientModeAndroidBusiness {
+			logger.Info("WhatsApp client configured to emulate Android phone (WhatsApp Business)")
+		} else {
+			logger.Info("WhatsApp client configured to emulate Android phone")
+		}
+	} else {
+		// Keep default Web configuration
+		store.DeviceProps.Os = proto.String(state.State.Config.WhatsApp.SessionName)
+		store.DeviceProps.RequireFullSync = proto.Bool(false)
+		store.DeviceProps.PlatformType = waCompanionReg.DeviceProps_DESKTOP.Enum()
+		store.DeviceProps.HistorySyncConfig = &waCompanionReg.DeviceProps_HistorySyncConfig{
+			FullSyncDaysLimit:              proto.Uint32(0),
+			FullSyncSizeMbLimit:            proto.Uint32(0),
+			StorageQuotaMb:                 proto.Uint32(0),
+			RecentSyncDaysLimit:            proto.Uint32(0),
+			SupportCallLogHistory:          proto.Bool(false),
+			SupportBotUserAgentChatHistory: proto.Bool(false),
+			SupportCagReactionsAndPolls:    proto.Bool(false),
+		}
+
+		logger.Info("WhatsApp client configured as Web client")
 	}
-	applyAndroidClientIdentity(cfg.WhatsApp.ClientMode)
 
 	container, err := sqlstore.New(context.Background(), state.State.Config.WhatsApp.LoginDatabase.Type,
 		state.State.Config.WhatsApp.LoginDatabase.URL, waDatabaseLogger)

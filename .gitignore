@@ -28,6 +28,7 @@ downloads/
 imports.go
 *.log
 watgbridge.service
+docker-compose.yml
 
 # Nix
 /result
