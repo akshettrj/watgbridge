@@ -118,6 +118,18 @@ func getContextInfo(msg *waE2E.Message) *waE2E.ContextInfo {
 	if ci := msg.GetPollCreationMessageV3().GetContextInfo(); ci != nil {
 		return ci
 	}
+	if ci := msg.GetButtonsMessage().GetContextInfo(); ci != nil {
+		return ci
+	}
+	if ci := msg.GetTemplateMessage().GetContextInfo(); ci != nil {
+		return ci
+	}
+	if ci := msg.GetInteractiveMessage().GetContextInfo(); ci != nil {
+		return ci
+	}
+	if ci := msg.GetListMessage().GetContextInfo(); ci != nil {
+		return ci
+	}
 	return nil
 }
 

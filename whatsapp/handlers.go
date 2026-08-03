@@ -3,6 +3,7 @@ package whatsapp
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"html"
 	"net/http"
@@ -68,6 +69,217 @@ func WhatsAppEventHandler(evt interface{}) {
 // handleMessageEvent processes an incoming *events.Message, checking for
 // edits, revokes and ephemeral settings before delegating to the
 // from-me / from-others handlers.
+// hoistAndExtractInteractive inspects a waE2E.Message to check if it contains
+// interactive/button structures, extracts their plain text representations (including button options),
+// and hoists any nested media (images, videos, documents, locations) to the root level of the message.
+func hoistAndExtractInteractive(msg *waE2E.Message) (string, bool) {
+	if msg == nil {
+		return "", false
+	}
+
+	var parts []string
+	var isDoc bool
+
+	// 1. ButtonsMessage
+	if bm := msg.GetButtonsMessage(); bm != nil {
+		if bm.GetText() != "" {
+			parts = append(parts, bm.GetText())
+		}
+		if bm.GetContentText() != "" {
+			parts = append(parts, bm.GetContentText())
+		}
+		if bm.GetFooterText() != "" {
+			parts = append(parts, "<i>"+bm.GetFooterText()+"</i>")
+		}
+
+		var btns []string
+		for _, btn := range bm.GetButtons() {
+			if btn.GetButtonText() != nil {
+				btns = append(btns, "🔘 "+btn.GetButtonText().GetDisplayText())
+			}
+		}
+		if len(btns) > 0 {
+			parts = append(parts, "\n"+strings.Join(btns, "\n"))
+		}
+
+		formattedText := strings.Join(parts, "\n")
+
+		// Hoist media from header
+		if bm.GetImageMessage() != nil {
+			msg.ImageMessage = bm.GetImageMessage()
+			msg.ImageMessage.Caption = proto.String(formattedText)
+		} else if bm.GetVideoMessage() != nil {
+			msg.VideoMessage = bm.GetVideoMessage()
+			msg.VideoMessage.Caption = proto.String(formattedText)
+		} else if bm.GetDocumentMessage() != nil {
+			msg.DocumentMessage = bm.GetDocumentMessage()
+			msg.DocumentMessage.Caption = proto.String(formattedText)
+			isDoc = true
+		} else if bm.GetLocationMessage() != nil {
+			msg.LocationMessage = bm.GetLocationMessage()
+		}
+
+		return formattedText, isDoc
+	}
+
+	// 2. TemplateMessage
+	if tm := msg.GetTemplateMessage(); tm != nil {
+		if hydrated := tm.GetHydratedTemplate(); hydrated != nil {
+			if titleText := hydrated.GetHydratedTitleText(); titleText != "" {
+				parts = append(parts, "<b>"+titleText+"</b>")
+			}
+
+			if hydrated.GetHydratedContentText() != "" {
+				parts = append(parts, hydrated.GetHydratedContentText())
+			}
+			if hydrated.GetHydratedFooterText() != "" {
+				parts = append(parts, "<i>"+hydrated.GetHydratedFooterText()+"</i>")
+			}
+
+			var btns []string
+			for _, btn := range hydrated.GetHydratedButtons() {
+				if q := btn.GetQuickReplyButton(); q != nil {
+					btns = append(btns, "🔘 "+q.GetDisplayText())
+				} else if u := btn.GetUrlButton(); u != nil {
+					btns = append(btns, fmt.Sprintf("🔗 <a href=\"%s\">%s</a>", u.GetURL(), u.GetDisplayText()))
+				} else if c := btn.GetCallButton(); c != nil {
+					btns = append(btns, fmt.Sprintf("📞 %s (%s)", c.GetDisplayText(), c.GetPhoneNumber()))
+				}
+			}
+			if len(btns) > 0 {
+				parts = append(parts, "\n"+strings.Join(btns, "\n"))
+			}
+
+			formattedText := strings.Join(parts, "\n")
+
+			// Hoist media from hydrated template
+			if hydrated.GetImageMessage() != nil {
+				msg.ImageMessage = hydrated.GetImageMessage()
+				msg.ImageMessage.Caption = proto.String(formattedText)
+			} else if hydrated.GetVideoMessage() != nil {
+				msg.VideoMessage = hydrated.GetVideoMessage()
+				msg.VideoMessage.Caption = proto.String(formattedText)
+			} else if hydrated.GetDocumentMessage() != nil {
+				msg.DocumentMessage = hydrated.GetDocumentMessage()
+				msg.DocumentMessage.Caption = proto.String(formattedText)
+				isDoc = true
+			} else if hydrated.GetLocationMessage() != nil {
+				msg.LocationMessage = hydrated.GetLocationMessage()
+			}
+
+			return formattedText, isDoc
+		}
+	}
+
+	// 3. InteractiveMessage
+	if im := msg.GetInteractiveMessage(); im != nil {
+		if header := im.GetHeader(); header != nil {
+			if header.GetTitle() != "" {
+				parts = append(parts, "<b>"+header.GetTitle()+"</b>")
+			}
+			if header.GetSubtitle() != "" {
+				parts = append(parts, "<i>"+header.GetSubtitle()+"</i>")
+			}
+		}
+
+		if im.GetBody() != nil && im.GetBody().GetText() != "" {
+			parts = append(parts, im.GetBody().GetText())
+		}
+		if im.GetFooter() != nil && im.GetFooter().GetText() != "" {
+			parts = append(parts, "<i>"+im.GetFooter().GetText()+"</i>")
+		}
+
+		// Native flow buttons
+		if nf := im.GetNativeFlowMessage(); nf != nil {
+			var btns []string
+			for _, btn := range nf.GetButtons() {
+				label := btn.GetName()
+				if btn.GetButtonParamsJSON() != "" {
+					var params struct {
+						DisplayText string `json:"display_text"`
+						Title       string `json:"title"`
+					}
+					if err := json.Unmarshal([]byte(btn.GetButtonParamsJSON()), &params); err == nil {
+						if params.DisplayText != "" {
+							label = params.DisplayText
+						} else if params.Title != "" {
+							label = params.Title
+						}
+					}
+				}
+				btns = append(btns, "🔘 "+label)
+			}
+			if len(btns) > 0 {
+				parts = append(parts, "\n"+strings.Join(btns, "\n"))
+			}
+		}
+
+		formattedText := strings.Join(parts, "\n")
+
+		if header := im.GetHeader(); header != nil {
+			// Hoist media from header
+			if header.GetImageMessage() != nil {
+				msg.ImageMessage = header.GetImageMessage()
+				msg.ImageMessage.Caption = proto.String(formattedText)
+			} else if header.GetVideoMessage() != nil {
+				msg.VideoMessage = header.GetVideoMessage()
+				msg.VideoMessage.Caption = proto.String(formattedText)
+			} else if header.GetDocumentMessage() != nil {
+				msg.DocumentMessage = header.GetDocumentMessage()
+				msg.DocumentMessage.Caption = proto.String(formattedText)
+				isDoc = true
+			} else if header.GetLocationMessage() != nil {
+				msg.LocationMessage = header.GetLocationMessage()
+			}
+		}
+
+		return formattedText, isDoc
+	}
+
+	// 4. ListMessage
+	if lm := msg.GetListMessage(); lm != nil {
+		if lm.GetTitle() != "" {
+			parts = append(parts, "<b>"+lm.GetTitle()+"</b>")
+		}
+		if lm.GetDescription() != "" {
+			parts = append(parts, lm.GetDescription())
+		}
+		if lm.GetFooterText() != "" {
+			parts = append(parts, "<i>"+lm.GetFooterText()+"</i>")
+		}
+
+		var sections []string
+		for _, sect := range lm.GetSections() {
+			sectText := ""
+			if sect.GetTitle() != "" {
+				sectText += "📝 <b>" + sect.GetTitle() + "</b>\n"
+			} else {
+				sectText += "📝 <b>Options</b>\n"
+			}
+			var rows []string
+			for _, row := range sect.GetRows() {
+				rowText := "• " + row.GetTitle()
+				if row.GetDescription() != "" {
+					rowText += " (" + row.GetDescription() + ")"
+				}
+				rows = append(rows, rowText)
+			}
+			sectText += strings.Join(rows, "\n")
+			sections = append(sections, sectText)
+		}
+		if len(sections) > 0 {
+			parts = append(parts, "\n"+strings.Join(sections, "\n\n"))
+		}
+
+		return strings.Join(parts, "\n"), false
+	}
+
+	return "", false
+}
+
+// handleMessageEvent processes an incoming *events.Message, checking for
+// edits, revokes and ephemeral settings before delegating to the
+// from-me / from-others handlers.
 func handleMessageEvent(cfg *state.Config, v *events.Message) {
 	isEdited := false
 	if protoMsg := v.Message.GetProtocolMessage(); protoMsg != nil &&
@@ -94,27 +306,68 @@ func handleMessageEvent(cfg *state.Config, v *events.Message) {
 	// Extract the plain-text body
 	text := ""
 	isDocument := false
+
+	// First, hoist and extract interactive components from the root message and any edited message
+	interactiveText, isInteractiveDoc := hoistAndExtractInteractive(v.Message)
+	if interactiveText != "" {
+		text = interactiveText
+	}
+	if isInteractiveDoc {
+		isDocument = true
+	}
+
 	if isEdited {
 		msg := v.Message.GetProtocolMessage().GetEditedMessage()
-		if msg.GetImageMessage() != nil {
-			text = msg.GetImageMessage().GetCaption()
-			isDocument = true
-		} else if msg.GetVideoMessage() != nil {
-			text = msg.GetVideoMessage().GetCaption()
-			isDocument = true
-		} else if msg.GetDocumentMessage() != nil {
-			text = msg.GetDocumentMessage().GetFileName()
-			isDocument = true
-		} else if extText := msg.GetExtendedTextMessage().GetText(); extText != "" {
-			text = extText
-		} else {
-			text = msg.GetConversation()
+		if msg != nil {
+			editedInteractiveText, isEditedInteractiveDoc := hoistAndExtractInteractive(msg)
+			if editedInteractiveText != "" {
+				text = editedInteractiveText
+			}
+			if isEditedInteractiveDoc {
+				isDocument = true
+			}
+
+			if msg.GetImageMessage() != nil {
+				text = msg.GetImageMessage().GetCaption()
+				isDocument = true
+			} else if msg.GetVideoMessage() != nil {
+				text = msg.GetVideoMessage().GetCaption()
+				isDocument = true
+			} else if msg.GetDocumentMessage() != nil {
+				text = msg.GetDocumentMessage().GetFileName()
+				isDocument = true
+			} else if extText := msg.GetExtendedTextMessage().GetText(); extText != "" {
+				if text == "" {
+					text = extText
+				}
+			} else {
+				if text == "" {
+					text = msg.GetConversation()
+				}
+			}
 		}
 	} else {
-		if extText := v.Message.GetExtendedTextMessage().GetText(); extText != "" {
-			text = extText
+		if v.Message.GetImageMessage() != nil {
+			if text == "" {
+				text = v.Message.GetImageMessage().GetCaption()
+			}
+		} else if v.Message.GetVideoMessage() != nil {
+			if text == "" {
+				text = v.Message.GetVideoMessage().GetCaption()
+			}
+		} else if v.Message.GetDocumentMessage() != nil {
+			if text == "" {
+				text = v.Message.GetDocumentMessage().GetFileName()
+			}
+			isDocument = true
+		} else if extText := v.Message.GetExtendedTextMessage().GetText(); extText != "" {
+			if text == "" {
+				text = extText
+			}
 		} else {
-			text = v.Message.GetConversation()
+			if text == "" {
+				text = v.Message.GetConversation()
+			}
 		}
 	}
 
