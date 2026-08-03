@@ -1,8 +1,5 @@
 # WhatsApp-Telegram-Bridge
 
-Despite the name, its not exactly a "bridge". It forwards messages from WhatsApp to Telegram and you can reply to them
-from Telegram.
-
 <a href="https://t.me/PropheCProjects">
   <img src="https://img.shields.io/badge/Updates_Channel-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white"></img>
 </a>&nbsp; &nbsp;
@@ -10,70 +7,91 @@ from Telegram.
   <img src="https://img.shields.io/badge/Discussion_Group-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white"></img>
 </a>&nbsp; &nbsp;
 <a href="https://youtu.be/xc75XLoTmA4">
-  <img src="https://img.shields.io/badge/YouTube-FF0000?style=for-the-badge&logo=youtube&logoColor=white"</img>
+  <img src="https://img.shields.io/badge/YouTube-FF0000?style=for-the-badge&logo=youtube&logoColor=white"></img>
 </a>
 
-# DISCLAIMER !!!
+A message-forwarding bridge that connects WhatsApp and Telegram. It allows you to receive WhatsApp messages in a Telegram group (organized by topics/threads) and reply to them directly from Telegram.
 
-This project is in no way affiliated with WhatsApp or Telegram. Using this can also lead to your account getting banned by WhatsApp so use at your own risk.
+## Disclaimer
 
-## Sample Screenshots
+This project is in no way affiliated with WhatsApp or Telegram. Using this tool may violate WhatsApp's Terms of Service and could lead to your account getting banned. Use at your own risk.
+
+## Screenshots
 
 <p align="center">
-  <img src="./assets/telegram_side_sample.png" width="350" alt="Telegram Side">
-  <img src="./assets/whatsapp_side_sample.jpg" width="350" alt="WhatsApp Side">
+  <img src="./assets/telegram_side_sample.png" width="350" alt="Telegram Side Preview">
+  <img src="./assets/whatsapp_side_sample.jpg" width="350" alt="WhatsApp Side Preview">
 </p>
 
-## Features and Design Choices
+## Key Features
 
-- All messages from various chats (on WhatsApp) are sent to different topics/threads within the same target group (on Telegram)
-- Configuration options available to disable different types of updates from WhatsApp
-- Can reply and send new messages from Telegram
-- Can tag all people using @all or @everyone. Others can also use this in group chats which you specify in configuration file
-- Can react to messages by replying with single instance of the desired emoji
-- Supports static stickers from both ends
-- Can send Animated (TGS) stickers from Telegram
-- Video stickers from Telegram side are supported
-- Video stickers from WhatsApp side are currently forwarded as GIFs to Telegram
-
-## Bugs and TODO
-
-- Document naming is messed up and not consistent on Telegram, have to find a way to always send same names
-
-PRs are welcome :)
-
+* **Topic-Based Organization:** Each WhatsApp chat is mapped to a dedicated topic/thread within a single Telegram supergroup.
+* **Two-Way Message Editing:** Edit messages or update image/video captions on Telegram to mirror them to WhatsApp, and vice versa.
+* **Flexible Client Emulation:** Emulate an Android Phone or Android Business client to bypass WhatsApp's web client restrictions, enabling receipt and decryption of view-once media.
+* **Robust Media Support:** 
+  * Static sticker bridging in both directions.
+  * Animated sticker conversion (WEBM and WebP formats supported).
+  * Auto-transcoding of Telegram audio files into WhatsApp-compatible formats.
+  * Optional configuration to bridge WhatsApp stickers and images as uncompressed documents.
+* **Reactions and Receipts:** 
+  * Reply to bridged messages with a single emoji on Telegram to react on WhatsApp.
+  * Automatic read receipt tracking with a `/info` command to check delivery status.
+* **Group Management:** List group members with their phone numbers using `/findgroupmembers` and configure `@all` / `@everyone` tags for specific groups.
+* **Automated Backups:** Configure automatic database backups using cron schedule expressions.
 
 ## Installation
 
-- Make a supergroup (enable message history for new members) with topics enabled
-- Add your bot in the group, make it an admin with permissions to `Manage topics`
-- Install `git`, `gcc` and `golang`, `ffmpeg` , `imagemagick` (optional), on your system
-- Clone this repository anywhere and navigate to the cloned directory
-- Run `go build`
-- Copy `sample_config.yaml` to `config.yaml` and fill the values, there are comments to help you.
-- Optional: configure automatic DB backups in `config.yaml` via `backup.mode` (`none`, `private`, `thread`) and `backup.cron_schedule`.
-- Execute the binary by running `./watgbridge`
-- On first run, it will show QR code for logging into WhatsApp that can by scanned by the WhatsApp app in `Linked devices`
-- It is recommended to restart the bot after every few hours becuase WhatsApp likes to disconnect a lot. So a sample Systemd service file has been provided (`watgbridge.service.sample`). Edit the `User` and `ExecStart` according to your setup:
-    - If you do not have local bot API server, remove `tgbotapi.service` from the `After` key in `Unit` section.
-    - This service file will restart the bot every 24 hours
+### Prerequisites
 
-## Docker
+You will need the following installed on your system:
+* Git
+* GCC and Go (1.25 or later recommended)
+* Ffmpeg
+* ImageMagick (optional)
 
-Before starting the container, copy `sample_config.yaml` to `config.yaml` and fill in the values you need. Keep these files in the same folder as the project so the bot can persist its state:
+### Setup Steps
 
-- `config.yaml`
-- `gobot.sqlite.db`
-- `wawebstore.db`
+1. Create a Telegram supergroup with topics enabled.
+2. Add your Telegram bot to the group and promote it to administrator with permissions to manage topics.
+3. Clone this repository:
+   ```bash
+   git clone https://github.com/akshettrj/watgbridge.git
+   cd watgbridge
+   ```
+4. Build the application:
+   ```bash
+   go build
+   ```
+5. Copy the configuration template and fill in your settings:
+   ```bash
+   cp sample_config.yaml config.yaml
+   ```
+6. Run the application:
+   ```bash
+   ./watgbridge
+   ```
+7. On the first run, scan the QR code printed in the terminal or sent to your Telegram owner chat using your WhatsApp mobile app under "Linked devices".
 
-Pull the image:
+It is recommended to configure a supervisor/init service to automatically restart the bot if it disconnects. A template systemd service file is provided in `watgbridge.service.sample`.
 
+## Running with Docker
+
+You can run the bridge inside a Docker container using the pre-built images or Docker Compose.
+
+### Prerequisites
+
+Create a folder for configuration and database files, and place your configured `config.yaml` in it. The container will generate and write to the following database files:
+* `gobot.sqlite.db`
+* `wawebstore.db`
+
+### Docker Run
+
+Pull the official image:
 ```bash
-docker pull ghcr.io/rianfc/watgbridge:last
+docker pull ghcr.io/akshettrj/watgbridge:last
 ```
 
 Run the container:
-
 ```bash
 docker run -d \
   --name watgbridge \
@@ -82,17 +100,12 @@ docker run -d \
   -v $(pwd)/gobot.sqlite.db:/go/src/watgbridge/gobot.sqlite.db \
   -v $(pwd)/wawebstore.db:/go/src/watgbridge/wawebstore.db \
   -v $(pwd)/.git:/go/src/watgbridge/.git \
-  ghcr.io/rianfc/watgbridge:last
+  ghcr.io/akshettrj/watgbridge:last
 ```
 
-Check the logs with:
+### Docker Compose
 
+A sample compose file is available at `docker-compose.yml.sample`. You can copy it to `docker-compose.yml` and adjust the volumes or environment variables as needed, then start it using:
 ```bash
-docker logs -f watgbridge
-```
-
-To stop it, run:
-
-```bash
-docker stop watgbridge
+docker compose up -d
 ```
