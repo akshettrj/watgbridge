@@ -52,7 +52,7 @@ func (bc *bridgeContext) sendFallbackText(extraText string) {
 		bc.cfg.Telegram.TargetChatID,
 		bc.bridgedText+extraText,
 		&gotgbot.SendMessageOpts{
-			ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+			ReplyParameters: utils.TgMakeReplyParameters(bc.replyToMsgId, 0),
 			MessageThreadId: bc.threadId,
 		},
 	)
