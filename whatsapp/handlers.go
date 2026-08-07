@@ -401,7 +401,7 @@ func (bc *bridgeContext) handleImageMessage(v *events.Message) {
 			&gotgbot.FileReader{Name: fileName, Data: bytes.NewReader(imageBytes)},
 			&gotgbot.SendDocumentOpts{
 				Caption:         bc.bridgedText,
-				ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+				ReplyParameters: utils.TgMakeReplyParameters(bc.replyToMsgId, 0),
 				MessageThreadId: bc.threadId,
 			})
 		bc.savePair(sentMsg)
@@ -412,7 +412,7 @@ func (bc *bridgeContext) handleImageMessage(v *events.Message) {
 		&gotgbot.FileReader{Data: bytes.NewReader(imageBytes)},
 		&gotgbot.SendPhotoOpts{
 			Caption:         bc.bridgedText,
-			ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+			ReplyParameters: utils.TgMakeReplyParameters(bc.replyToMsgId, 0),
 			HasSpoiler:      imageMsg.GetViewOnce(),
 			MessageThreadId: bc.threadId,
 		})
@@ -446,7 +446,7 @@ func (bc *bridgeContext) handleGifMessage(v *events.Message) {
 		&gotgbot.FileReader{Name: "animation.gif", Data: bytes.NewReader(gifBytes)},
 		&gotgbot.SendAnimationOpts{
 			Caption:         bc.bridgedText,
-			ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+			ReplyParameters: utils.TgMakeReplyParameters(bc.replyToMsgId, 0),
 			MessageThreadId: bc.threadId,
 		})
 	bc.savePair(sentMsg)
@@ -493,14 +493,14 @@ func (bc *bridgeContext) handleVideoMessage(v *events.Message) {
 		sentMsg, _ = bc.tgBot.SendVideoNote(bc.cfg.Telegram.TargetChatID, &fileToSend,
 			&gotgbot.SendVideoNoteOpts{
 				ReplyMarkup:     bc.replyMarkup,
-				ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+				ReplyParameters: utils.TgMakeReplyParameters(bc.replyToMsgId, 0),
 				MessageThreadId: bc.threadId,
 			})
 	} else {
 		sentMsg, _ = bc.tgBot.SendVideo(bc.cfg.Telegram.TargetChatID, &fileToSend,
 			&gotgbot.SendVideoOpts{
 				Caption:         bc.bridgedText,
-				ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+				ReplyParameters: utils.TgMakeReplyParameters(bc.replyToMsgId, 0),
 				HasSpoiler:      videoMsg.GetViewOnce(),
 				MessageThreadId: bc.threadId,
 			})
@@ -534,7 +534,7 @@ func (bc *bridgeContext) handleVoiceNoteMessage(v *events.Message) {
 		&gotgbot.SendAudioOpts{
 			Caption:         bc.bridgedText,
 			Duration:        int64(audioMsg.GetSeconds()),
-			ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+			ReplyParameters: utils.TgMakeReplyParameters(bc.replyToMsgId, 0),
 			MessageThreadId: bc.threadId,
 		})
 	bc.savePair(sentMsg)
@@ -566,7 +566,7 @@ func (bc *bridgeContext) handleAudioMessage(v *events.Message) {
 		&gotgbot.SendAudioOpts{
 			Caption:         bc.bridgedText,
 			Duration:        int64(audioMsg.GetSeconds()),
-			ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+			ReplyParameters: utils.TgMakeReplyParameters(bc.replyToMsgId, 0),
 			MessageThreadId: bc.threadId,
 		})
 	bc.savePair(sentMsg)
@@ -599,7 +599,7 @@ func (bc *bridgeContext) handleDocumentMessage(v *events.Message) {
 		&gotgbot.FileReader{Name: documentMsg.GetFileName(), Data: bytes.NewReader(documentBytes)},
 		&gotgbot.SendDocumentOpts{
 			Caption:         bc.bridgedText,
-			ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+			ReplyParameters: utils.TgMakeReplyParameters(bc.replyToMsgId, 0),
 			MessageThreadId: bc.threadId,
 		})
 	bc.savePair(sentMsg)
@@ -637,7 +637,7 @@ func (bc *bridgeContext) handleStickerMessage(v *events.Message) {
 		sentMsg, _ := bc.tgBot.SendDocument(bc.cfg.Telegram.TargetChatID,
 			&gotgbot.FileReader{Name: "sticker." + stickerExt, Data: bytes.NewReader(stickerBytes)},
 			&gotgbot.SendDocumentOpts{
-				ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+				ReplyParameters: utils.TgMakeReplyParameters(bc.replyToMsgId, 0),
 				MessageThreadId: bc.threadId,
 				ReplyMarkup:     bc.replyMarkup,
 			})
@@ -652,7 +652,7 @@ func (bc *bridgeContext) handleStickerMessage(v *events.Message) {
 			sentMsg, _ := bc.tgBot.SendSticker(bc.cfg.Telegram.TargetChatID,
 				&gotgbot.FileReader{Name: "sticker.webm", Data: bytes.NewReader(webmBytes)},
 				&gotgbot.SendStickerOpts{
-					ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+					ReplyParameters: utils.TgMakeReplyParameters(bc.replyToMsgId, 0),
 					MessageThreadId: bc.threadId,
 					ReplyMarkup:     bc.replyMarkup,
 				})
@@ -666,7 +666,7 @@ func (bc *bridgeContext) handleStickerMessage(v *events.Message) {
 				&gotgbot.FileReader{Name: "animation.gif", Data: bytes.NewReader(gifBytes)},
 				&gotgbot.SendAnimationOpts{
 					Caption:         bc.bridgedText,
-					ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+					ReplyParameters: utils.TgMakeReplyParameters(bc.replyToMsgId, 0),
 					MessageThreadId: bc.threadId,
 					ReplyMarkup:     bc.replyMarkup,
 				})
@@ -679,7 +679,7 @@ func (bc *bridgeContext) handleStickerMessage(v *events.Message) {
 	sentMsg, _ := bc.tgBot.SendSticker(bc.cfg.Telegram.TargetChatID,
 		&gotgbot.FileReader{Data: bytes.NewReader(stickerBytes)},
 		&gotgbot.SendStickerOpts{
-			ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+			ReplyParameters: utils.TgMakeReplyParameters(bc.replyToMsgId, 0),
 			MessageThreadId: bc.threadId,
 			ReplyMarkup:     bc.replyMarkup,
 		})
@@ -705,7 +705,7 @@ func (bc *bridgeContext) handleContactMessage(v *events.Message) {
 		card.PreferredValue(goVCard.FieldTelephone), contactMsg.GetDisplayName(),
 		&gotgbot.SendContactOpts{
 			Vcard:           contactMsg.GetVcard(),
-			ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+			ReplyParameters: utils.TgMakeReplyParameters(bc.replyToMsgId, 0),
 			MessageThreadId: bc.threadId,
 			ReplyMarkup:     bc.replyMarkup,
 		})
@@ -727,7 +727,7 @@ func (bc *bridgeContext) handleContactsArrayMessage(v *events.Message) {
 			bc.tgBot.SendMessage(bc.cfg.Telegram.TargetChatID,
 				"Couldn't send the vCard as failed to parse it",
 				&gotgbot.SendMessageOpts{
-					ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+					ReplyParameters: utils.TgMakeReplyParameters(bc.replyToMsgId, 0),
 					MessageThreadId: bc.threadId,
 				})
 			continue
@@ -737,7 +737,7 @@ func (bc *bridgeContext) handleContactsArrayMessage(v *events.Message) {
 			card.PreferredValue(goVCard.FieldTelephone), contactMsg.GetDisplayName(),
 			&gotgbot.SendContactOpts{
 				Vcard:           contactMsg.GetVcard(),
-				ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+				ReplyParameters: utils.TgMakeReplyParameters(bc.replyToMsgId, 0),
 				MessageThreadId: bc.threadId,
 				ReplyMarkup:     bc.replyMarkup,
 			})
@@ -757,7 +757,7 @@ func (bc *bridgeContext) handleLocationMessage(v *events.Message) {
 		locationMsg.GetDegreesLatitude(), locationMsg.GetDegreesLongitude(),
 		&gotgbot.SendLocationOpts{
 			HorizontalAccuracy: float64(locationMsg.GetAccuracyInMeters()),
-			ReplyParameters:    &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+			ReplyParameters:    utils.TgMakeReplyParameters(bc.replyToMsgId, 0),
 			MessageThreadId:    bc.threadId,
 		})
 	bc.savePair(sentMsg)
@@ -773,7 +773,7 @@ func (bc *bridgeContext) handleLiveLocationMessage(v *events.Message) {
 
 	sentMsg, _ := bc.tgBot.SendMessage(bc.cfg.Telegram.TargetChatID, bc.bridgedText,
 		&gotgbot.SendMessageOpts{
-			ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+			ReplyParameters: utils.TgMakeReplyParameters(bc.replyToMsgId, 0),
 			MessageThreadId: bc.threadId,
 		})
 	bc.savePair(sentMsg)
@@ -803,7 +803,7 @@ func (bc *bridgeContext) handlePollMessage(v *events.Message) {
 
 	sentMsg, _ := bc.tgBot.SendMessage(bc.cfg.Telegram.TargetChatID, bc.bridgedText,
 		&gotgbot.SendMessageOpts{
-			ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+			ReplyParameters: utils.TgMakeReplyParameters(bc.replyToMsgId, 0),
 			MessageThreadId: bc.threadId,
 		})
 	bc.savePair(sentMsg)
@@ -829,7 +829,7 @@ func (bc *bridgeContext) handleEventMessage(v *events.Message) {
 
 	sentMsg, _ := bc.tgBot.SendMessage(bc.cfg.Telegram.TargetChatID, bc.bridgedText,
 		&gotgbot.SendMessageOpts{
-			ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+			ReplyParameters: utils.TgMakeReplyParameters(bc.replyToMsgId, 0),
 			MessageThreadId: bc.threadId,
 		})
 	bc.savePair(sentMsg)
@@ -883,7 +883,7 @@ func (bc *bridgeContext) handleTextOrReaction(text string, v *events.Message, is
 	} else {
 		sentMsg, err = bc.tgBot.SendMessage(bc.cfg.Telegram.TargetChatID, bc.bridgedText,
 			&gotgbot.SendMessageOpts{
-				ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+				ReplyParameters: utils.TgMakeReplyParameters(bc.replyToMsgId, 0),
 				MessageThreadId: bc.threadId,
 			})
 	}
