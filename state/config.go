@@ -22,27 +22,27 @@ type Config struct {
 	Architecture       string `yaml:"architecture"`
 
 	Telegram struct {
-		BotToken            string  `yaml:"bot_token"`
-		APIURL              string  `yaml:"api_url"`
-		SudoUsersID         []int64 `yaml:"sudo_users_id"`
-		OwnerID             int64   `yaml:"owner_id"`
-		TargetChatID        int64   `yaml:"target_chat_id"`
-		SelfHostedAPI       bool    `yaml:"self_hosted_api"`
-		SendImagesAsFile    bool    `yaml:"send_images_as_file"`
+		BotToken             string  `yaml:"bot_token"`
+		APIURL               string  `yaml:"api_url"`
+		SudoUsersID          []int64 `yaml:"sudo_users_id"`
+		OwnerID              int64   `yaml:"owner_id"`
+		TargetChatID         int64   `yaml:"target_chat_id"`
+		SelfHostedAPI        bool    `yaml:"self_hosted_api"`
+		SendImagesAsFile     bool    `yaml:"send_images_as_file"`
 		SendStickersAsFile   bool    `yaml:"send_stickers_as_file"`
-		SkipVideoStickers   bool    `yaml:"skip_video_stickers"`
-		SkipSettingCommands bool    `yaml:"skip_setting_commands"`
-		SendMyPresence      bool    `yaml:"send_my_presence"`
-		SendMyReadReceipts  bool    `yaml:"send_my_read_receipts"`
-		SilentConfirmation  bool    `yaml:"silent_confirmation"`
-		ConfirmationType    string  `yaml:"confirmation_type"`
-		EmojiConfirmation   *bool   `yaml:"emoji_confirmation"`
-		SkipStartupMessage  bool    `yaml:"skip_startup_message"`
-		SpoilerViewOnce     bool    `yaml:"spoiler_as_viewonce"`
-		Reactions           bool    `yaml:"reactions"`
-		TagAllEnabled       bool    `yaml:"tag_all_enabled"`
-		AutoReactWhenAllRead bool   `yaml:"auto_react_when_all_read"`
-		AutoReactRemoveAfter int64  `yaml:"auto_react_remove_after_seconds"`
+		SkipVideoStickers    bool    `yaml:"skip_video_stickers"`
+		SkipSettingCommands  bool    `yaml:"skip_setting_commands"`
+		SendMyPresence       bool    `yaml:"send_my_presence"`
+		SendMyReadReceipts   bool    `yaml:"send_my_read_receipts"`
+		SilentConfirmation   bool    `yaml:"silent_confirmation"`
+		ConfirmationType     string  `yaml:"confirmation_type"`
+		EmojiConfirmation    *bool   `yaml:"emoji_confirmation"`
+		SkipStartupMessage   bool    `yaml:"skip_startup_message"`
+		SpoilerViewOnce      bool    `yaml:"spoiler_as_viewonce"`
+		Reactions            bool    `yaml:"reactions"`
+		TagAllEnabled        bool    `yaml:"tag_all_enabled"`
+		AutoReactWhenAllRead bool    `yaml:"auto_react_when_all_read"`
+		AutoReactRemoveAfter int64   `yaml:"auto_react_remove_after_seconds"`
 	} `yaml:"telegram"`
 
 	WhatsApp struct {
@@ -66,6 +66,8 @@ type Config struct {
 		SkipVoiceNotes                 bool     `yaml:"skip_voice_notes"`
 		SkipAudios                     bool     `yaml:"skip_audios"`
 		SkipStatus                     bool     `yaml:"skip_status"`
+		StatusBackgroundColor          string   `yaml:"status_background_color"`
+		StatusFont                     string   `yaml:"status_font"`
 		SkipStickers                   bool     `yaml:"skip_stickers"`
 		SkipContacts                   bool     `yaml:"skip_contacts"`
 		SkipLocations                  bool     `yaml:"skip_locations"`
@@ -77,7 +79,6 @@ type Config struct {
 		WhatsmeowDebugMode             bool     `yaml:"whatsmeow_debug_mode"`
 		SendMyMessagesFromOtherDevices bool     `yaml:"send_my_messages_from_other_devices"`
 		CreateThreadForInfoUpdates     bool     `yaml:"create_thread_for_info_updates"`
-
 	} `yaml:"whatsapp"`
 
 	Database map[string]string `yaml:"database"`
@@ -170,4 +171,7 @@ func (cfg *Config) SetDefaults() {
 	cfg.Backup.Mode = "none"
 	cfg.Backup.CronSchedule = "0 0 * * *"
 	cfg.Backup.ThreadName = "Database Backups"
+
+	cfg.WhatsApp.StatusBackgroundColor = "075E54"
+	cfg.WhatsApp.StatusFont = "SYSTEM"
 }

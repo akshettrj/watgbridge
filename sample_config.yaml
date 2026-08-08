@@ -72,6 +72,8 @@ whatsapp:
   skip_audios: false
   skip_stickers: false
   skip_status: false
+  status_background_color: 075E54      # Background color for /addstatus text statuses (hex RRGGBB or AARRGGBB; supported presets: red CC0101, orange E0592F, yellow F6C120, green 27AD24, blue 3CB1DF, purple 6A3CAF, rose E8B8B4)
+  status_font: SYSTEM                   # Font for /addstatus text statuses: SYSTEM, SYSTEM_TEXT, FB_SCRIPT, SYSTEM_BOLD, MORNINGBREEZE_REGULAR, CALISTOGA_REGULAR, EXO2_EXTRABOLD, COURIERPRIME_BOLD
   skip_contacts: false
   skip_locations: false
   skip_profile_picture_updates: false

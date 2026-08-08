@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -122,6 +123,14 @@ func AddTelegramHandlers() {
 		waTgBridgeCommand{
 			handlers.NewCommand("send", SendToWhatsAppHandler),
 			"Send a message to WhatsApp",
+		},
+		waTgBridgeCommand{
+			handlers.NewCommand("addstatus", AddStatusCommandHandler),
+			"Post a WhatsApp status update (DM only)",
+		},
+		waTgBridgeCommand{
+			handlers.NewCommand("delstatus", DeleteStatusCommandHandler),
+			"Delete the most recently posted WhatsApp status (DM only)",
 		},
 		waTgBridgeCommand{
 			handlers.NewCommand("info", MessageInfoCommandHandler),
@@ -1064,6 +1073,86 @@ func SendToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 	}
 
 	return utils.TgSendToWhatsApp(b, c, msgToForward, msgToReplyTo, waChatJID, participantID, stanzaID, "", false)
+}
+
+func AddStatusCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
+	if !utils.TgUpdateIsAuthorized(b, c) {
+		return nil
+	}
+
+	if c.EffectiveChat.Type != gotgbot.ChatTypePrivate {
+		_, err := utils.TgReplyTextByContext(b, c, "The command can only be used in the bot's DM", nil, false)
+		return err
+	}
+
+	usageString := "Usage:\n" +
+		"<code>/addstatus &lt;text&gt;</code> to post a text status\n" +
+		"or send a photo/video/audio with the caption <code>/addstatus</code>"
+
+	msg := c.EffectiveMessage
+	statusText := utils.TgStatusTextForWhatsApp(msg)
+
+	if msg.Animation != nil || msg.Document != nil {
+		_, err := utils.TgReplyTextByContext(b, c, "GIF and document statuses are not supported", nil, false)
+		return err
+	}
+
+	if msg.Photo == nil && msg.Video == nil && msg.Voice == nil && msg.Audio == nil && statusText == "" {
+		_, err := utils.TgReplyTextByContext(b, c, usageString, nil, false)
+		return err
+	}
+
+	sentMsg, err := utils.WaSendStatus(b, msg, statusText, c.UpdateId)
+	if err != nil {
+		return utils.TgReplyWithErrorByContext(b, c, "Failed to post WhatsApp status", err)
+	}
+
+	if err := database.StatusAdd(sentMsg.ID, time.Now()); err != nil {
+		log.Printf("[telegram] failed to store status message ID in database: %s\n", err)
+	}
+
+	_, err = utils.TgReplyTextByContext(b, c,
+		fmt.Sprintf("Successfully posted WhatsApp status (message ID: <code>%s</code>)", html.EscapeString(sentMsg.ID)), nil, false)
+	return err
+}
+
+func DeleteStatusCommandHandler(b *gotgbot.Bot, c *ext.Context) error {
+	if !utils.TgUpdateIsAuthorized(b, c) {
+		return nil
+	}
+
+	if c.EffectiveChat.Type != gotgbot.ChatTypePrivate {
+		_, err := utils.TgReplyTextByContext(b, c, "The command can only be used in the bot's DM", nil, false)
+		return err
+	}
+
+	waClient := state.State.WhatsAppClient
+	if waClient == nil {
+		return utils.TgReplyWithErrorByContext(b, c, "Failed to delete WhatsApp status", fmt.Errorf("WhatsApp client is not connected"))
+	}
+
+	latestStatus, found, err := database.StatusGetLatest()
+	if err != nil {
+		return utils.TgReplyWithErrorByContext(b, c, "Failed to retrieve last status", err)
+	}
+	if !found {
+		_, err = utils.TgReplyTextByContext(b, c, "No status has been posted yet", nil, false)
+		return err
+	}
+
+	revokeMessage := waClient.BuildRevoke(waTypes.StatusBroadcastJID, waTypes.EmptyJID, latestStatus.WaMsgId)
+	_, err = waClient.SendMessage(context.Background(), waTypes.StatusBroadcastJID, revokeMessage)
+	if err != nil {
+		return utils.TgReplyWithErrorByContext(b, c, "Failed to delete WhatsApp status", err)
+	}
+
+	if err := database.StatusDelete(latestStatus.WaMsgId); err != nil {
+		log.Printf("[telegram] failed to remove status record from database: %s\n", err)
+	}
+
+	_, err = utils.TgReplyTextByContext(b, c,
+		fmt.Sprintf("Successfully deleted WhatsApp status (message ID: <code>%s</code>)", html.EscapeString(latestStatus.WaMsgId)), nil, false)
+	return err
 }
 
 func RevokeCommandHandler(b *gotgbot.Bot, c *ext.Context) error {

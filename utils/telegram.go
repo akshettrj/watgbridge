@@ -160,6 +160,66 @@ func TgMessageTextForWhatsApp(msg *gotgbot.Message) string {
 	return ""
 }
 
+func TgStatusTextForWhatsApp(msg *gotgbot.Message) string {
+	if msg == nil {
+		return ""
+	}
+
+	var text string
+	var entities []gotgbot.ParsedMessageEntity
+	if msg.Text != "" {
+		text = msg.Text
+		entities = msg.ParseEntities()
+	} else if msg.Caption != "" {
+		text = msg.Caption
+		entities = msg.ParseCaptionEntities()
+	} else {
+		return ""
+	}
+
+	// Skip the leading command token (e.g. /addstatus or /addstatus@bot)
+	skipChars := strings.IndexAny(text, " \t\n\v\f\r")
+	if skipChars == -1 {
+		skipChars = len(text)
+	}
+
+	return tgWhatsAppTextWithSkippedPrefix(text, entities, skipChars)
+}
+
+func tgWhatsAppTextWithSkippedPrefix(text string, entities []gotgbot.ParsedMessageEntity, skipChars int) string {
+	if skipChars < 0 || skipChars >= len(text) {
+		return ""
+	}
+
+	rest := text[skipChars:]
+	trimmed := strings.TrimLeft(rest, " \t")
+	offsetAdjust := skipChars + (len(rest) - len(trimmed))
+	if trimmed == "" {
+		return ""
+	}
+
+	adjusted := make([]gotgbot.ParsedMessageEntity, 0, len(entities))
+	for _, entity := range entities {
+		entityEnd := entity.Offset + entity.Length
+		if entityEnd <= int64(offsetAdjust) {
+			continue
+		}
+		newStart := entity.Offset - int64(offsetAdjust)
+		if newStart < 0 {
+			newStart = 0
+		}
+		adjusted = append(adjusted, gotgbot.ParsedMessageEntity{
+			MessageEntity: gotgbot.MessageEntity{
+				Type:   entity.Type,
+				Offset: newStart,
+				Length: entityEnd - int64(offsetAdjust) - newStart,
+			},
+		})
+	}
+
+	return tgTextWithWhatsAppFormatting(trimmed, adjusted)
+}
+
 func tgTextWithWhatsAppFormatting(text string, entities []gotgbot.ParsedMessageEntity) string {
 	if len(entities) == 0 {
 		return text
@@ -1170,7 +1230,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			if cfg.Telegram.TagAllEnabled {
 				textSplit := strings.Fields(strings.ToLower(msgToForward.Text))
 				if slices.Contains(textSplit, "@all") || slices.Contains(textSplit, "@everyone") || slices.Contains(textSplit, "@everybody") {
-				WaTagAll(waChatJID, msgToSend, sentMsg.ID, waClient.Store.ID.String(), true)
+					WaTagAll(waChatJID, msgToSend, sentMsg.ID, waClient.Store.ID.String(), true)
 				}
 			}
 		}

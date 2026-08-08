@@ -18,7 +18,7 @@ type MsgIdPair struct {
 	TgThreadId int64
 	TgMsgId    int64
 
-	MarkRead sql.NullBool
+	MarkRead    sql.NullBool
 	AutoReacted bool
 }
 
@@ -44,11 +44,16 @@ type ChatEphemeralSettings struct {
 }
 
 type MessageReceipt struct {
-	WaMsgId       string    `gorm:"primaryKey;index:idx_receipt_msg_chat_participant"`
-	WaChatId      string    `gorm:"primaryKey;index:idx_receipt_msg_chat_participant"`
-	ParticipantId string    `gorm:"primaryKey;index:idx_receipt_msg_chat_participant"`
+	WaMsgId       string `gorm:"primaryKey;index:idx_receipt_msg_chat_participant"`
+	WaChatId      string `gorm:"primaryKey;index:idx_receipt_msg_chat_participant"`
+	ParticipantId string `gorm:"primaryKey;index:idx_receipt_msg_chat_participant"`
 	ReceiptType   string
 	ReceiptTime   time.Time
+}
+
+type StatusBroadcast struct {
+	WaMsgId  string `gorm:"primaryKey"` // WhatsApp status message ID
+	PostTime time.Time
 }
 
 func AutoMigrate() error {
@@ -59,5 +64,6 @@ func AutoMigrate() error {
 		&ContactName{},
 		&ChatEphemeralSettings{},
 		&MessageReceipt{},
+		&StatusBroadcast{},
 	)
 }

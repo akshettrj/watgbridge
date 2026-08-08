@@ -2,11 +2,14 @@ package database
 
 import (
 	"database/sql"
+	"errors"
 	"time"
 
 	"watgbridge/state"
 
 	"go.mau.fi/whatsmeow/types"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 func MsgIdAddNewPair(waMsgId, participantId, waChatId string, tgChatId, tgMsgId, tgThreadId int64) error {
@@ -155,27 +158,18 @@ func MsgIdDropAllPairs() error {
 func MsgReceiptUpsert(waMsgId, waChatId, participantId string, receiptType types.ReceiptType, receiptTime time.Time) error {
 	db := state.State.Database
 
-	var receipt MessageReceipt
-	res := db.Where("wa_msg_id = ? AND wa_chat_id = ? AND participant_id = ?", waMsgId, waChatId, participantId).Find(&receipt)
-	if res.Error != nil {
-		return res.Error
-	}
-
-	if receipt.WaMsgId == waMsgId && receipt.WaChatId == waChatId && receipt.ParticipantId == participantId {
-		receipt.ReceiptType = string(receiptType)
-		receipt.ReceiptTime = receiptTime
-		res = db.Save(&receipt)
-		return res.Error
-	}
-
-	res = db.Create(&MessageReceipt{
+	receipt := MessageReceipt{
 		WaMsgId:       waMsgId,
 		WaChatId:      waChatId,
 		ParticipantId: participantId,
 		ReceiptType:   string(receiptType),
 		ReceiptTime:   receiptTime,
-	})
-	return res.Error
+	}
+
+	return db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "wa_msg_id"}, {Name: "wa_chat_id"}, {Name: "participant_id"}},
+		DoUpdates: clause.AssignmentColumns([]string{"receipt_type", "receipt_time"}),
+	}).Create(&receipt).Error
 }
 
 func MsgReceiptGetByMsg(waMsgId, waChatId string) ([]MessageReceipt, error) {
@@ -455,4 +449,34 @@ func GetEphemeralSettings(waChatId string) (bool, uint32, bool, error) {
 	}
 
 	return settings.IsEphemeral, settings.EphemeralTimer, true, nil
+}
+
+func StatusAdd(waMsgId string, postTime time.Time) error {
+	db := state.State.Database
+
+	return db.Create(&StatusBroadcast{
+		WaMsgId:  waMsgId,
+		PostTime: postTime,
+	}).Error
+}
+
+func StatusGetLatest() (StatusBroadcast, bool, error) {
+	db := state.State.Database
+
+	var status StatusBroadcast
+	res := db.Order("post_time DESC").First(&status)
+	if res.Error != nil {
+		if errors.Is(res.Error, gorm.ErrRecordNotFound) {
+			return status, false, nil
+		}
+		return status, false, res.Error
+	}
+
+	return status, true, nil
+}
+
+func StatusDelete(waMsgId string) error {
+	db := state.State.Database
+
+	return db.Delete(&StatusBroadcast{}, "wa_msg_id = ?", waMsgId).Error
 }

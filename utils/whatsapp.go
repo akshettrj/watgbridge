@@ -5,11 +5,15 @@ import (
 	"fmt"
 	"html"
 	"log"
+	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"watgbridge/database"
 	"watgbridge/state"
 
+	"github.com/PaulSonOfLars/gotgbot/v2"
 	"github.com/lithammer/fuzzysearch/fuzzy"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
@@ -328,4 +332,260 @@ func WaSendText(chat types.JID, text, stanzaId, participantId string, quotedMsg 
 	}
 
 	return waClient.SendMessage(context.Background(), chat, msgToSend)
+}
+
+func WaSendStatus(b *gotgbot.Bot, msg *gotgbot.Message, statusText string, updateId int64) (whatsmeow.SendResponse, error) {
+	waClient := state.State.WhatsAppClient
+	cfg := state.State.Config
+	target := types.StatusBroadcastJID
+
+	if msg.Photo != nil && len(msg.Photo) > 0 {
+		bestPhoto := msg.Photo[0]
+		for _, photo := range msg.Photo {
+			if photo.Height*photo.Width > bestPhoto.Height*bestPhoto.Width {
+				bestPhoto = photo
+			}
+		}
+
+		if !cfg.Telegram.SelfHostedAPI && bestPhoto.FileSize > DownloadSizeLimit {
+			return whatsmeow.SendResponse{}, fmt.Errorf("photo exceeds the Telegram size restriction")
+		}
+
+		imageFile, err := b.GetFile(bestPhoto.FileId, &gotgbot.GetFileOpts{
+			RequestOpts: &gotgbot.RequestOpts{
+				Timeout: -1,
+			},
+		})
+		if err != nil {
+			return whatsmeow.SendResponse{}, fmt.Errorf("failed to retrieve image file from Telegram: %w", err)
+		}
+
+		imageBytes, err := TgDownloadByFilePath(b, imageFile.FilePath)
+		if err != nil {
+			return whatsmeow.SendResponse{}, fmt.Errorf("failed to download image from Telegram: %w", err)
+		}
+
+		uploadedImage, err := waClient.Upload(context.Background(), imageBytes, whatsmeow.MediaImage)
+		if err != nil {
+			return whatsmeow.SendResponse{}, fmt.Errorf("failed to upload image to WhatsApp: %w", err)
+		}
+
+		msgToSend := &waE2E.Message{
+			ImageMessage: &waE2E.ImageMessage{
+				Caption:           proto.String(statusText),
+				URL:               proto.String(uploadedImage.URL),
+				DirectPath:        proto.String(uploadedImage.DirectPath),
+				MediaKey:          uploadedImage.MediaKey,
+				MediaKeyTimestamp: proto.Int64(time.Now().Unix()),
+				Mimetype:          proto.String(http.DetectContentType(imageBytes)),
+				FileEncSHA256:     uploadedImage.FileEncSHA256,
+				FileSHA256:        uploadedImage.FileSHA256,
+				FileLength:        proto.Uint64(uint64(len(imageBytes))),
+				Height:            proto.Uint32(uint32(bestPhoto.Height)),
+				Width:             proto.Uint32(uint32(bestPhoto.Width)),
+			},
+		}
+		return waClient.SendMessage(context.Background(), target, msgToSend)
+	}
+
+	if msg.Video != nil {
+		if !cfg.Telegram.SelfHostedAPI && msg.Video.FileSize > DownloadSizeLimit {
+			return whatsmeow.SendResponse{}, fmt.Errorf("video exceeds the Telegram size restriction")
+		}
+
+		videoFile, err := b.GetFile(msg.Video.FileId, &gotgbot.GetFileOpts{
+			RequestOpts: &gotgbot.RequestOpts{
+				Timeout: -1,
+			},
+		})
+		if err != nil {
+			return whatsmeow.SendResponse{}, fmt.Errorf("failed to retrieve video file from Telegram: %w", err)
+		}
+
+		videoBytes, err := TgDownloadByFilePath(b, videoFile.FilePath)
+		if err != nil {
+			return whatsmeow.SendResponse{}, fmt.Errorf("failed to download video from Telegram: %w", err)
+		}
+
+		uploadedVideo, err := waClient.Upload(context.Background(), videoBytes, whatsmeow.MediaVideo)
+		if err != nil {
+			return whatsmeow.SendResponse{}, fmt.Errorf("failed to upload video to WhatsApp: %w", err)
+		}
+
+		msgToSend := &waE2E.Message{
+			VideoMessage: &waE2E.VideoMessage{
+				Caption:       proto.String(statusText),
+				URL:           proto.String(uploadedVideo.URL),
+				DirectPath:    proto.String(uploadedVideo.DirectPath),
+				MediaKey:      uploadedVideo.MediaKey,
+				Mimetype:      proto.String(msg.Video.MimeType),
+				FileEncSHA256: uploadedVideo.FileEncSHA256,
+				FileSHA256:    uploadedVideo.FileSHA256,
+				FileLength:    proto.Uint64(uint64(len(videoBytes))),
+				Seconds:       proto.Uint32(uint32(msg.Video.Duration)),
+				GifPlayback:   proto.Bool(false),
+				Height:        proto.Uint32(uint32(msg.Video.Height)),
+				Width:         proto.Uint32(uint32(msg.Video.Width)),
+			},
+		}
+		return waClient.SendMessage(context.Background(), target, msgToSend)
+	}
+
+	if msg.Voice != nil {
+		if !cfg.Telegram.SelfHostedAPI && msg.Voice.FileSize > DownloadSizeLimit {
+			return whatsmeow.SendResponse{}, fmt.Errorf("voice note exceeds the Telegram size restriction")
+		}
+
+		voiceFile, err := b.GetFile(msg.Voice.FileId, &gotgbot.GetFileOpts{
+			RequestOpts: &gotgbot.RequestOpts{
+				Timeout: -1,
+			},
+		})
+		if err != nil {
+			return whatsmeow.SendResponse{}, fmt.Errorf("failed to retrieve voice note from Telegram: %w", err)
+		}
+
+		voiceBytes, err := TgDownloadByFilePath(b, voiceFile.FilePath)
+		if err != nil {
+			return whatsmeow.SendResponse{}, fmt.Errorf("failed to download voice note from Telegram: %w", err)
+		}
+
+		convertedVoiceBytes, err := ConvertAudioToWhatsAppFormat(voiceBytes, updateId)
+		if err != nil {
+			log.Printf("[whatsapp] failed to convert voice note to WhatsApp format, using original: %s\n", err)
+			convertedVoiceBytes = voiceBytes
+		}
+
+		uploadedVoice, err := waClient.Upload(context.Background(), convertedVoiceBytes, whatsmeow.MediaAudio)
+		if err != nil {
+			return whatsmeow.SendResponse{}, fmt.Errorf("failed to upload voice note to WhatsApp: %w", err)
+		}
+
+		msgToSend := &waE2E.Message{
+			AudioMessage: &waE2E.AudioMessage{
+				URL:           proto.String(uploadedVoice.URL),
+				DirectPath:    proto.String(uploadedVoice.DirectPath),
+				MediaKey:      uploadedVoice.MediaKey,
+				Mimetype:      proto.String("audio/ogg; codecs=opus"),
+				FileEncSHA256: uploadedVoice.FileEncSHA256,
+				FileSHA256:    uploadedVoice.FileSHA256,
+				FileLength:    proto.Uint64(uint64(len(convertedVoiceBytes))),
+				Seconds:       proto.Uint32(uint32(msg.Voice.Duration)),
+				PTT:           proto.Bool(true),
+			},
+		}
+		return waClient.SendMessage(context.Background(), target, msgToSend)
+	}
+
+	if msg.Audio != nil {
+		if !cfg.Telegram.SelfHostedAPI && msg.Audio.FileSize > DownloadSizeLimit {
+			return whatsmeow.SendResponse{}, fmt.Errorf("audio exceeds the Telegram size restriction")
+		}
+
+		audioFile, err := b.GetFile(msg.Audio.FileId, &gotgbot.GetFileOpts{
+			RequestOpts: &gotgbot.RequestOpts{
+				Timeout: -1,
+			},
+		})
+		if err != nil {
+			return whatsmeow.SendResponse{}, fmt.Errorf("failed to retrieve audio file from Telegram: %w", err)
+		}
+
+		audioBytes, err := TgDownloadByFilePath(b, audioFile.FilePath)
+		if err != nil {
+			return whatsmeow.SendResponse{}, fmt.Errorf("failed to download audio from Telegram: %w", err)
+		}
+
+		convertedAudioBytes, err := ConvertAudioToWhatsAppFormat(audioBytes, updateId)
+		if err != nil {
+			log.Printf("[whatsapp] failed to convert audio to WhatsApp format, using original: %s\n", err)
+			convertedAudioBytes = audioBytes
+		}
+
+		uploadedAudio, err := waClient.Upload(context.Background(), convertedAudioBytes, whatsmeow.MediaAudio)
+		if err != nil {
+			return whatsmeow.SendResponse{}, fmt.Errorf("failed to upload audio to WhatsApp: %w", err)
+		}
+
+		msgToSend := &waE2E.Message{
+			AudioMessage: &waE2E.AudioMessage{
+				URL:           proto.String(uploadedAudio.URL),
+				DirectPath:    proto.String(uploadedAudio.DirectPath),
+				MediaKey:      uploadedAudio.MediaKey,
+				Mimetype:      proto.String("audio/ogg; codecs=opus"),
+				FileEncSHA256: uploadedAudio.FileEncSHA256,
+				FileSHA256:    uploadedAudio.FileSHA256,
+				FileLength:    proto.Uint64(uint64(len(convertedAudioBytes))),
+				Seconds:       proto.Uint32(uint32(msg.Audio.Duration)),
+				PTT:           proto.Bool(false),
+			},
+		}
+		return waClient.SendMessage(context.Background(), target, msgToSend)
+	}
+
+	if msg.Text != "" {
+		backgroundColor, err := waParseArgbColor(cfg.WhatsApp.StatusBackgroundColor)
+		if err != nil {
+			return whatsmeow.SendResponse{}, fmt.Errorf("invalid status background color: %w", err)
+		}
+		font, err := waStatusFontType(cfg.WhatsApp.StatusFont)
+		if err != nil {
+			return whatsmeow.SendResponse{}, fmt.Errorf("invalid status font: %w", err)
+		}
+		msgToSend := &waE2E.Message{
+			ExtendedTextMessage: &waE2E.ExtendedTextMessage{
+				Text:           proto.String(statusText),
+				BackgroundArgb: proto.Uint32(backgroundColor),
+				Font:           font.Enum(),
+			},
+		}
+		return waClient.SendMessage(context.Background(), target, msgToSend)
+	}
+
+	return whatsmeow.SendResponse{}, fmt.Errorf("unsupported message type, send text, an image, a video or an audio")
+}
+
+func waParseArgbColor(s string) (uint32, error) {
+	hexStr := strings.TrimPrefix(strings.TrimPrefix(strings.TrimSpace(s), "#"), "0x")
+	var value uint64
+	var err error
+	switch len(hexStr) {
+	case 6:
+		value, err = strconv.ParseUint(hexStr, 16, 32)
+		if err != nil {
+			return 0, err
+		}
+		return uint32(value) | 0xFF000000, nil
+	case 8:
+		value, err = strconv.ParseUint(hexStr, 16, 32)
+		if err != nil {
+			return 0, err
+		}
+		return uint32(value), nil
+	default:
+		return 0, fmt.Errorf("color must be a 6-digit hex (RRGGBB) or 8-digit hex (AARRGGBB)")
+	}
+}
+
+func waStatusFontType(s string) (waE2E.ExtendedTextMessage_FontType, error) {
+	switch strings.ToUpper(strings.TrimSpace(s)) {
+	case "SYSTEM":
+		return waE2E.ExtendedTextMessage_SYSTEM, nil
+	case "SYSTEM_TEXT":
+		return waE2E.ExtendedTextMessage_SYSTEM_TEXT, nil
+	case "FB_SCRIPT":
+		return waE2E.ExtendedTextMessage_FB_SCRIPT, nil
+	case "SYSTEM_BOLD":
+		return waE2E.ExtendedTextMessage_SYSTEM_BOLD, nil
+	case "MORNINGBREEZE_REGULAR":
+		return waE2E.ExtendedTextMessage_MORNINGBREEZE_REGULAR, nil
+	case "CALISTOGA_REGULAR":
+		return waE2E.ExtendedTextMessage_CALISTOGA_REGULAR, nil
+	case "EXO2_EXTRABOLD":
+		return waE2E.ExtendedTextMessage_EXO2_EXTRABOLD, nil
+	case "COURIERPRIME_BOLD":
+		return waE2E.ExtendedTextMessage_COURIERPRIME_BOLD, nil
+	default:
+		return 0, fmt.Errorf("unknown font: %s", s)
+	}
 }
