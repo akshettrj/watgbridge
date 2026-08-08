@@ -27,6 +27,7 @@ import (
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	waTypes "go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
+	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -179,6 +180,44 @@ func BridgeTelegramToWhatsAppHandler(b *gotgbot.Bot, c *ext.Context) error {
 		msgToForward = c.EffectiveMessage
 		msgToReplyTo = c.EffectiveMessage.ReplyToMessage
 	)
+
+	if msgToForward.PinnedMessage != nil {
+		if !state.State.Config.WhatsApp.SkipPinnedMessages {
+			tgPinnedMsgId := msgToForward.PinnedMessage.GetMessageId()
+			waMsgId, participantID, targetWaChatID, err := database.MsgIdGetWaFromTg(c.EffectiveChat.Id, tgPinnedMsgId, msgToForward.MessageThreadId)
+			if err == nil && waMsgId != "" {
+				if targetWaChatID == "" {
+					targetWaChatID, _ = database.ChatThreadGetWaFromTg(c.EffectiveChat.Id, msgToForward.MessageThreadId)
+				}
+				if targetWaChatID != "" {
+					waChatJID, ok := utils.WaParseJID(targetWaChatID)
+					if ok {
+						isFromMe := participantID == waClient.Store.ID.ToNonAD().String()
+						_, sendErr := waClient.SendMessage(context.Background(), waChatJID, &waE2E.Message{
+							PinInChatMessage: &waE2E.PinInChatMessage{
+								Key: &waCommon.MessageKey{
+									RemoteJID:   proto.String(targetWaChatID),
+									FromMe:      proto.Bool(isFromMe),
+									ID:          proto.String(waMsgId),
+									Participant: proto.String(participantID),
+								},
+								Type: waE2E.PinInChatMessage_PIN_FOR_ALL.Enum(),
+							},
+						})
+						if sendErr != nil {
+							state.State.Logger.Error("failed to sync pinned message from Telegram to WhatsApp", zap.Error(sendErr))
+						} else {
+							state.State.Logger.Info("successfully synced pinned message to WhatsApp",
+								zap.String("wa_msg_id", waMsgId),
+								zap.Int64("tg_msg_id", tgPinnedMsgId),
+							)
+						}
+					}
+				}
+			}
+		}
+		return nil
+	}
 
 	var stanzaID, participantID, waChatID string
 	var quotedWaChatID string

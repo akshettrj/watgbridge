@@ -277,10 +277,106 @@ func hoistAndExtractInteractive(msg *waE2E.Message) (string, bool) {
 	return "", false
 }
 
+func getPinInChatMessage(msg *waE2E.Message) *waE2E.PinInChatMessage {
+	if msg == nil {
+		return nil
+	}
+	if pin := msg.GetPinInChatMessage(); pin != nil {
+		return pin
+	}
+	if eph := msg.GetEphemeralMessage(); eph != nil {
+		if pin := eph.GetMessage().GetPinInChatMessage(); pin != nil {
+			return pin
+		}
+	}
+	if vo := msg.GetViewOnceMessage(); vo != nil {
+		if pin := vo.GetMessage().GetPinInChatMessage(); pin != nil {
+			return pin
+		}
+	}
+	if vo2 := msg.GetViewOnceMessageV2(); vo2 != nil {
+		if pin := vo2.GetMessage().GetPinInChatMessage(); pin != nil {
+			return pin
+		}
+	}
+	return nil
+}
+
+func handlePinInChatMessageEvent(cfg *state.Config, v *events.Message, pinMsg *waE2E.PinInChatMessage) {
+	logger := state.State.Logger
+	defer logger.Sync()
+
+	key := pinMsg.GetKey()
+	if key == nil {
+		return
+	}
+
+	targetWaMsgId := key.GetID()
+	if targetWaMsgId == "" {
+		return
+	}
+
+	waChatId := key.GetRemoteJID()
+	if waChatId == "" {
+		waChatId = v.Info.Chat.String()
+	}
+
+	tgChatId, _, tgMsgId, err := database.MsgIdGetTgFromWa(targetWaMsgId, waChatId)
+	if err != nil || tgMsgId == 0 {
+		logger.Warn("could not find Telegram message for pinned WhatsApp message",
+			zap.String("wa_msg_id", targetWaMsgId),
+			zap.String("wa_chat_id", waChatId),
+		)
+		return
+	}
+
+	tgBot := state.State.TelegramBot
+
+	switch pinMsg.GetType() {
+	case waE2E.PinInChatMessage_PIN_FOR_ALL:
+		_, err = tgBot.PinChatMessage(tgChatId, tgMsgId, &gotgbot.PinChatMessageOpts{})
+		if err != nil {
+			logger.Error("failed to pin Telegram message",
+				zap.Int64("tg_chat_id", tgChatId),
+				zap.Int64("tg_msg_id", tgMsgId),
+				zap.Error(err),
+			)
+		} else {
+			logger.Info("successfully synced pinned message to Telegram",
+				zap.String("wa_msg_id", targetWaMsgId),
+				zap.Int64("tg_msg_id", tgMsgId),
+			)
+		}
+	case waE2E.PinInChatMessage_UNPIN_FOR_ALL:
+		_, err = tgBot.UnpinChatMessage(tgChatId, &gotgbot.UnpinChatMessageOpts{
+			MessageId: &tgMsgId,
+		})
+		if err != nil {
+			logger.Error("failed to unpin Telegram message",
+				zap.Int64("tg_chat_id", tgChatId),
+				zap.Int64("tg_msg_id", tgMsgId),
+				zap.Error(err),
+			)
+		} else {
+			logger.Info("successfully synced unpinned message to Telegram",
+				zap.String("wa_msg_id", targetWaMsgId),
+				zap.Int64("tg_msg_id", tgMsgId),
+			)
+		}
+	}
+}
+
 // handleMessageEvent processes an incoming *events.Message, checking for
 // edits, revokes and ephemeral settings before delegating to the
 // from-me / from-others handlers.
 func handleMessageEvent(cfg *state.Config, v *events.Message) {
+	if pinMsg := getPinInChatMessage(v.Message); pinMsg != nil {
+		if !cfg.WhatsApp.SkipPinnedMessages {
+			handlePinInChatMessageEvent(cfg, v, pinMsg)
+		}
+		return
+	}
+
 	isEdited := false
 	if protoMsg := v.Message.GetProtocolMessage(); protoMsg != nil &&
 		protoMsg.GetType() == waE2E.ProtocolMessage_MESSAGE_EDIT {
