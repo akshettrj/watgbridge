@@ -144,6 +144,14 @@ func AddTelegramHandlers() {
 			handlers.NewCommand("unblock", UnblockCommandHandler),
 			"Unblock a user in WhatsApp",
 		},
+		waTgBridgeCommand{
+			handlers.NewCommand("setstatusmessage", SetStatusMessageHandler),
+			"Set/update your WhatsApp status message",
+		},
+		waTgBridgeCommand{
+			handlers.NewCommand("setstatus", SetStatusMessageHandler),
+			"Set/update your WhatsApp status message",
+		},
 	)
 
 	for _, command := range commands {
@@ -1229,4 +1237,34 @@ func RevokeCallbackHandler(b *gotgbot.Bot, c *ext.Context) error {
 		})
 		return err
 	}
+}
+
+func SetStatusMessageHandler(b *gotgbot.Bot, c *ext.Context) error {
+	if !utils.TgUpdateIsAuthorized(b, c) {
+		return nil
+	}
+
+	usageString := "Usage: <code>" + html.EscapeString("/setstatusmessage <new status message>") + "</code>"
+
+	args := c.Args()
+	if len(args) <= 1 {
+		_, err := utils.TgReplyTextByContext(b, c, usageString, nil, false)
+		return err
+	}
+
+	statusText := strings.Join(args[1:], " ")
+	if strings.TrimSpace(statusText) == "" {
+		_, err := utils.TgReplyTextByContext(b, c, usageString, nil, false)
+		return err
+	}
+
+	waClient := state.State.WhatsAppClient
+	err := utils.WaSetStatusMessage(context.Background(), waClient, statusText)
+	if err != nil {
+		return utils.TgReplyWithErrorByContext(b, c, "Failed to update WhatsApp status message", err)
+	}
+
+	_, err = utils.TgReplyTextByContext(b, c,
+		fmt.Sprintf("Successfully updated WhatsApp status message to:\n\n<code>%s</code>", html.EscapeString(statusText)), nil, false)
+	return err
 }

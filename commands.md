@@ -103,3 +103,8 @@ This document lists all the Telegram commands available in the WhatsApp-Telegram
 ### `/updateandrestart`
 - **Description:** Fetches the latest updates from the Git repository, rebuilds the project, and restarts the bot.
 - **Usage:** `/updateandrestart`
+
+### `/setstatusmessage <text>` (ou `/setstatus <text>`)
+- **Description:** Sets/updates your WhatsApp profile status message.
+- **Usage:** `/setstatusmessage Available for calls only`
+

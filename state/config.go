@@ -78,6 +78,7 @@ type Config struct {
 		SendMyMessagesFromOtherDevices bool     `yaml:"send_my_messages_from_other_devices"`
 		CreateThreadForInfoUpdates     bool     `yaml:"create_thread_for_info_updates"`
 		SkipPinnedMessages             bool     `yaml:"skip_pinned_messages"`
+		StatusMessageDurationSeconds   uint32   `yaml:"status_message_duration_seconds"`
 	} `yaml:"whatsapp"`
 
 	Database map[string]string `yaml:"database"`
@@ -164,6 +165,7 @@ func (cfg *Config) SetDefaults() {
 	cfg.WhatsApp.LoginDatabase.URL = "file:wawebstore.db?foreign_keys=on"
 	cfg.WhatsApp.StickerMetadata.PackName = "WaTgBridge"
 	cfg.WhatsApp.StickerMetadata.AuthorName = "WaTgBridge"
+	cfg.WhatsApp.StatusMessageDurationSeconds = 86400
 
 	cfg.Telegram.ConfirmationType = "emoji"
 
