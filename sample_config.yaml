@@ -45,11 +45,11 @@ backup:
 
 whatsapp:
   session_name: watgbridge        # This will appear in your Linked Devices in mobile app
-  # Which WhatsApp client the session registers as. "android" (default) and
-  # "android_business" pair as an Android client so WhatsApp delivers view-once
-  # media (it withholds these from a web companion); use "android_business" for a
-  # WhatsApp Business (SMB) account. Any other value keeps the desktop web
-  # companion. Experimental; only applied when a fresh session is paired.
+  # Client identity for view-once media. "android" (default) and "android_business"
+  # pair over the web multidevice protocol, then log in as Android so WhatsApp
+  # delivers view-once media (withheld from pure web companions). Use
+  # "android_business" for WhatsApp Business (SMB). Any other value keeps the
+  # desktop web companion. Experimental.
   client_mode: android
   # All these values can be obtained by running /findcontacts and /getwagroups commands
   # You have to put only the values preceding the @ character

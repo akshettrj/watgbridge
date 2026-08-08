@@ -19,6 +19,7 @@ import (
 	waWa6 "go.mau.fi/whatsmeow/proto/waWa6"
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/store/sqlstore"
+	"go.mau.fi/whatsmeow/types/events"
 	waLog "go.mau.fi/whatsmeow/util/log"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
@@ -54,6 +55,39 @@ const (
 	clientModeAndroidBusiness = "android_business"
 )
 
+func isAndroidClientMode(mode string) bool {
+	return mode == clientModeAndroid || mode == clientModeAndroidBusiness
+}
+
+// applyAndroidDeviceProps marks the companion as an Android phone in DeviceProps
+// (used only during registration / pairing). This is what Linked Devices shows
+// and is safe for the web multidevice protocol.
+func applyAndroidDeviceProps(mode string) {
+	if !isAndroidClientMode(mode) {
+		return
+	}
+	store.DeviceProps.PlatformType = waCompanionReg.DeviceProps_ANDROID_PHONE.Enum()
+}
+
+// applyAndroidLoginUserAgent switches the login UserAgent to Android so WhatsApp
+// delivers view-once media (withheld from pure web companions). Mirrors
+// WhiskeySockets/Baileys#2201, but must NOT be applied during registration:
+// UserAgent ANDROID/SMB_ANDROID is a primary-phone identity. Pairing with it on
+// the web protocol yields stream 516 then 401 (session deleted). Call this only
+// once the device is already paired (existing session, or after PairSuccess).
+func applyAndroidLoginUserAgent(mode string) {
+	var platform waWa6.ClientPayload_UserAgent_Platform
+	switch mode {
+	case clientModeAndroid:
+		platform = waWa6.ClientPayload_UserAgent_ANDROID
+	case clientModeAndroidBusiness:
+		platform = waWa6.ClientPayload_UserAgent_SMB_ANDROID
+	default:
+		return
+	}
+	store.BaseClientPayload.UserAgent.Platform = platform.Enum()
+	store.BaseClientPayload.WebInfo = nil
+}
 
 func NewWhatsAppClient() error {
 
@@ -83,71 +117,20 @@ func NewWhatsAppClient() error {
 	waDatabaseLogger := &whatsmeowLogger{logger: logger.Sugar().Named("WhatsMeow_Database")}
 	waClientLogger := &whatsmeowLogger{logger: logger.Sugar().Named("WhatsMeow_Client")}
 
-	// Configure device as Android if client mode is set to android/android_business
-	isAndroidEmulation := cfg.WhatsApp.ClientMode == clientModeAndroid ||
-		cfg.WhatsApp.ClientMode == clientModeAndroidBusiness
-
-	if isAndroidEmulation {
-		store.DeviceProps.Os = proto.String("Android")
-		store.DeviceProps.RequireFullSync = proto.Bool(false)
-		store.DeviceProps.PlatformType = waCompanionReg.DeviceProps_ANDROID_PHONE.Enum()
-		store.DeviceProps.Version = &waCompanionReg.DeviceProps_AppVersion{
-			Primary:    proto.Uint32(2),
-			Secondary:  proto.Uint32(23),
-			Tertiary:   proto.Uint32(9),
-			Quaternary: proto.Uint32(0),
-		}
-		store.DeviceProps.HistorySyncConfig = &waCompanionReg.DeviceProps_HistorySyncConfig{
-			FullSyncDaysLimit:              proto.Uint32(0),
-			FullSyncSizeMbLimit:            proto.Uint32(0),
-			StorageQuotaMb:                 proto.Uint32(0),
-			RecentSyncDaysLimit:            proto.Uint32(0),
-			SupportCallLogHistory:          proto.Bool(false),
-			SupportBotUserAgentChatHistory: proto.Bool(false),
-			SupportCagReactionsAndPolls:    proto.Bool(false),
-		}
-
-		// Configure client payload as Android
-		var platform waWa6.ClientPayload_UserAgent_Platform
-		if cfg.WhatsApp.ClientMode == clientModeAndroidBusiness {
-			platform = waWa6.ClientPayload_UserAgent_SMB_ANDROID
-		} else {
-			platform = waWa6.ClientPayload_UserAgent_ANDROID
-		}
-		store.BaseClientPayload.UserAgent.Platform = platform.Enum()
-		store.BaseClientPayload.UserAgent.Device = proto.String("SM-G900F")
-		store.BaseClientPayload.UserAgent.Manufacturer = proto.String("Samsung")
-		store.BaseClientPayload.UserAgent.OsVersion = proto.String("14")
-		waVersion := store.GetWAVersion()
-		store.BaseClientPayload.UserAgent.AppVersion = &waWa6.ClientPayload_UserAgent_AppVersion{
-			Primary:   proto.Uint32(uint32(waVersion[0])),
-			Secondary: proto.Uint32(uint32(waVersion[1])),
-			Tertiary:  proto.Uint32(uint32(waVersion[2])),
-		}
-		store.BaseClientPayload.WebInfo = nil // Remove WebInfo as it's only for web
-
-		if cfg.WhatsApp.ClientMode == clientModeAndroidBusiness {
-			logger.Info("WhatsApp client configured to emulate Android phone (WhatsApp Business)")
-		} else {
-			logger.Info("WhatsApp client configured to emulate Android phone")
-		}
-	} else {
-		// Keep default Web configuration
-		store.DeviceProps.Os = proto.String(state.State.Config.WhatsApp.SessionName)
-		store.DeviceProps.RequireFullSync = proto.Bool(false)
-		store.DeviceProps.PlatformType = waCompanionReg.DeviceProps_DESKTOP.Enum()
-		store.DeviceProps.HistorySyncConfig = &waCompanionReg.DeviceProps_HistorySyncConfig{
-			FullSyncDaysLimit:              proto.Uint32(0),
-			FullSyncSizeMbLimit:            proto.Uint32(0),
-			StorageQuotaMb:                 proto.Uint32(0),
-			RecentSyncDaysLimit:            proto.Uint32(0),
-			SupportCallLogHistory:          proto.Bool(false),
-			SupportBotUserAgentChatHistory: proto.Bool(false),
-			SupportCagReactionsAndPolls:    proto.Bool(false),
-		}
-
-		logger.Info("WhatsApp client configured as Web client")
+	store.DeviceProps.Os = proto.String(state.State.Config.WhatsApp.SessionName)
+	store.DeviceProps.RequireFullSync = proto.Bool(false)
+	store.DeviceProps.PlatformType = waCompanionReg.DeviceProps_DESKTOP.Enum()
+	store.DeviceProps.HistorySyncConfig = &waCompanionReg.DeviceProps_HistorySyncConfig{
+		FullSyncDaysLimit:              proto.Uint32(0),
+		FullSyncSizeMbLimit:            proto.Uint32(0),
+		StorageQuotaMb:                 proto.Uint32(0),
+		RecentSyncDaysLimit:            proto.Uint32(0),
+		SupportCallLogHistory:          proto.Bool(false),
+		SupportBotUserAgentChatHistory: proto.Bool(false),
+		SupportCagReactionsAndPolls:    proto.Bool(false),
 	}
+	// DeviceProps only — keep web UserAgent for the registration handshake.
+	applyAndroidDeviceProps(cfg.WhatsApp.ClientMode)
 
 	container, err := sqlstore.New(context.Background(), state.State.Config.WhatsApp.LoginDatabase.Type,
 		state.State.Config.WhatsApp.LoginDatabase.URL, waDatabaseLogger)
@@ -163,7 +146,46 @@ func NewWhatsAppClient() error {
 	client := whatsmeow.NewClient(deviceStore, waClientLogger)
 	state.State.WhatsAppClient = client
 
+	// ANDROID_PHONE DeviceProps would make the QR advertise PairClientAndroid.
+	// That companion type is for the native phone protocol; on the web multidevice
+	// path it pairs then gets killed (516 → 401). Force a web companion QR type.
+	if isAndroidClientMode(cfg.WhatsApp.ClientMode) {
+		client.QRClientType = whatsmeow.PairClientChrome
+	}
+
+	// After pairing, WhatsApp asks the client to restart the stream. Desktop
+	// companions usually get code 515 (handled inside whatsmeow). Some identities
+	// get 516 instead, which whatsmeow only logs as an unknown StreamError.
+	// Mirror the 515 path so pairing can complete.
+	//
+	// Also, once pairing succeeds, switch the login UserAgent to Android so the
+	// post-pair reconnect (and all later logins) can receive view-once media.
+	client.AddEventHandler(func(evt interface{}) {
+		switch e := evt.(type) {
+		case *events.PairSuccess:
+			applyAndroidLoginUserAgent(cfg.WhatsApp.ClientMode)
+			waClientLogger.Infof("Pair success; applying Android login identity for view-once (jid=%s)", e.ID)
+		case *events.StreamError:
+			if e.Code != "516" {
+				return
+			}
+			if client.DisableLoginAutoReconnect {
+				waClientLogger.Infof("Got 516 code, but login autoreconnect is disabled, not reconnecting")
+				return
+			}
+			waClientLogger.Infof("Got 516 code, reconnecting...")
+			go func() {
+				client.Disconnect()
+				if err := client.Connect(); err != nil {
+					waClientLogger.Errorf("Failed to reconnect after 516 code: %v", err)
+				}
+			}()
+		}
+	})
+
 	if client.Store.ID == nil {
+		// Fresh pair: register with web UserAgent (set above), then PairSuccess
+		// handler switches to Android UA before the server-driven stream restart.
 		qrChan, _ := client.GetQRChannel(context.Background())
 		err = client.Connect()
 		if err != nil {
@@ -206,6 +228,8 @@ func NewWhatsAppClient() error {
 			}
 		}
 	} else {
+		// Existing session: log in as Android for view-once delivery.
+		applyAndroidLoginUserAgent(cfg.WhatsApp.ClientMode)
 		err = client.Connect()
 		if err != nil {
 			return fmt.Errorf("could not connect to Whatsapp : %s", err)
