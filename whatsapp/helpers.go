@@ -52,7 +52,7 @@ func (bc *bridgeContext) sendFallbackText(extraText string) {
 		bc.cfg.Telegram.TargetChatID,
 		bc.bridgedText+extraText,
 		&gotgbot.SendMessageOpts{
-			ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+			ReplyParameters: utils.TgMakeReplyParameters(bc.replyToMsgId, 0),
 			MessageThreadId: bc.threadId,
 		},
 	)
@@ -116,6 +116,18 @@ func getContextInfo(msg *waE2E.Message) *waE2E.ContextInfo {
 		return ci
 	}
 	if ci := msg.GetPollCreationMessageV3().GetContextInfo(); ci != nil {
+		return ci
+	}
+	if ci := msg.GetButtonsMessage().GetContextInfo(); ci != nil {
+		return ci
+	}
+	if ci := msg.GetTemplateMessage().GetContextInfo(); ci != nil {
+		return ci
+	}
+	if ci := msg.GetInteractiveMessage().GetContextInfo(); ci != nil {
+		return ci
+	}
+	if ci := msg.GetListMessage().GetContextInfo(); ci != nil {
 		return ci
 	}
 	return nil

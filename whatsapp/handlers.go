@@ -3,6 +3,7 @@ package whatsapp
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"html"
 	"net/http"
@@ -68,7 +69,314 @@ func WhatsAppEventHandler(evt interface{}) {
 // handleMessageEvent processes an incoming *events.Message, checking for
 // edits, revokes and ephemeral settings before delegating to the
 // from-me / from-others handlers.
+// hoistAndExtractInteractive inspects a waE2E.Message to check if it contains
+// interactive/button structures, extracts their plain text representations (including button options),
+// and hoists any nested media (images, videos, documents, locations) to the root level of the message.
+func hoistAndExtractInteractive(msg *waE2E.Message) (string, bool) {
+	if msg == nil {
+		return "", false
+	}
+
+	var parts []string
+	var isDoc bool
+
+	// 1. ButtonsMessage
+	if bm := msg.GetButtonsMessage(); bm != nil {
+		if bm.GetText() != "" {
+			parts = append(parts, bm.GetText())
+		}
+		if bm.GetContentText() != "" {
+			parts = append(parts, bm.GetContentText())
+		}
+		if bm.GetFooterText() != "" {
+			parts = append(parts, "<i>"+bm.GetFooterText()+"</i>")
+		}
+
+		var btns []string
+		for _, btn := range bm.GetButtons() {
+			if btn.GetButtonText() != nil {
+				btns = append(btns, "🔘 "+btn.GetButtonText().GetDisplayText())
+			}
+		}
+		if len(btns) > 0 {
+			parts = append(parts, "\n"+strings.Join(btns, "\n"))
+		}
+
+		formattedText := strings.Join(parts, "\n")
+
+		// Hoist media from header
+		if bm.GetImageMessage() != nil {
+			msg.ImageMessage = bm.GetImageMessage()
+			msg.ImageMessage.Caption = proto.String(formattedText)
+		} else if bm.GetVideoMessage() != nil {
+			msg.VideoMessage = bm.GetVideoMessage()
+			msg.VideoMessage.Caption = proto.String(formattedText)
+		} else if bm.GetDocumentMessage() != nil {
+			msg.DocumentMessage = bm.GetDocumentMessage()
+			msg.DocumentMessage.Caption = proto.String(formattedText)
+			isDoc = true
+		} else if bm.GetLocationMessage() != nil {
+			msg.LocationMessage = bm.GetLocationMessage()
+		}
+
+		return formattedText, isDoc
+	}
+
+	// 2. TemplateMessage
+	if tm := msg.GetTemplateMessage(); tm != nil {
+		if hydrated := tm.GetHydratedTemplate(); hydrated != nil {
+			if titleText := hydrated.GetHydratedTitleText(); titleText != "" {
+				parts = append(parts, "<b>"+titleText+"</b>")
+			}
+
+			if hydrated.GetHydratedContentText() != "" {
+				parts = append(parts, hydrated.GetHydratedContentText())
+			}
+			if hydrated.GetHydratedFooterText() != "" {
+				parts = append(parts, "<i>"+hydrated.GetHydratedFooterText()+"</i>")
+			}
+
+			var btns []string
+			for _, btn := range hydrated.GetHydratedButtons() {
+				if q := btn.GetQuickReplyButton(); q != nil {
+					btns = append(btns, "🔘 "+q.GetDisplayText())
+				} else if u := btn.GetUrlButton(); u != nil {
+					btns = append(btns, fmt.Sprintf("🔗 <a href=\"%s\">%s</a>", u.GetURL(), u.GetDisplayText()))
+				} else if c := btn.GetCallButton(); c != nil {
+					btns = append(btns, fmt.Sprintf("📞 %s (%s)", c.GetDisplayText(), c.GetPhoneNumber()))
+				}
+			}
+			if len(btns) > 0 {
+				parts = append(parts, "\n"+strings.Join(btns, "\n"))
+			}
+
+			formattedText := strings.Join(parts, "\n")
+
+			// Hoist media from hydrated template
+			if hydrated.GetImageMessage() != nil {
+				msg.ImageMessage = hydrated.GetImageMessage()
+				msg.ImageMessage.Caption = proto.String(formattedText)
+			} else if hydrated.GetVideoMessage() != nil {
+				msg.VideoMessage = hydrated.GetVideoMessage()
+				msg.VideoMessage.Caption = proto.String(formattedText)
+			} else if hydrated.GetDocumentMessage() != nil {
+				msg.DocumentMessage = hydrated.GetDocumentMessage()
+				msg.DocumentMessage.Caption = proto.String(formattedText)
+				isDoc = true
+			} else if hydrated.GetLocationMessage() != nil {
+				msg.LocationMessage = hydrated.GetLocationMessage()
+			}
+
+			return formattedText, isDoc
+		}
+	}
+
+	// 3. InteractiveMessage
+	if im := msg.GetInteractiveMessage(); im != nil {
+		if header := im.GetHeader(); header != nil {
+			if header.GetTitle() != "" {
+				parts = append(parts, "<b>"+header.GetTitle()+"</b>")
+			}
+			if header.GetSubtitle() != "" {
+				parts = append(parts, "<i>"+header.GetSubtitle()+"</i>")
+			}
+		}
+
+		if im.GetBody() != nil && im.GetBody().GetText() != "" {
+			parts = append(parts, im.GetBody().GetText())
+		}
+		if im.GetFooter() != nil && im.GetFooter().GetText() != "" {
+			parts = append(parts, "<i>"+im.GetFooter().GetText()+"</i>")
+		}
+
+		// Native flow buttons
+		if nf := im.GetNativeFlowMessage(); nf != nil {
+			var btns []string
+			for _, btn := range nf.GetButtons() {
+				label := btn.GetName()
+				if btn.GetButtonParamsJSON() != "" {
+					var params struct {
+						DisplayText string `json:"display_text"`
+						Title       string `json:"title"`
+					}
+					if err := json.Unmarshal([]byte(btn.GetButtonParamsJSON()), &params); err == nil {
+						if params.DisplayText != "" {
+							label = params.DisplayText
+						} else if params.Title != "" {
+							label = params.Title
+						}
+					}
+				}
+				btns = append(btns, "🔘 "+label)
+			}
+			if len(btns) > 0 {
+				parts = append(parts, "\n"+strings.Join(btns, "\n"))
+			}
+		}
+
+		formattedText := strings.Join(parts, "\n")
+
+		if header := im.GetHeader(); header != nil {
+			// Hoist media from header
+			if header.GetImageMessage() != nil {
+				msg.ImageMessage = header.GetImageMessage()
+				msg.ImageMessage.Caption = proto.String(formattedText)
+			} else if header.GetVideoMessage() != nil {
+				msg.VideoMessage = header.GetVideoMessage()
+				msg.VideoMessage.Caption = proto.String(formattedText)
+			} else if header.GetDocumentMessage() != nil {
+				msg.DocumentMessage = header.GetDocumentMessage()
+				msg.DocumentMessage.Caption = proto.String(formattedText)
+				isDoc = true
+			} else if header.GetLocationMessage() != nil {
+				msg.LocationMessage = header.GetLocationMessage()
+			}
+		}
+
+		return formattedText, isDoc
+	}
+
+	// 4. ListMessage
+	if lm := msg.GetListMessage(); lm != nil {
+		if lm.GetTitle() != "" {
+			parts = append(parts, "<b>"+lm.GetTitle()+"</b>")
+		}
+		if lm.GetDescription() != "" {
+			parts = append(parts, lm.GetDescription())
+		}
+		if lm.GetFooterText() != "" {
+			parts = append(parts, "<i>"+lm.GetFooterText()+"</i>")
+		}
+
+		var sections []string
+		for _, sect := range lm.GetSections() {
+			sectText := ""
+			if sect.GetTitle() != "" {
+				sectText += "📝 <b>" + sect.GetTitle() + "</b>\n"
+			} else {
+				sectText += "📝 <b>Options</b>\n"
+			}
+			var rows []string
+			for _, row := range sect.GetRows() {
+				rowText := "• " + row.GetTitle()
+				if row.GetDescription() != "" {
+					rowText += " (" + row.GetDescription() + ")"
+				}
+				rows = append(rows, rowText)
+			}
+			sectText += strings.Join(rows, "\n")
+			sections = append(sections, sectText)
+		}
+		if len(sections) > 0 {
+			parts = append(parts, "\n"+strings.Join(sections, "\n\n"))
+		}
+
+		return strings.Join(parts, "\n"), false
+	}
+
+	return "", false
+}
+
+func getPinInChatMessage(msg *waE2E.Message) *waE2E.PinInChatMessage {
+	if msg == nil {
+		return nil
+	}
+	if pin := msg.GetPinInChatMessage(); pin != nil {
+		return pin
+	}
+	if eph := msg.GetEphemeralMessage(); eph != nil {
+		if pin := eph.GetMessage().GetPinInChatMessage(); pin != nil {
+			return pin
+		}
+	}
+	if vo := msg.GetViewOnceMessage(); vo != nil {
+		if pin := vo.GetMessage().GetPinInChatMessage(); pin != nil {
+			return pin
+		}
+	}
+	if vo2 := msg.GetViewOnceMessageV2(); vo2 != nil {
+		if pin := vo2.GetMessage().GetPinInChatMessage(); pin != nil {
+			return pin
+		}
+	}
+	return nil
+}
+
+func handlePinInChatMessageEvent(cfg *state.Config, v *events.Message, pinMsg *waE2E.PinInChatMessage) {
+	logger := state.State.Logger
+	defer logger.Sync()
+
+	key := pinMsg.GetKey()
+	if key == nil {
+		return
+	}
+
+	targetWaMsgId := key.GetID()
+	if targetWaMsgId == "" {
+		return
+	}
+
+	waChatId := key.GetRemoteJID()
+	if waChatId == "" {
+		waChatId = v.Info.Chat.String()
+	}
+
+	tgChatId, _, tgMsgId, err := database.MsgIdGetTgFromWa(targetWaMsgId, waChatId)
+	if err != nil || tgMsgId == 0 {
+		logger.Warn("could not find Telegram message for pinned WhatsApp message",
+			zap.String("wa_msg_id", targetWaMsgId),
+			zap.String("wa_chat_id", waChatId),
+		)
+		return
+	}
+
+	tgBot := state.State.TelegramBot
+
+	switch pinMsg.GetType() {
+	case waE2E.PinInChatMessage_PIN_FOR_ALL:
+		_, err = tgBot.PinChatMessage(tgChatId, tgMsgId, &gotgbot.PinChatMessageOpts{})
+		if err != nil {
+			logger.Error("failed to pin Telegram message",
+				zap.Int64("tg_chat_id", tgChatId),
+				zap.Int64("tg_msg_id", tgMsgId),
+				zap.Error(err),
+			)
+		} else {
+			logger.Info("successfully synced pinned message to Telegram",
+				zap.String("wa_msg_id", targetWaMsgId),
+				zap.Int64("tg_msg_id", tgMsgId),
+			)
+		}
+	case waE2E.PinInChatMessage_UNPIN_FOR_ALL:
+		_, err = tgBot.UnpinChatMessage(tgChatId, &gotgbot.UnpinChatMessageOpts{
+			MessageId: &tgMsgId,
+		})
+		if err != nil {
+			logger.Error("failed to unpin Telegram message",
+				zap.Int64("tg_chat_id", tgChatId),
+				zap.Int64("tg_msg_id", tgMsgId),
+				zap.Error(err),
+			)
+		} else {
+			logger.Info("successfully synced unpinned message to Telegram",
+				zap.String("wa_msg_id", targetWaMsgId),
+				zap.Int64("tg_msg_id", tgMsgId),
+			)
+		}
+	}
+}
+
+// handleMessageEvent processes an incoming *events.Message, checking for
+// edits, revokes and ephemeral settings before delegating to the
+// from-me / from-others handlers.
 func handleMessageEvent(cfg *state.Config, v *events.Message) {
+	if pinMsg := getPinInChatMessage(v.Message); pinMsg != nil {
+		if !cfg.WhatsApp.SkipPinnedMessages {
+			handlePinInChatMessageEvent(cfg, v, pinMsg)
+		}
+		return
+	}
+
 	isEdited := false
 	if protoMsg := v.Message.GetProtocolMessage(); protoMsg != nil &&
 		protoMsg.GetType() == waE2E.ProtocolMessage_MESSAGE_EDIT {
@@ -94,27 +402,68 @@ func handleMessageEvent(cfg *state.Config, v *events.Message) {
 	// Extract the plain-text body
 	text := ""
 	isDocument := false
+
+	// First, hoist and extract interactive components from the root message and any edited message
+	interactiveText, isInteractiveDoc := hoistAndExtractInteractive(v.Message)
+	if interactiveText != "" {
+		text = interactiveText
+	}
+	if isInteractiveDoc {
+		isDocument = true
+	}
+
 	if isEdited {
 		msg := v.Message.GetProtocolMessage().GetEditedMessage()
-		if msg.GetImageMessage() != nil {
-			text = msg.GetImageMessage().GetCaption()
-			isDocument = true
-		} else if msg.GetVideoMessage() != nil {
-			text = msg.GetVideoMessage().GetCaption()
-			isDocument = true
-		} else if msg.GetDocumentMessage() != nil {
-			text = msg.GetDocumentMessage().GetFileName()
-			isDocument = true
-		} else if extText := msg.GetExtendedTextMessage().GetText(); extText != "" {
-			text = extText
-		} else {
-			text = msg.GetConversation()
+		if msg != nil {
+			editedInteractiveText, isEditedInteractiveDoc := hoistAndExtractInteractive(msg)
+			if editedInteractiveText != "" {
+				text = editedInteractiveText
+			}
+			if isEditedInteractiveDoc {
+				isDocument = true
+			}
+
+			if msg.GetImageMessage() != nil {
+				text = msg.GetImageMessage().GetCaption()
+				isDocument = true
+			} else if msg.GetVideoMessage() != nil {
+				text = msg.GetVideoMessage().GetCaption()
+				isDocument = true
+			} else if msg.GetDocumentMessage() != nil {
+				text = msg.GetDocumentMessage().GetFileName()
+				isDocument = true
+			} else if extText := msg.GetExtendedTextMessage().GetText(); extText != "" {
+				if text == "" {
+					text = extText
+				}
+			} else {
+				if text == "" {
+					text = msg.GetConversation()
+				}
+			}
 		}
 	} else {
-		if extText := v.Message.GetExtendedTextMessage().GetText(); extText != "" {
-			text = extText
+		if v.Message.GetImageMessage() != nil {
+			if text == "" {
+				text = v.Message.GetImageMessage().GetCaption()
+			}
+		} else if v.Message.GetVideoMessage() != nil {
+			if text == "" {
+				text = v.Message.GetVideoMessage().GetCaption()
+			}
+		} else if v.Message.GetDocumentMessage() != nil {
+			if text == "" {
+				text = v.Message.GetDocumentMessage().GetFileName()
+			}
+			isDocument = true
+		} else if extText := v.Message.GetExtendedTextMessage().GetText(); extText != "" {
+			if text == "" {
+				text = extText
+			}
 		} else {
-			text = v.Message.GetConversation()
+			if text == "" {
+				text = v.Message.GetConversation()
+			}
 		}
 	}
 
@@ -401,7 +750,7 @@ func (bc *bridgeContext) handleImageMessage(v *events.Message) {
 			&gotgbot.FileReader{Name: fileName, Data: bytes.NewReader(imageBytes)},
 			&gotgbot.SendDocumentOpts{
 				Caption:         bc.bridgedText,
-				ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+				ReplyParameters: utils.TgMakeReplyParameters(bc.replyToMsgId, 0),
 				MessageThreadId: bc.threadId,
 			})
 		bc.savePair(sentMsg)
@@ -412,7 +761,7 @@ func (bc *bridgeContext) handleImageMessage(v *events.Message) {
 		&gotgbot.FileReader{Data: bytes.NewReader(imageBytes)},
 		&gotgbot.SendPhotoOpts{
 			Caption:         bc.bridgedText,
-			ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+			ReplyParameters: utils.TgMakeReplyParameters(bc.replyToMsgId, 0),
 			HasSpoiler:      imageMsg.GetViewOnce(),
 			MessageThreadId: bc.threadId,
 		})
@@ -446,7 +795,7 @@ func (bc *bridgeContext) handleGifMessage(v *events.Message) {
 		&gotgbot.FileReader{Name: "animation.gif", Data: bytes.NewReader(gifBytes)},
 		&gotgbot.SendAnimationOpts{
 			Caption:         bc.bridgedText,
-			ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+			ReplyParameters: utils.TgMakeReplyParameters(bc.replyToMsgId, 0),
 			MessageThreadId: bc.threadId,
 		})
 	bc.savePair(sentMsg)
@@ -493,14 +842,14 @@ func (bc *bridgeContext) handleVideoMessage(v *events.Message) {
 		sentMsg, _ = bc.tgBot.SendVideoNote(bc.cfg.Telegram.TargetChatID, &fileToSend,
 			&gotgbot.SendVideoNoteOpts{
 				ReplyMarkup:     bc.replyMarkup,
-				ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+				ReplyParameters: utils.TgMakeReplyParameters(bc.replyToMsgId, 0),
 				MessageThreadId: bc.threadId,
 			})
 	} else {
 		sentMsg, _ = bc.tgBot.SendVideo(bc.cfg.Telegram.TargetChatID, &fileToSend,
 			&gotgbot.SendVideoOpts{
 				Caption:         bc.bridgedText,
-				ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+				ReplyParameters: utils.TgMakeReplyParameters(bc.replyToMsgId, 0),
 				HasSpoiler:      videoMsg.GetViewOnce(),
 				MessageThreadId: bc.threadId,
 			})
@@ -534,7 +883,7 @@ func (bc *bridgeContext) handleVoiceNoteMessage(v *events.Message) {
 		&gotgbot.SendAudioOpts{
 			Caption:         bc.bridgedText,
 			Duration:        int64(audioMsg.GetSeconds()),
-			ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+			ReplyParameters: utils.TgMakeReplyParameters(bc.replyToMsgId, 0),
 			MessageThreadId: bc.threadId,
 		})
 	bc.savePair(sentMsg)
@@ -566,7 +915,7 @@ func (bc *bridgeContext) handleAudioMessage(v *events.Message) {
 		&gotgbot.SendAudioOpts{
 			Caption:         bc.bridgedText,
 			Duration:        int64(audioMsg.GetSeconds()),
-			ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+			ReplyParameters: utils.TgMakeReplyParameters(bc.replyToMsgId, 0),
 			MessageThreadId: bc.threadId,
 		})
 	bc.savePair(sentMsg)
@@ -599,7 +948,7 @@ func (bc *bridgeContext) handleDocumentMessage(v *events.Message) {
 		&gotgbot.FileReader{Name: documentMsg.GetFileName(), Data: bytes.NewReader(documentBytes)},
 		&gotgbot.SendDocumentOpts{
 			Caption:         bc.bridgedText,
-			ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+			ReplyParameters: utils.TgMakeReplyParameters(bc.replyToMsgId, 0),
 			MessageThreadId: bc.threadId,
 		})
 	bc.savePair(sentMsg)
@@ -637,7 +986,7 @@ func (bc *bridgeContext) handleStickerMessage(v *events.Message) {
 		sentMsg, _ := bc.tgBot.SendDocument(bc.cfg.Telegram.TargetChatID,
 			&gotgbot.FileReader{Name: "sticker." + stickerExt, Data: bytes.NewReader(stickerBytes)},
 			&gotgbot.SendDocumentOpts{
-				ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+				ReplyParameters: utils.TgMakeReplyParameters(bc.replyToMsgId, 0),
 				MessageThreadId: bc.threadId,
 				ReplyMarkup:     bc.replyMarkup,
 			})
@@ -652,7 +1001,7 @@ func (bc *bridgeContext) handleStickerMessage(v *events.Message) {
 			sentMsg, _ := bc.tgBot.SendSticker(bc.cfg.Telegram.TargetChatID,
 				&gotgbot.FileReader{Name: "sticker.webm", Data: bytes.NewReader(webmBytes)},
 				&gotgbot.SendStickerOpts{
-					ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+					ReplyParameters: utils.TgMakeReplyParameters(bc.replyToMsgId, 0),
 					MessageThreadId: bc.threadId,
 					ReplyMarkup:     bc.replyMarkup,
 				})
@@ -666,7 +1015,7 @@ func (bc *bridgeContext) handleStickerMessage(v *events.Message) {
 				&gotgbot.FileReader{Name: "animation.gif", Data: bytes.NewReader(gifBytes)},
 				&gotgbot.SendAnimationOpts{
 					Caption:         bc.bridgedText,
-					ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+					ReplyParameters: utils.TgMakeReplyParameters(bc.replyToMsgId, 0),
 					MessageThreadId: bc.threadId,
 					ReplyMarkup:     bc.replyMarkup,
 				})
@@ -679,7 +1028,7 @@ func (bc *bridgeContext) handleStickerMessage(v *events.Message) {
 	sentMsg, _ := bc.tgBot.SendSticker(bc.cfg.Telegram.TargetChatID,
 		&gotgbot.FileReader{Data: bytes.NewReader(stickerBytes)},
 		&gotgbot.SendStickerOpts{
-			ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+			ReplyParameters: utils.TgMakeReplyParameters(bc.replyToMsgId, 0),
 			MessageThreadId: bc.threadId,
 			ReplyMarkup:     bc.replyMarkup,
 		})
@@ -705,7 +1054,7 @@ func (bc *bridgeContext) handleContactMessage(v *events.Message) {
 		card.PreferredValue(goVCard.FieldTelephone), contactMsg.GetDisplayName(),
 		&gotgbot.SendContactOpts{
 			Vcard:           contactMsg.GetVcard(),
-			ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+			ReplyParameters: utils.TgMakeReplyParameters(bc.replyToMsgId, 0),
 			MessageThreadId: bc.threadId,
 			ReplyMarkup:     bc.replyMarkup,
 		})
@@ -727,7 +1076,7 @@ func (bc *bridgeContext) handleContactsArrayMessage(v *events.Message) {
 			bc.tgBot.SendMessage(bc.cfg.Telegram.TargetChatID,
 				"Couldn't send the vCard as failed to parse it",
 				&gotgbot.SendMessageOpts{
-					ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+					ReplyParameters: utils.TgMakeReplyParameters(bc.replyToMsgId, 0),
 					MessageThreadId: bc.threadId,
 				})
 			continue
@@ -737,7 +1086,7 @@ func (bc *bridgeContext) handleContactsArrayMessage(v *events.Message) {
 			card.PreferredValue(goVCard.FieldTelephone), contactMsg.GetDisplayName(),
 			&gotgbot.SendContactOpts{
 				Vcard:           contactMsg.GetVcard(),
-				ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+				ReplyParameters: utils.TgMakeReplyParameters(bc.replyToMsgId, 0),
 				MessageThreadId: bc.threadId,
 				ReplyMarkup:     bc.replyMarkup,
 			})
@@ -757,7 +1106,7 @@ func (bc *bridgeContext) handleLocationMessage(v *events.Message) {
 		locationMsg.GetDegreesLatitude(), locationMsg.GetDegreesLongitude(),
 		&gotgbot.SendLocationOpts{
 			HorizontalAccuracy: float64(locationMsg.GetAccuracyInMeters()),
-			ReplyParameters:    &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+			ReplyParameters:    utils.TgMakeReplyParameters(bc.replyToMsgId, 0),
 			MessageThreadId:    bc.threadId,
 		})
 	bc.savePair(sentMsg)
@@ -773,7 +1122,7 @@ func (bc *bridgeContext) handleLiveLocationMessage(v *events.Message) {
 
 	sentMsg, _ := bc.tgBot.SendMessage(bc.cfg.Telegram.TargetChatID, bc.bridgedText,
 		&gotgbot.SendMessageOpts{
-			ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+			ReplyParameters: utils.TgMakeReplyParameters(bc.replyToMsgId, 0),
 			MessageThreadId: bc.threadId,
 		})
 	bc.savePair(sentMsg)
@@ -803,7 +1152,7 @@ func (bc *bridgeContext) handlePollMessage(v *events.Message) {
 
 	sentMsg, _ := bc.tgBot.SendMessage(bc.cfg.Telegram.TargetChatID, bc.bridgedText,
 		&gotgbot.SendMessageOpts{
-			ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+			ReplyParameters: utils.TgMakeReplyParameters(bc.replyToMsgId, 0),
 			MessageThreadId: bc.threadId,
 		})
 	bc.savePair(sentMsg)
@@ -829,7 +1178,7 @@ func (bc *bridgeContext) handleEventMessage(v *events.Message) {
 
 	sentMsg, _ := bc.tgBot.SendMessage(bc.cfg.Telegram.TargetChatID, bc.bridgedText,
 		&gotgbot.SendMessageOpts{
-			ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+			ReplyParameters: utils.TgMakeReplyParameters(bc.replyToMsgId, 0),
 			MessageThreadId: bc.threadId,
 		})
 	bc.savePair(sentMsg)
@@ -883,7 +1232,7 @@ func (bc *bridgeContext) handleTextOrReaction(text string, v *events.Message, is
 	} else {
 		sentMsg, err = bc.tgBot.SendMessage(bc.cfg.Telegram.TargetChatID, bc.bridgedText,
 			&gotgbot.SendMessageOpts{
-				ReplyParameters: &gotgbot.ReplyParameters{MessageId: bc.replyToMsgId},
+				ReplyParameters: utils.TgMakeReplyParameters(bc.replyToMsgId, 0),
 				MessageThreadId: bc.threadId,
 			})
 	}
