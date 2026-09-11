@@ -34,21 +34,36 @@ type bridgeContext struct {
 }
 
 // savePair persists the WA↔TG message-ID mapping if the Telegram message
-// was sent successfully.
-func (bc *bridgeContext) savePair(sentMsg *gotgbot.Message) {
+// was sent successfully. A non-nil err means the Telegram send failed; log
+// it instead of panicking or silently dropping the message.
+func (bc *bridgeContext) savePair(sentMsg *gotgbot.Message, err error) {
+	if err != nil {
+		bc.logger.Error("failed to send message to Telegram",
+			zap.String("event_id", bc.msgId),
+			zap.String("chat_jid", bc.chatStr),
+			zap.Error(err),
+		)
+		return
+	}
 	if sentMsg != nil && sentMsg.MessageId != 0 {
-		database.MsgIdAddNewPair(
+		if dbErr := database.MsgIdAddNewPair(
 			bc.msgId, bc.senderStr, bc.chatStr,
 			bc.cfg.Telegram.TargetChatID,
 			sentMsg.MessageId, sentMsg.MessageThreadId,
-		)
+		); dbErr != nil {
+			bc.logger.Error("failed to add message ID mapping to database",
+				zap.String("event_id", bc.msgId),
+				zap.String("chat_jid", bc.chatStr),
+				zap.Error(dbErr),
+			)
+		}
 	}
 }
 
 // sendFallbackText sends a text-only message (header + extra info) to
 // Telegram and saves the pair. Used when media cannot be sent.
 func (bc *bridgeContext) sendFallbackText(extraText string) {
-	sentMsg, _ := bc.tgBot.SendMessage(
+	sentMsg, err := bc.tgBot.SendMessage(
 		bc.cfg.Telegram.TargetChatID,
 		bc.bridgedText+extraText,
 		&gotgbot.SendMessageOpts{
@@ -56,7 +71,7 @@ func (bc *bridgeContext) sendFallbackText(extraText string) {
 			MessageThreadId: bc.threadId,
 		},
 	)
-	bc.savePair(sentMsg)
+	bc.savePair(sentMsg, err)
 }
 
 // addCaption appends a caption (truncated at 1020 chars if needed) to

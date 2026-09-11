@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"strings"
 	"time"
 
 	"watgbridge/state"
@@ -51,6 +52,14 @@ func NewTelegramClient() error {
 
 	updater := ext.NewUpdater(dispatcher, &ext.UpdaterOpts{
 		UnhandledErrFunc: func(err error) {
+			// Long-poll getUpdates timing out is routine when the network
+			// drops or api.telegram.org is unreachable; warn instead of error.
+			if strings.Contains(err.Error(), "context deadline exceeded") {
+				logger.Warn("telegram updater request timed out",
+					zap.Error(err),
+				)
+				return
+			}
 			logger.Error("telegram updater received error",
 				zap.Error(err),
 			)
