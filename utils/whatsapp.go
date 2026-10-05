@@ -40,7 +40,7 @@ func WaSetStatusMessage(ctx context.Context, waClient *whatsmeow.Client, msg str
 		state.State.Logger.Debug("SendMexIQ returned error when setting status message", zap.Error(mexErr))
 	}
 
-	return waClient.SetStatusMessage(ctx, msg)
+	return waClient.SetStatusMessage(ctx, types.SetStatusInput{Text: &msg})
 }
 
 func CleanInviteLink(input string) string {
