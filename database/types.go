@@ -44,8 +44,8 @@ type ChatEphemeralSettings struct {
 }
 
 type MessageReceipt struct {
-	WaMsgId       string    `gorm:"primaryKey;index:idx_receipt_msg_chat_participant"`
-	WaChatId      string    `gorm:"primaryKey;index:idx_receipt_msg_chat_participant"`
+	WaMsgId       string    `gorm:"primaryKey;index:idx_receipt_msg_chat_participant;index:idx_receipt_msg_chat"`
+	WaChatId      string    `gorm:"primaryKey;index:idx_receipt_msg_chat_participant;index:idx_receipt_msg_chat"`
 	ParticipantId string    `gorm:"primaryKey;index:idx_receipt_msg_chat_participant"`
 	ReceiptType   string
 	ReceiptTime   time.Time
@@ -53,11 +53,23 @@ type MessageReceipt struct {
 
 func AutoMigrate() error {
 	db := state.State.Database
-	return db.AutoMigrate(
+	err := db.AutoMigrate(
 		&MsgIdPair{},
 		&ChatThreadPair{},
 		&ContactName{},
 		&ChatEphemeralSettings{},
 		&MessageReceipt{},
 	)
+	if err != nil {
+		return err
+	}
+
+	// Ensure indexes exist for message_receipts queries
+	// MsgReceiptGetByMsg queries by wa_msg_id + wa_chat_id (no participant_id)
+	db.Exec("CREATE INDEX IF NOT EXISTS idx_message_receipts_msg_chat ON message_receipts(wa_msg_id, wa_chat_id)")
+
+	// MsgReceiptUpsert queries by wa_msg_id + wa_chat_id + participant_id
+	db.Exec("CREATE INDEX IF NOT EXISTS idx_message_receipts_msg_chat_participant ON message_receipts(wa_msg_id, wa_chat_id, participant_id)")
+
+	return nil
 }
