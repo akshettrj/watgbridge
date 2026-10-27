@@ -366,10 +366,58 @@ func handlePinInChatMessageEvent(cfg *state.Config, v *events.Message, pinMsg *w
 	}
 }
 
+// decryptSecretEditMessage replaces v.Message with the decrypted content of a
+// SecretEncryptedMessage carrying a message edit, which is how WhatsApp
+// delivers edits made from the primary device. The result is normalised into
+// the ProtocolMessage_MESSAGE_EDIT shape the rest of the pipeline expects.
+// Other secret types (poll/event edits) are left untouched.
+func decryptSecretEditMessage(v *events.Message) {
+	secretMsg := v.Message.GetSecretEncryptedMessage()
+	if secretMsg == nil || secretMsg.GetSecretEncType() != waE2E.SecretEncryptedMessage_MESSAGE_EDIT {
+		return
+	}
+
+	logger := state.State.Logger
+	defer logger.Sync()
+
+	decrypted, err := state.State.WhatsAppClient.DecryptSecretEncryptedMessage(context.Background(), v)
+	if err != nil {
+		logger.Warn("failed to decrypt secret encrypted edit message",
+			zap.String("event_id", v.Info.ID),
+			zap.String("chat_jid", v.Info.Chat.String()),
+			zap.Error(err),
+		)
+		return
+	}
+
+	if inner := decrypted.GetEditedMessage().GetMessage(); inner != nil {
+		decrypted = inner
+	}
+
+	protoMsg := decrypted.GetProtocolMessage()
+	if protoMsg == nil {
+		decrypted = &waE2E.Message{
+			ProtocolMessage: &waE2E.ProtocolMessage{
+				Type:          waE2E.ProtocolMessage_MESSAGE_EDIT.Enum(),
+				Key:           secretMsg.GetTargetMessageKey(),
+				EditedMessage: decrypted,
+			},
+			MessageContextInfo: decrypted.GetMessageContextInfo(),
+		}
+	} else if protoMsg.GetType() == waE2E.ProtocolMessage_MESSAGE_EDIT && protoMsg.GetKey() == nil {
+		protoMsg.Key = secretMsg.GetTargetMessageKey()
+	}
+
+	v.Message = decrypted
+	v.IsEdit = true
+}
+
 // handleMessageEvent processes an incoming *events.Message, checking for
 // edits, revokes and ephemeral settings before delegating to the
 // from-me / from-others handlers.
 func handleMessageEvent(cfg *state.Config, v *events.Message) {
+	decryptSecretEditMessage(v)
+
 	if pinMsg := getPinInChatMessage(v.Message); pinMsg != nil {
 		if !cfg.WhatsApp.SkipPinnedMessages {
 			handlePinInChatMessageEvent(cfg, v, pinMsg)
