@@ -897,7 +897,7 @@ func handleBlockUnblockUser(b *gotgbot.Bot, c *ext.Context, action events.Blockl
 		return err
 	}
 	jid, _ := utils.WaParseJID(waChatId)
-	_, err = state.State.WhatsAppClient.UpdateBlocklist(context.Background(), jid, action)
+	_, err = state.State.WhatsAppClient.UpdateBlocklist(context.Background(), jid, action, "")
 	if err != nil {
 		err = utils.TgReplyWithErrorByContext(b, c, "Failed to change the blocklist status", err)
 		return err
@@ -1180,7 +1180,8 @@ func RevokeCallbackHandler(b *gotgbot.Bot, c *ext.Context) error {
 	if len(data) == 3 {
 
 		confirmKeyboard := utils.TgMakeRevokeKeyboard(data[1], data[2], true)
-		_, _, err := b.EditMessageText("Revoke the message ?", &gotgbot.EditMessageTextOpts{
+		_, _, err := b.EditMessageText(&gotgbot.EditMessageTextOpts{
+			Text:        "Revoke the message ?",
 			ChatId:      c.EffectiveChat.Id,
 			MessageId:   c.EffectiveMessage.MessageId,
 			ReplyMarkup: *confirmKeyboard,
@@ -1197,7 +1198,8 @@ func RevokeCallbackHandler(b *gotgbot.Bot, c *ext.Context) error {
 		if confirmation == "n" {
 
 			revokeKeyboard := utils.TgMakeRevokeKeyboard(data[1], data[2], false)
-			_, _, err := b.EditMessageText("Successfully sent", &gotgbot.EditMessageTextOpts{
+			_, _, err := b.EditMessageText(&gotgbot.EditMessageTextOpts{
+				Text:        "Successfully sent",
 				ChatId:      c.EffectiveChat.Id,
 				MessageId:   c.EffectiveMessage.MessageId,
 				ReplyMarkup: *revokeKeyboard,
@@ -1226,7 +1228,8 @@ func RevokeCallbackHandler(b *gotgbot.Bot, c *ext.Context) error {
 					ShowAlert: true,
 					CacheTime: 60,
 				})
-				b.EditMessageText("<i>Revoked</i>", &gotgbot.EditMessageTextOpts{
+				b.EditMessageText(&gotgbot.EditMessageTextOpts{
+					Text:      "<i>Revoked</i>",
 					ChatId:    c.EffectiveChat.Id,
 					MessageId: c.EffectiveMessage.MessageId,
 					ReplyMarkup: gotgbot.InlineKeyboardMarkup{

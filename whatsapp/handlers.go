@@ -1224,7 +1224,8 @@ func (bc *bridgeContext) handleTextOrReaction(text string, v *events.Message, is
 				Caption:   bc.bridgedText,
 			})
 		} else {
-			sentMsg, _, err = bc.tgBot.EditMessageText(bc.bridgedText, &gotgbot.EditMessageTextOpts{
+			sentMsg, _, err = bc.tgBot.EditMessageText(&gotgbot.EditMessageTextOpts{
+				Text:      bc.bridgedText,
 				ChatId:    bc.cfg.Telegram.TargetChatID,
 				MessageId: bc.replyToMsgId,
 			})

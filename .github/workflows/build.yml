@@ -26,7 +26,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: '1.25'
+        go-version: '1.26'
 
     - name: Build
       run: GOARCH=amd64 GOOS=linux go build -ldflags '-s -w' -o watgbridge_linux_amd64 .
@@ -62,7 +62,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: '1.25'
+        go-version: '1.26'
 
     - name: Build
       run: CGO_ENABLED=1 CC=aarch64-linux-gnu-gcc CXX=aarch64-linux-gnu-g++ GOARCH=arm64 GOOS=linux go build -ldflags '-s -w' -o watgbridge_linux_aarch64 .
