@@ -79,6 +79,7 @@ type Config struct {
 		CreateThreadForInfoUpdates     bool     `yaml:"create_thread_for_info_updates"`
 		SkipPinnedMessages             bool     `yaml:"skip_pinned_messages"`
 		StatusMessageDurationSeconds   uint32   `yaml:"status_message_duration_seconds"`
+		SkipOfflineBacklog             bool     `yaml:"skip_offline_backlog"`
 	} `yaml:"whatsapp"`
 
 	Database map[string]string `yaml:"database"`

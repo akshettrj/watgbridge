@@ -165,6 +165,7 @@ func NewWhatsAppClient() error {
 
 	if client.Store.ID == nil {
 		qrChan, _ := client.GetQRChannel(context.Background())
+		markBacklogCutoff()
 		err = client.Connect()
 		if err != nil {
 			return fmt.Errorf("could not connect to Whatsapp for login : %s", err)
@@ -206,6 +207,7 @@ func NewWhatsAppClient() error {
 			}
 		}
 	} else {
+		markBacklogCutoff()
 		err = client.Connect()
 		if err != nil {
 			return fmt.Errorf("could not connect to Whatsapp : %s", err)

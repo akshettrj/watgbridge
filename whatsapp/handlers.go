@@ -32,7 +32,14 @@ import (
 func WhatsAppEventHandler(evt interface{}) {
 	cfg := state.State.Config
 
+	if shouldSkipOfflineBacklog(cfg, evt) {
+		return
+	}
+
 	switch v := evt.(type) {
+	case *events.Connected:
+		markBacklogCutoff()
+
 	case *events.LoggedOut:
 		LogoutHandler(v)
 
