@@ -3,6 +3,7 @@ package whatsapp
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"html"
 	"os"
@@ -212,6 +213,13 @@ func NewWhatsAppClient() error {
 		if err != nil {
 			return fmt.Errorf("could not connect to Whatsapp : %s", err)
 		}
+	}
+
+	// The QR channel closes without registering a device when pairing times out
+	// or is rejected, so Store.ID is still nil here. Report it instead of
+	// dereferencing nil in the log line below.
+	if client.Store.ID == nil {
+		return errors.New("could not complete whatsapp login : the QR code expired or was not scanned, restart to pair again")
 	}
 
 	logger.Info("successfully logged into WhatsApp",
