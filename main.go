@@ -188,7 +188,9 @@ func main() {
 
 	err = whatsapp.NewWhatsAppClient()
 	if err != nil {
-		panic(err)
+		logger.Fatal("failed to initialize whatsapp client",
+			zap.Error(err),
+		)
 	}
 	_ = logger.Sync()
 
