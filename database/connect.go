@@ -1,6 +1,7 @@
 package database
 
 import (
+	"errors"
 	"fmt"
 
 	"watgbridge/state"
@@ -26,7 +27,7 @@ func Connect() (*gorm.DB, error) {
 	dbConfig := state.State.Config.Database
 	dbType, exists := dbConfig["type"]
 	if !exists {
-		return nil, fmt.Errorf("Error: key 'type' not found in database config")
+		return nil, errors.New("key 'type' not found in database config : set database.type to 'sqlite', 'postgres' or 'mysql' (see sample_config.yaml)")
 	}
 
 	gormConfig := gorm.Config{}
