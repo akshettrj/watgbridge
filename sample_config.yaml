@@ -93,8 +93,14 @@ whatsapp:
     author_name: WaTgBridge
 
 
-# Uncomment any one of these sections
-# Using the sqlite database will be easiest as it does not require any hosted database server and stores data in a single file on your device
+# Database holding the bridge's own state (chat <-> topic mapping, message ids, receipts).
+# sqlite is enabled by default: it needs no database server and keeps everything in
+# one file, so a fresh checkout works without further setup.
+database:
+  type: sqlite
+  path: ./gobot.sqlite.db
+
+# To use a server instead, comment out the sqlite block above and uncomment one of these.
 # Note: If you are using Docker, it is not recommended to change the database name. If you do, make sure to update it in the docker-compose file as well.
 
 #database:
@@ -105,10 +111,6 @@ whatsapp:
 #  dbname: gobot
 #  port: 5432
 #  time_zone: Asia/Kolkata
-
-#database:
-#  type: sqlite
-#  path: ./gobot.sqlite.db
 
 #database:
 #  type: mysql

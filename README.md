@@ -66,6 +66,9 @@ You will need the following installed on your system:
    ```bash
    cp sample_config.yaml config.yaml
    ```
+   The template enables the file-based **sqlite** database for the bridge's own
+   state, so it runs without a database server. For postgres or mysql, comment
+   out the sqlite block and uncomment one of the alternatives in the template.
 6. Run the application:
    ```bash
    ./watgbridge
