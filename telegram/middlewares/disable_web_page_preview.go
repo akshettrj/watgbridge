@@ -16,7 +16,7 @@ func (b *disableWebPagePreviewBotClient) RequestWithContext(ctx context.Context,
 	token string, method string, params map[string]any,
 	opts *gotgbot.RequestOpts) (json.RawMessage, error) {
 
-	if strings.HasPrefix(method, "send") || strings.HasPrefix(method, "edit") {
+	if shouldDisablePreview(params, method) {
 		params["disable_web_page_preview"] = "true"
 	}
 
@@ -25,4 +25,12 @@ func (b *disableWebPagePreviewBotClient) RequestWithContext(ctx context.Context,
 
 func DisableWebPagePreview(b gotgbot.BotClient) gotgbot.BotClient {
 	return &disableWebPagePreviewBotClient{b}
+}
+
+func shouldDisablePreview(params map[string]any, method string) bool {
+	if !strings.HasPrefix(method, "send") && !strings.HasPrefix(method, "edit") {
+		return false
+	}
+	_, ok := params["link_preview_options"]
+	return !ok
 }

@@ -1280,16 +1280,18 @@ func (bc *bridgeContext) handleTextOrReaction(text string, v *events.Message, is
 			})
 		} else {
 			sentMsg, _, err = bc.tgBot.EditMessageText(&gotgbot.EditMessageTextOpts{
-				Text:      bc.bridgedText,
-				ChatId:    bc.cfg.Telegram.TargetChatID,
-				MessageId: bc.replyToMsgId,
+				Text:               bc.bridgedText,
+				ChatId:             bc.cfg.Telegram.TargetChatID,
+				MessageId:          bc.replyToMsgId,
+				LinkPreviewOptions: &gotgbot.LinkPreviewOptions{},
 			})
 		}
 	} else {
 		sentMsg, err = bc.tgBot.SendMessage(bc.cfg.Telegram.TargetChatID, bc.bridgedText,
 			&gotgbot.SendMessageOpts{
-				ReplyParameters: utils.TgMakeReplyParameters(bc.replyToMsgId, 0),
-				MessageThreadId: bc.threadId,
+				ReplyParameters:    utils.TgMakeReplyParameters(bc.replyToMsgId, 0),
+				MessageThreadId:    bc.threadId,
+				LinkPreviewOptions: &gotgbot.LinkPreviewOptions{},
 			})
 	}
 
