@@ -3,6 +3,7 @@ package whatsapp
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"html"
 	"os"
@@ -54,6 +55,43 @@ const (
 	clientModeAndroidBusiness = "android_business"
 )
 
+
+// sendQRCodeToOwner sends the WhatsApp pairing QR code to the owner's Telegram
+// chat as a photo. If the code cannot be rendered as PNG, a text message is sent
+// instead so the operator still learns to look at the terminal.
+//
+// The QR code is always printed locally as well, so a failed Telegram request
+// must not abort the login flow: it is returned for the caller to log.
+func sendQRCodeToOwner(bot *gotgbot.Bot, ownerID int64, qrCode string) error {
+	qrCodePNG, err := qrcode.Encode(qrCode, qrcode.Highest, 512)
+	if err != nil {
+		_, sendErr := bot.SendMessage(
+			ownerID,
+			fmt.Sprintf(
+				"Please check your terminal and scan the QR code to login to WhatsApp. Failed to encode to PNG and send here:\n<code>%s</code>",
+				html.EscapeString(err.Error()),
+			),
+			&gotgbot.SendMessageOpts{},
+		)
+		if sendErr != nil {
+			return fmt.Errorf("could not encode the QR code as PNG (%v) and failed to send the fallback message : %w", err, sendErr)
+		}
+		return nil
+	}
+
+	_, err = bot.SendPhoto(
+		ownerID,
+		gotgbot.InputFileByReader("qrcode.png", bytes.NewReader(qrCodePNG)),
+		&gotgbot.SendPhotoOpts{
+			Caption: "Scan the above QR code to login to WhatsApp.",
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("failed to send the QR code photo : %w", err)
+	}
+
+	return nil
+}
 
 func NewWhatsAppClient() error {
 
@@ -179,23 +217,11 @@ func NewWhatsAppClient() error {
 				// }
 
 				if state.State.TelegramBot != nil {
-					qrCodePNG, err := qrcode.Encode(evt.Code, qrcode.Highest, 512)
-					if err != nil {
-						state.State.TelegramBot.SendMessage(
-							state.State.Config.Telegram.OwnerID,
-							fmt.Sprintf(
-								"Please check your terminal and scan the QR code to login to WhatsApp. Failed to encode to PNG and send here:\n<code>%s</code>",
-								html.EscapeString(err.Error()),
-							),
-							&gotgbot.SendMessageOpts{},
-						)
-					} else {
-						state.State.TelegramBot.SendPhoto(
-							state.State.Config.Telegram.OwnerID,
-							gotgbot.InputFileByReader("qrcode.png", bytes.NewReader(qrCodePNG)),
-							&gotgbot.SendPhotoOpts{
-								Caption: "Scan the above QR code to login to WhatsApp.",
-							},
+					ownerID := state.State.Config.Telegram.OwnerID
+					if err := sendQRCodeToOwner(state.State.TelegramBot, ownerID, evt.Code); err != nil {
+						logger.Error("failed to send the QR code on telegram, scan the one printed in the terminal instead",
+							zap.Int64("owner_id", ownerID),
+							zap.Error(err),
 						)
 					}
 				}
@@ -212,6 +238,13 @@ func NewWhatsAppClient() error {
 		if err != nil {
 			return fmt.Errorf("could not connect to Whatsapp : %s", err)
 		}
+	}
+
+	// The QR channel closes without registering a device when pairing times out
+	// or is rejected, so Store.ID is still nil here. Report it instead of
+	// dereferencing nil in the log line below.
+	if client.Store.ID == nil {
+		return errors.New("could not complete whatsapp login : the QR code expired or was not scanned, restart to pair again")
 	}
 
 	logger.Info("successfully logged into WhatsApp",
