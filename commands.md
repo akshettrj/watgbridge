@@ -76,6 +76,14 @@ This document lists all the Telegram commands available in the WhatsApp-Telegram
 - **Description:** Restarts the WhatsApp client connection. Useful if messages are stuck or if the client disconnected.
 - **Usage:** `/restartwa`
 
+### `/restartbot`
+- **Description:** Restarts the whole bridge process (same mechanism as `/updateandrestart`, without updating). The WhatsApp session and databases are kept. Useful when `/restartwa` is not enough.
+- **Usage:** `/restartbot`
+
+### `/newqr`
+- **Description:** Logs out of WhatsApp, removes the local device session and restarts the bridge, which then sends a new pairing QR code to Telegram. Chat/thread mappings are kept. Useful when the session was dropped (for example `device_removed`) and you cannot reach the server's terminal.
+- **Usage:** `/newqr`
+
 ### `/synccontacts`
 - **Description:** Forces a manual sync of the WhatsApp contacts list with the local database.
 - **Usage:** `/synccontacts`

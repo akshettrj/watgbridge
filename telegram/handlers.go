@@ -94,6 +94,14 @@ func AddTelegramHandlers() {
 			"Restart the WhatsApp client",
 		},
 		waTgBridgeCommand{
+			handlers.NewCommand("restartbot", RestartBotHandler),
+			"Restart the whole bridge process (keeps the WhatsApp session)",
+		},
+		waTgBridgeCommand{
+			handlers.NewCommand("newqr", NewQRHandler),
+			"Log out of WhatsApp and send a new QR code to pair again",
+		},
+		waTgBridgeCommand{
 			handlers.NewCommand("joininvitelink", JoinInviteLinkHandler),
 			"Join a WhatsApp chat using invite link",
 		},
@@ -746,6 +754,78 @@ func RestartWhatsAppConnectionHandler(b *gotgbot.Bot, c *ext.Context) error {
 
 	_, err = utils.TgReplyTextByContext(b, c, "Successfully restarted the WhatsApp connection", nil, false)
 	return err
+}
+
+// restartBridgeSoon re-executes the binary the same way /updateandrestart
+// does, so the new process confirms the restart in this chat. The short delay
+// lets the updater acknowledge the current update first; restarting
+// immediately would make Telegram deliver the same command again and the bot
+// would restart in a loop.
+func restartBridgeSoon(b *gotgbot.Bot, c *ext.Context) {
+	os.Setenv("WATG_IS_RESTARTED", "1")
+	os.Setenv("WATG_CHAT_ID", fmt.Sprint(c.EffectiveChat.Id))
+	os.Setenv("WATG_MESSAGE_ID", fmt.Sprint(c.EffectiveMessage.MessageId))
+
+	go func() {
+		time.Sleep(2 * time.Second)
+		err := syscall.Exec(path.Join(".", "watgbridge"), []string{}, os.Environ())
+		if err != nil {
+			utils.TgReplyWithErrorByContext(b, c, "Failed to run exec syscall to restart the bot", err)
+		}
+	}()
+}
+
+func RestartBotHandler(b *gotgbot.Bot, c *ext.Context) error {
+	if !utils.TgUpdateIsAuthorized(b, c) {
+		return nil
+	}
+
+	utils.TgReplyTextByContext(b, c, "Restarting the bridge, the WhatsApp session is kept...", nil, false)
+
+	if waClient := state.State.WhatsAppClient; waClient != nil {
+		waClient.Disconnect()
+	}
+
+	restartBridgeSoon(b, c)
+	return nil
+}
+
+// NewQRHandler removes the current WhatsApp session and restarts the bridge,
+// which then sends a fresh pairing QR code here. Only the device row is
+// removed; the chat/thread mappings in the bot database are not touched.
+func NewQRHandler(b *gotgbot.Bot, c *ext.Context) error {
+	if !utils.TgUpdateIsAuthorized(b, c) {
+		return nil
+	}
+
+	waClient := state.State.WhatsAppClient
+	if waClient == nil || waClient.Store == nil {
+		_, err := utils.TgReplyTextByContext(b, c, "WhatsApp client is not initialised", nil, false)
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+	defer cancel()
+
+	if waClient.Store.ID != nil {
+		// Logout also deletes the device from the store on success. It fails
+		// when WhatsApp has already dropped the session, so delete it locally.
+		if err := waClient.Logout(ctx); err != nil {
+			utils.TgReplyTextByContext(b, c,
+				"Could not log out on WhatsApp's side (the session is probably already invalid), removing it locally", nil, false)
+			if err := waClient.Store.Delete(ctx); err != nil {
+				return utils.TgReplyWithErrorByContext(b, c, "Failed to delete the local WhatsApp session", err)
+			}
+		}
+	}
+	waClient.Disconnect()
+
+	utils.TgReplyTextByContext(b, c,
+		"Session removed. Restarting now, a new QR code will be sent here in a few seconds.\n"+
+			"On your phone: WhatsApp > Linked devices > Link a device.", nil, false)
+
+	restartBridgeSoon(b, c)
+	return nil
 }
 
 func JoinInviteLinkHandler(b *gotgbot.Bot, c *ext.Context) error {
