@@ -81,7 +81,7 @@ This document lists all the Telegram commands available in the WhatsApp-Telegram
 - **Usage:** `/restartbot`
 
 ### `/newqr`
-- **Description:** Logs out of WhatsApp, removes the local device session and restarts the bridge, which then sends a new pairing QR code to Telegram. Chat/thread mappings are kept. Useful when the session was dropped (for example `device_removed`) and you cannot reach the server's terminal.
+- **Description:** Logs out of WhatsApp, removes the local device session and restarts the bridge, which then sends a new pairing QR code to the bot owner's private chat on Telegram. If the QR codes expire, the bridge sends new ones up to 3 times before it stops. Chat/thread mappings are kept. Useful when the session was dropped (for example `device_removed`) and you cannot reach the server's terminal.
 - **Usage:** `/newqr`
 
 ### `/synccontacts`
