@@ -1133,7 +1133,8 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 		}
 
 		msgToSend := &waE2E.Message{}
-		if isReply || len(mentions) > 0 || isEphemeral {
+		linkPreview := GenerateWaLinkPreview(context.Background(), formattedText, waClient)
+		if isReply || len(mentions) > 0 || isEphemeral || linkPreview != nil {
 			msgToSend.ExtendedTextMessage = &waE2E.ExtendedTextMessage{
 				Text:        proto.String(formattedText),
 				ContextInfo: &waE2E.ContextInfo{},
@@ -1147,6 +1148,7 @@ func TgSendToWhatsApp(b *gotgbot.Bot, c *ext.Context,
 			if isEphemeral {
 				msgToSend.ExtendedTextMessage.ContextInfo.Expiration = &ephemeralTimer
 			}
+			linkPreview.ApplyTo(msgToSend.ExtendedTextMessage)
 		} else {
 			msgToSend.Conversation = proto.String(formattedText)
 		}
