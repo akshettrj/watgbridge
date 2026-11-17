@@ -526,6 +526,8 @@ func httpGet(ctx context.Context, rawURL string, maxBytes int64) ([]byte, *url.U
 	}
 	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36")
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/*;q=0.8,*/*;q=0.7")
+	req.Header.Set("Sec-Fetch-Mode", "navigate")
+	req.Header.Set("Sec-Fetch-Dest", "document")
 	resp, err := previewClient.Do(req)
 	if err != nil {
 		return nil, nil, "", err
