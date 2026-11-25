@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"html"
 	"net/http"
+	"os"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -1019,6 +1021,13 @@ func (bc *bridgeContext) handleStickerMessage(v *events.Message) {
 		bc.sendFallbackText("\n<i>Skipping sticker because 'skip_stickers' set in config file</i>")
 		return
 	}
+
+	// Handle audio sticker
+	if stickerMsg.GetAudio() != nil {
+		bc.handleAudioSticker(stickerMsg, v)
+		return
+	}
+
 	if !bc.cfg.Telegram.SelfHostedAPI && stickerMsg.GetFileLength() > utils.UploadSizeLimit {
 		bc.sendFallbackText("\n<i>Couldn't send the sticker as it exceeds Telegram size restrictions.</i>")
 		return
@@ -1088,6 +1097,123 @@ func (bc *bridgeContext) handleStickerMessage(v *events.Message) {
 			ReplyMarkup:     bc.replyMarkup,
 		})
 	bc.savePair(sentMsg)
+}
+
+func (bc *bridgeContext) handleAudioSticker(stickerMsg *waE2E.StickerMessage, v *events.Message) {
+	audioMsg := stickerMsg.GetAudioMessage()
+	if audioMsg == nil {
+		return
+	}
+
+	mode := bc.cfg.WhatsApp.AudioStickerMode
+	if mode == "" {
+		mode = "none"
+	}
+
+	switch mode {
+	case "sticker":
+		// Extract sticker bytes and send as normal sticker (audio is ignored)
+		stickerBytes, err := bc.waClient.Download(context.Background(), stickerMsg)
+		if err != nil {
+			bc.sendFallbackText("\n<i>Couldn't download audio sticker</i>")
+			return
+		}
+
+		sentMsg, _ := bc.tgBot.SendSticker(bc.cfg.Telegram.TargetChatID,
+			&gotgbot.FileReader{Data: bytes.NewReader(stickerBytes)},
+			&gotgbot.SendStickerOpts{
+				ReplyParameters: utils.TgMakeReplyParameters(bc.replyToMsgId, 0),
+				MessageThreadId: bc.threadId,
+				ReplyMarkup:     bc.replyMarkup,
+			})
+		bc.savePair(sentMsg)
+
+	case "video":
+		// Convert audio sticker to MP4 video using sticker as background
+		stickerBytes, err := bc.waClient.Download(context.Background(), stickerMsg)
+		if err != nil {
+			bc.sendFallbackText("\n<i>Couldn't download sticker for video</i>")
+			return
+		}
+
+		audioBytes, err := bc.waClient.Download(context.Background(), audioMsg)
+		if err != nil {
+			bc.sendFallbackText("\n<i>Couldn't download audio from sticker</i>")
+			return
+		}
+
+		// Convert audio sticker to MP4 video with sticker as background
+		videoBytes, err := bc.convertAudioStickerToVideo(stickerBytes, audioBytes, v.Info.ID)
+		if err != nil {
+			bc.sendFallbackText(fmt.Sprintf("\n<i>Couldn't convert audio sticker to video: %v</i>", err))
+			return
+		}
+
+		sentMsg, _ := bc.tgBot.SendVideo(bc.cfg.Telegram.TargetChatID,
+			&gotgbot.FileReader{Name: "audio_sticker.mp4", Data: bytes.NewReader(videoBytes)},
+			&gotgbot.SendVideoOpts{
+				Caption:         bc.bridgedText,
+				ReplyParameters: utils.TgMakeReplyParameters(bc.replyToMsgId, 0),
+				MessageThreadId: bc.threadId,
+				ReplyMarkup:     bc.replyMarkup,
+				Thumbnail:       &gotgbot.FileReader{Name: "thumbnail.webp", Data: bytes.NewReader(stickerBytes)},
+			})
+		bc.savePair(sentMsg)
+
+	case "none":
+		fallthrough
+	default:
+		bc.sendFallbackText("\n<i>Audio sticker received but not processed (audio_sticker_mode: none)</i>")
+	}
+}
+
+func (bc *bridgeContext) convertAudioStickerToVideo(stickerBytes, audioBytes []byte, msgID string) ([]byte, error) {
+	tmpStickerFile := fmt.Sprintf("/tmp/sticker_%s.webp", msgID)
+	tmpAudioFile := fmt.Sprintf("/tmp/audio_%s.ogg", msgID)
+	tmpVideoFile := fmt.Sprintf("/tmp/video_%s.mp4", msgID)
+
+	defer func() {
+		_ = os.Remove(tmpStickerFile)
+		_ = os.Remove(tmpAudioFile)
+		_ = os.Remove(tmpVideoFile)
+	}()
+
+	// Write sticker bytes to temporary file
+	if err := os.WriteFile(tmpStickerFile, stickerBytes, 0o644); err != nil {
+		return nil, fmt.Errorf("failed to write sticker file: %w", err)
+	}
+
+	// Write audio bytes to temporary file
+	if err := os.WriteFile(tmpAudioFile, audioBytes, 0o644); err != nil {
+		return nil, fmt.Errorf("failed to write audio file: %w", err)
+	}
+
+	// Scale sticker to 1280x1280 and create video with audio
+	createVideoCmd := exec.Command(bc.cfg.FfmpegExecutable,
+		"-loop", "1",
+		"-i", tmpStickerFile,
+		"-i", tmpAudioFile,
+		"-vf", "scale=1280:1280:force_original_aspect_ratio=decrease,pad=1280:1280:(ow-iw)/2:(oh-ih)/2:color=black",
+		"-c:v", "mpeg4",
+		"-c:a", "aac",
+		"-b:a", "128k",
+		"-q:v", "5",
+		"-pix_fmt", "yuv420p",
+		"-shortest",
+		"-movflags", "+faststart",
+		"-y",
+		tmpVideoFile)
+
+	if output, err := createVideoCmd.CombinedOutput(); err != nil {
+		return nil, fmt.Errorf("ffmpeg conversion failed: %w (output: %s)", err, string(output))
+	}
+
+	videoBytes, err := os.ReadFile(tmpVideoFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read video file: %w", err)
+	}
+
+	return videoBytes, nil
 }
 
 func (bc *bridgeContext) handleContactMessage(v *events.Message) {

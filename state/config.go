@@ -80,6 +80,7 @@ type Config struct {
 		SkipPinnedMessages             bool     `yaml:"skip_pinned_messages"`
 		StatusMessageDurationSeconds   uint32   `yaml:"status_message_duration_seconds"`
 		SkipOfflineBacklog             bool     `yaml:"skip_offline_backlog"`
+		AudioStickerMode               string   `yaml:"audio_sticker_mode"`
 	} `yaml:"whatsapp"`
 
 	Database map[string]string `yaml:"database"`
@@ -173,4 +174,6 @@ func (cfg *Config) SetDefaults() {
 	cfg.Backup.Mode = "none"
 	cfg.Backup.CronSchedule = "0 0 * * *"
 	cfg.Backup.ThreadName = "Database Backups"
+
+	cfg.WhatsApp.AudioStickerMode = "none"
 }

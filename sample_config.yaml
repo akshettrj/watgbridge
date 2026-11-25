@@ -85,6 +85,7 @@ whatsapp:
   skip_pinned_messages: false             # If set to true, pinning/unpinning messages will not be synced to Telegram
   status_message_duration_seconds: 86400  # Duration in seconds for WhatsApp profile status. Default is 86400 (24h).
   skip_offline_backlog: false             # If set to true, events queued while the bridge was offline will not be bridged (useful for local development/testing)
+  audio_sticker_mode: "none"              # How to handle audio stickers: "sticker" (send as normal sticker without audio), "video" (convert to MP4), "none" (skip)
   #login_database:               # Uncomment only if you want to use something other than sqlite
   #  type: sqlite3
   #  url: file:wawebstore.db?foreign_keys=on
