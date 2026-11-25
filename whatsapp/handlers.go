@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 
 	"watgbridge/database"
@@ -26,6 +27,25 @@ import (
 	"golang.org/x/exp/slices"
 	"google.golang.org/protobuf/proto"
 )
+
+// Album buffering for grouping multiple media items
+type MediaItem struct {
+	Type    string
+	Data    []byte
+	Caption string
+	Spoiler bool
+}
+
+type AlbumBuffer struct {
+	Items    []MediaItem
+	Expected int
+	Timer    *time.Timer
+	Bc       *bridgeContext
+	Mu       sync.Mutex
+}
+
+var albumBuffers = make(map[string]*AlbumBuffer)
+var bufMu sync.Mutex
 
 // ============================================================
 // Top-level event dispatcher
@@ -741,6 +761,8 @@ func MessageFromOthersEventHandler(text string, v *events.Message, isEdited bool
 
 	// Dispatch to the appropriate media-type handler
 	switch {
+	case v.Message.GetAlbumMessage() != nil:
+		bc.handleAlbumMessage(v)
 	case v.Message.GetImageMessage() != nil:
 		bc.handleImageMessage(v)
 	case v.Message.GetVideoMessage() != nil && v.Message.GetVideoMessage().GetGifPlayback():
@@ -799,6 +821,12 @@ func (bc *bridgeContext) handleImageMessage(v *events.Message) {
 		return
 	}
 
+	// Try to add to album buffer if one exists for this chat
+	if bc.addMediaToAlbum(v, "photo", imageBytes, imageMsg.GetCaption(), imageMsg.GetViewOnce()) {
+		return
+	}
+
+	// Not part of an album, send as regular photo
 	addCaption(&bc.bridgedText, imageMsg.GetCaption())
 
 	if bc.cfg.Telegram.SendImagesAsFile {
@@ -887,6 +915,12 @@ func (bc *bridgeContext) handleVideoMessage(v *events.Message) {
 		return
 	}
 
+	// Try to add to album buffer if one exists for this chat and not PTV
+	if !isPTV && bc.addMediaToAlbum(v, "video", videoBytes, videoMsg.GetCaption(), videoMsg.GetViewOnce()) {
+		return
+	}
+
+	// Not part of an album or is PTV, send as regular video/note
 	addCaption(&bc.bridgedText, videoMsg.GetCaption())
 
 	fileToSend := gotgbot.FileReader{
@@ -2163,4 +2197,132 @@ func LogoutHandler(v *events.LoggedOut) {
 	updateText := "You have been logged out from WhatsApp:\n\n"
 	updateText += fmt.Sprintf("<b>Reason:</b> %s", html.EscapeString(v.Reason.String()))
 	utils.TgSendTextById(tgBot, cfg.Telegram.OwnerID, 0, updateText)
+}
+
+// ============================================================
+// Album handling
+// ============================================================
+
+func (bc *bridgeContext) handleAlbumMessage(v *events.Message) {
+	if !bc.cfg.WhatsApp.AlbumGrouping {
+		return
+	}
+
+	chat := v.Info.Chat.String()
+	album := v.Message.GetAlbumMessage()
+
+	bufMu.Lock()
+	defer bufMu.Unlock()
+
+	if buf, ok := albumBuffers[chat]; ok && buf.Timer != nil {
+		buf.Timer.Stop()
+	}
+
+	expected := int(album.GetExpectedImageCount() + album.GetExpectedVideoCount())
+	buf := &AlbumBuffer{Items: make([]MediaItem, 0, expected), Expected: expected, Bc: bc}
+	timeout := time.Duration(bc.cfg.WhatsApp.AlbumTimeoutSeconds) * time.Second
+	buf.Timer = time.AfterFunc(timeout, func() { flushAlbum(chat) })
+	albumBuffers[chat] = buf
+}
+
+func (bc *bridgeContext) addMediaToAlbum(v *events.Message, typ string, data []byte, caption string, spoiler bool) bool {
+	if !bc.cfg.WhatsApp.AlbumGrouping {
+		return false
+	}
+
+	chat := v.Info.Chat.String()
+
+	bufMu.Lock()
+	buf, ok := albumBuffers[chat]
+	
+	if !ok {
+		// Create implicit buffer if none exists (for cases where AlbumMessage didn't arrive)
+		buf = &AlbumBuffer{Items: make([]MediaItem, 0, 10), Expected: 0, Bc: bc}
+		timeout := time.Duration(bc.cfg.WhatsApp.AlbumTimeoutSeconds) * time.Second
+		buf.Timer = time.AfterFunc(timeout, func() { flushAlbum(chat) })
+		albumBuffers[chat] = buf
+	}
+	bufMu.Unlock()
+
+	buf.Mu.Lock()
+	defer buf.Mu.Unlock()
+
+	buf.Items = append(buf.Items, MediaItem{typ, data, caption, spoiler})
+
+	if len(buf.Items) >= buf.Expected && buf.Expected > 0 {
+		if buf.Timer != nil {
+			buf.Timer.Stop()
+		}
+		go flushAlbum(chat)
+	}
+	return true
+}
+
+func flushAlbum(chat string) {
+	bufMu.Lock()
+	buf, ok := albumBuffers[chat]
+	delete(albumBuffers, chat)
+	bufMu.Unlock()
+
+	if !ok || len(buf.Items) == 0 {
+		return
+	}
+
+	buf.Mu.Lock()
+	items := buf.Items
+	bc := buf.Bc
+	buf.Mu.Unlock()
+
+	bc.sendAlbumToTelegram(items)
+}
+
+func (bc *bridgeContext) sendAlbumToTelegram(items []MediaItem) {
+	if len(items) == 0 {
+		return
+	}
+
+	if len(items) == 1 {
+		item := items[0]
+		cap := bc.bridgedText
+		addCaption(&cap, item.Caption)
+		if item.Type == "photo" {
+			bc.tgBot.SendPhoto(bc.cfg.Telegram.TargetChatID, &gotgbot.FileReader{Data: bytes.NewReader(item.Data)},
+				&gotgbot.SendPhotoOpts{Caption: cap, HasSpoiler: item.Spoiler, ReplyParameters: utils.TgMakeReplyParameters(bc.replyToMsgId, 0), MessageThreadId: bc.threadId})
+		} else {
+			bc.tgBot.SendVideo(bc.cfg.Telegram.TargetChatID, &gotgbot.FileReader{Data: bytes.NewReader(item.Data)},
+				&gotgbot.SendVideoOpts{Caption: cap, HasSpoiler: item.Spoiler, ReplyParameters: utils.TgMakeReplyParameters(bc.replyToMsgId, 0), MessageThreadId: bc.threadId})
+		}
+		return
+	}
+
+	medias := make([]gotgbot.InputMedia, len(items))
+	for i, item := range items {
+		cap := ""
+		if i == 0 {
+			cap = bc.bridgedText
+			addCaption(&cap, item.Caption)
+		}
+
+		if item.Type == "photo" {
+			m := &gotgbot.InputMediaPhoto{Media: &gotgbot.FileReader{Data: bytes.NewReader(item.Data)}, HasSpoiler: item.Spoiler, Caption: cap, ParseMode: gotgbot.ParseModeHTML}
+			medias[i] = m
+		} else {
+			m := &gotgbot.InputMediaVideo{Media: &gotgbot.FileReader{Data: bytes.NewReader(item.Data)}, HasSpoiler: item.Spoiler, Caption: cap, ParseMode: gotgbot.ParseModeHTML}
+			medias[i] = m
+		}
+	}
+
+	msgs, err := bc.tgBot.SendMediaGroup(bc.cfg.Telegram.TargetChatID, medias,
+		&gotgbot.SendMediaGroupOpts{ReplyParameters: utils.TgMakeReplyParameters(bc.replyToMsgId, 0), MessageThreadId: bc.threadId})
+
+	if err != nil {
+		bc.sendFallbackText(fmt.Sprintf("\n<i>Album failed: %v</i>", err))
+		return
+	}
+
+	for _, msg := range msgs {
+		if msg.MessageId != 0 {
+			database.MsgIdAddNewPair(bc.msgId, bc.senderStr, bc.chatStr, bc.cfg.Telegram.TargetChatID, msg.MessageId, msg.MessageThreadId)
+		}
+	}
 }

@@ -81,6 +81,8 @@ type Config struct {
 		StatusMessageDurationSeconds   uint32   `yaml:"status_message_duration_seconds"`
 		SkipOfflineBacklog             bool     `yaml:"skip_offline_backlog"`
 		AudioStickerMode               string   `yaml:"audio_sticker_mode"`
+		AlbumGrouping                  bool     `yaml:"album_grouping"`
+		AlbumTimeoutSeconds            int      `yaml:"album_timeout_seconds"`
 	} `yaml:"whatsapp"`
 
 	Database map[string]string `yaml:"database"`
@@ -176,4 +178,6 @@ func (cfg *Config) SetDefaults() {
 	cfg.Backup.ThreadName = "Database Backups"
 
 	cfg.WhatsApp.AudioStickerMode = "none"
+	cfg.WhatsApp.AlbumGrouping = true
+	cfg.WhatsApp.AlbumTimeoutSeconds = 2
 }

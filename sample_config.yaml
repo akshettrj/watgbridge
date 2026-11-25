@@ -86,6 +86,8 @@ whatsapp:
   status_message_duration_seconds: 86400  # Duration in seconds for WhatsApp profile status. Default is 86400 (24h).
   skip_offline_backlog: false             # If set to true, events queued while the bridge was offline will not be bridged (useful for local development/testing)
   audio_sticker_mode: "none"              # How to handle audio stickers: "sticker" (send as normal sticker without audio), "video" (convert to MP4), "none" (skip)
+  album_grouping: true                    # Group multiple photos/videos sent together as a single album in Telegram
+  album_timeout_seconds: 2                # Wait time (in seconds) to collect media before sending album
   #login_database:               # Uncomment only if you want to use something other than sqlite
   #  type: sqlite3
   #  url: file:wawebstore.db?foreign_keys=on
