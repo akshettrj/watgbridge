@@ -89,6 +89,19 @@ func TgGetOrMakeThreadFromWa(waChatId waTypes.JID, tgChatId int64, threadName st
 	return TgGetOrMakeThreadFromWa_String(waChatIdString, tgChatId, threadName)
 }
 
+// TgGetThreadFromWa returns the existing Telegram thread for a WhatsApp chat without creating one.
+// It resolves hidden (LID) chats the same way TgGetOrMakeThreadFromWa does.
+func TgGetThreadFromWa(waChatId waTypes.JID, tgChatId int64) (int64, bool, error) {
+	if waChatId.Server == waTypes.HiddenUserServer {
+		pn, err := state.State.WhatsAppClient.Store.LIDs.GetPNForLID(context.Background(), waChatId)
+		if err != nil {
+			return 0, false, err
+		}
+		waChatId = pn
+	}
+	return database.ChatThreadGetTgFromWa(waChatId.ToNonAD().String(), tgChatId)
+}
+
 func TgDownloadByFilePath(b *gotgbot.Bot, filePath string) ([]byte, error) {
 	if state.State.Config.Telegram.SelfHostedAPI {
 		return os.ReadFile(filePath)
