@@ -1838,8 +1838,19 @@ func PictureEventHandler(v *events.Picture) {
 func handleGroupPictureEvent(v *events.Picture, cfg *state.Config, logger *zap.Logger, tgBot *gotgbot.Bot) {
 	// Use the concrete client for proper typing
 	client := state.State.WhatsAppClient
-	tgThreadId, err := utils.TgGetOrMakeThreadFromWa(v.JID.ToNonAD(), cfg.Telegram.TargetChatID,
-		utils.WaGetGroupName(v.JID))
+	var tgThreadId int64
+	var err error
+	if cfg.WhatsApp.CreateThreadForInfoUpdates {
+		tgThreadId, err = utils.TgGetOrMakeThreadFromWa(v.JID.ToNonAD(), cfg.Telegram.TargetChatID,
+			utils.WaGetGroupName(v.JID))
+	} else {
+		// Do not create a topic just for a picture change: only notify chats that already have one.
+		var found bool
+		tgThreadId, found, err = utils.TgGetThreadFromWa(v.JID.ToNonAD(), cfg.Telegram.TargetChatID)
+		if err == nil && !found {
+			return
+		}
+	}
 	if err != nil {
 		logger.Warn("failed to create a new thread for a WhatsApp chat (handling Picture event)",
 			zap.String("chat", v.JID.String()), zap.Error(err))
@@ -1876,7 +1887,18 @@ func handleUserPictureEvent(v *events.Picture, cfg *state.Config, logger *zap.Lo
 		threadName = targetJID.String()
 	}
 
-	tgThreadId, err := utils.TgGetOrMakeThreadFromWa(targetJID, cfg.Telegram.TargetChatID, threadName)
+	var tgThreadId int64
+	var err error
+	if cfg.WhatsApp.CreateThreadForInfoUpdates {
+		tgThreadId, err = utils.TgGetOrMakeThreadFromWa(targetJID, cfg.Telegram.TargetChatID, threadName)
+	} else {
+		// Do not create a topic just for a picture change: only notify chats that already have one.
+		var found bool
+		tgThreadId, found, err = utils.TgGetThreadFromWa(targetJID, cfg.Telegram.TargetChatID)
+		if err == nil && !found {
+			return
+		}
+	}
 	if err != nil {
 		logger.Warn("failed to create a new thread for a WhatsApp chat (handling Picture event)",
 			zap.String("chat", v.JID.String()), zap.Error(err))
